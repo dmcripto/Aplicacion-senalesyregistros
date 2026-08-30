@@ -161,6 +161,7 @@ export default function App() {
   const [clearArmed, setClearArmed] = useState(false);
   const [flashId, flash] = useFlashId();
   const now = useNow(1000);
+  const [installEvt, setInstallEvt] = useState<{ prompt: () => Promise<void> } | null>(null);
 
   useEffect(() => {
     if (!clearArmed) return;
@@ -173,6 +174,23 @@ export default function App() {
     setToasts((t) => [...t.slice(-3), { id, msg, kind }]);
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   }, []);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallEvt(e as unknown as { prompt: () => Promise<void> });
+    };
+    const onInstalled = () => {
+      setInstallEvt(null);
+      notify("App instalada — la encontrás en tu pantalla de inicio o menú de aplicaciones.", "ok");
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [notify]);
 
   const addTrades = useCallback(
     (list: NewTrade[]) => {
@@ -295,6 +313,17 @@ export default function App() {
               </p>
             </div>
           </div>
+          {installEvt && (
+            <button
+              onClick={() => {
+                installEvt.prompt();
+                setInstallEvt(null);
+              }}
+              className="flex items-center gap-2 rounded-md border border-bull/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/10 hover:shadow-[0_6px_20px_rgba(22,217,138,.15)] active:scale-[0.98]"
+            >
+              <IconDownload className="h-3.5 w-3.5" /> Instalar app
+            </button>
+          )}
           <button
             onClick={exportCsv}
             disabled={!trades.length}
