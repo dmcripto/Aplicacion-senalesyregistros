@@ -4,8 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Diario de trading DMCRIPTO — registro de operaciones, estadísticas R, curva de capital y resumen mensual." />
+    <meta name="theme-color" content="#0a0e14" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DMCRIPTO" />
     <title>DMCRIPTO · Diario de Trading</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 28 7v9c0 8-5.4 12.6-12 14C9.4 28.6 4 24 4 16V7z' fill='%230d131b' stroke='%23f3b71e' stroke-width='2'/%3E%3Crect x='10' y='12' width='3' height='9' fill='%2316d98a'/%3E%3Crect x='11.2' y='9' width='.9' height='15' fill='%2316d98a'/%3E%3Crect x='19' y='9' width='3' height='9' fill='%23ff4d67'/%3E%3Crect x='20.2' y='7' width='.9' height='14' fill='%23ff4d67'/%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,6 +22,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Registro del service worker (solo en https o localhost; en http se ignora sin romper nada)
+      window.addEventListener("load", function () {
+        var seguro =
+          window.location.protocol === "https:" ||
+          window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1";
+        if (seguro && "serviceWorker" in navigator) {
+          navigator.serviceWorker.register("./sw.js").catch(function () {});
+        }
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

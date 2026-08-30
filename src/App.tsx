@@ -28,6 +28,7 @@ import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
 import MonthlySummary from "./components/MonthlySummary";
+import { buildStandaloneHtml, downloadStandaloneHtml } from "./downloadHtml";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -159,8 +160,10 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [clearArmed, setClearArmed] = useState(false);
+  const [htmlBusy, setHtmlBusy] = useState(false);
   const [flashId, flash] = useFlashId();
   const now = useNow(1000);
+  const [installEvt, setInstallEvt] = useState<{ prompt: () => Promise<void> } | null>(null);
 
   useEffect(() => {
     if (!clearArmed) return;
@@ -173,6 +176,23 @@ export default function App() {
     setToasts((t) => [...t.slice(-3), { id, msg, kind }]);
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   }, []);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallEvt(e as unknown as { prompt: () => Promise<void> });
+    };
+    const onInstalled = () => {
+      setInstallEvt(null);
+      notify("App instalada — la encontrás en tu pantalla de inicio o menú de aplicaciones.", "ok");
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [notify]);
 
   const addTrades = useCallback(
     (list: NewTrade[]) => {
@@ -259,6 +279,24 @@ export default function App() {
     notify("CSV exportado — compatible con Excel y Google Sheets.");
   }, [trades, notify]);
 
+  const downloadHtml = useCallback(async () => {
+    setHtmlBusy(true);
+    try {
+      const html = await buildStandaloneHtml();
+      downloadStandaloneHtml(html);
+      const kb = Math.max(1, Math.round(html.length / 1024));
+      notify(`dmcripto-diario.html descargado (${kb} KB) — funciona con doble clic, sin servidor.`);
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message === "DEV_MODE"
+          ? "La descarga del HTML único está disponible en la versión publicada (npm run build → carpeta dist)."
+          : "No se pudo armar el archivo. Recargá la página y probá de nuevo.";
+      notify(msg, "err");
+    } finally {
+      setHtmlBusy(false);
+    }
+  }, [notify]);
+
   const clearAll = useCallback(() => {
     setTrades([]);
     setClearArmed(false);
@@ -295,6 +333,17 @@ export default function App() {
               </p>
             </div>
           </div>
+          {installEvt && (
+            <button
+              onClick={() => {
+                installEvt.prompt();
+                setInstallEvt(null);
+              }}
+              className="flex items-center gap-2 rounded-md border border-bull/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/10 hover:shadow-[0_6px_20px_rgba(22,217,138,.15)] active:scale-[0.98]"
+            >
+              <IconDownload className="h-3.5 w-3.5" /> Instalar app
+            </button>
+          )}
           <button
             onClick={exportCsv}
             disabled={!trades.length}
@@ -354,22 +403,33 @@ export default function App() {
             navegador. Formato de alerta:{" "}
             <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
           </p>
-          {trades.length > 0 &&
-            (clearArmed ? (
-              <button
-                onClick={clearAll}
-                className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
-              >
-                Confirmar borrado total
-              </button>
-            ) : (
-              <button
-                onClick={() => setClearArmed(true)}
-                className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
-              >
-                Borrar diario
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={downloadHtml}
+              disabled={htmlBusy}
+              title="Descarga la app completa en un solo archivo .html, como la PWA original"
+              className="flex items-center gap-1.5 rounded-md border border-gold/45 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 active:scale-[0.97] disabled:cursor-wait disabled:opacity-50 disabled:hover:translate-y-0"
+            >
+              <IconDownload className="h-3 w-3" />
+              {htmlBusy ? "Preparando…" : "Descargar HTML (1 archivo)"}
+            </button>
+            {trades.length > 0 &&
+              (clearArmed ? (
+                <button
+                  onClick={clearAll}
+                  className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
+                >
+                  Confirmar borrado total
+                </button>
+              ) : (
+                <button
+                  onClick={() => setClearArmed(true)}
+                  className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
+                >
+                  Borrar diario
+                </button>
+              ))}
+          </div>
         </div>
       </footer>
 

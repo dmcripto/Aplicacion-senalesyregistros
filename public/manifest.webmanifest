@@ -1,0 +1,27 @@
+{
+  "name": "DMCRIPTO · Diario de Trading",
+  "short_name": "DMCRIPTO",
+  "description": "Diario de trading DMCRIPTO — registro de operaciones, estadísticas R, curva de capital y resumen mensual.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e14",
+  "theme_color": "#0a0e14",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
