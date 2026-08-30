@@ -73,7 +73,7 @@ function Ticker({ trades }: { trades: Trade[] }) {
         </div>
       ) : (
         <p className="num py-1.5 text-center text-[11px] text-dim">
-          DMCRIPTO925 · cuando cierres operaciones, el ticker de resultados corre acá
+          DMCRIPTO · cuando cierres operaciones, el ticker de resultados corre acá
         </p>
       )}
       <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-ink to-transparent" />
@@ -275,7 +275,7 @@ export default function App() {
           <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(243,183,30,.25)]" />
           <div>
             <h1 className="font-display text-[34px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
-              DMCRIPTO<span className="text-gold">925</span>
+              DMCRIPTO<span className="text-gold">.</span>
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
               Diario de trading · SMC / ICT
@@ -350,7 +350,7 @@ export default function App() {
       <footer className="border-t border-line bg-panel/60">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
-            <span className="font-bold text-fog">DMCRIPTO925</span> — tus operaciones se guardan solo en este
+            <span className="font-bold text-fog">DMCRIPTO</span> — tus operaciones se guardan solo en este
             navegador. Formato de alerta:{" "}
             <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
           </p>

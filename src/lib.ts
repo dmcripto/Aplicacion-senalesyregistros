@@ -1,4 +1,4 @@
-// ─── DMCRIPTO925 · Lógica del diario ────────────────────────────────────────
+// ─── DMCRIPTO · Lógica del diario ───────────────────────────────────────────
 
 export type Direction = "LONG" | "SHORT";
 export type Outcome = "ABIERTA" | "TP" | "SL" | "MANUAL";
@@ -256,7 +256,7 @@ export function downloadCsv(trades: Trade[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "diario-dmcripto925.csv";
+  a.download = "diario-dmcripto.csv";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -320,6 +320,18 @@ export function sampleTrades(): Trade[] {
   ];
 }
 
-export const STORAGE_KEY = "dmcripto925.diario.v1";
+export const STORAGE_KEY = "dmcripto.diario.v1";
+
+// Migración: si el diario se guardó bajo la marca anterior, se traslada
+// a la clave nueva una sola vez para no perder los datos.
+const LEGACY_KEY = "dmcripto925.diario.v1";
+try {
+  if (localStorage.getItem(STORAGE_KEY) == null && localStorage.getItem(LEGACY_KEY) != null) {
+    localStorage.setItem(STORAGE_KEY, localStorage.getItem(LEGACY_KEY) as string);
+    localStorage.removeItem(LEGACY_KEY);
+  }
+} catch {
+  /* modo privado o almacenamiento bloqueado */
+}
 
 export const EXAMPLE_ALERT = "DMCRIPTO|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";
