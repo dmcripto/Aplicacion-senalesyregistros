@@ -28,6 +28,7 @@ import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
 import MonthlySummary from "./components/MonthlySummary";
+import { buildStandaloneHtml, downloadStandaloneHtml } from "./downloadHtml";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [clearArmed, setClearArmed] = useState(false);
+  const [htmlBusy, setHtmlBusy] = useState(false);
   const [flashId, flash] = useFlashId();
   const now = useNow(1000);
   const [installEvt, setInstallEvt] = useState<{ prompt: () => Promise<void> } | null>(null);
@@ -277,6 +279,24 @@ export default function App() {
     notify("CSV exportado — compatible con Excel y Google Sheets.");
   }, [trades, notify]);
 
+  const downloadHtml = useCallback(async () => {
+    setHtmlBusy(true);
+    try {
+      const html = await buildStandaloneHtml();
+      downloadStandaloneHtml(html);
+      const kb = Math.max(1, Math.round(html.length / 1024));
+      notify(`dmcripto-diario.html descargado (${kb} KB) — funciona con doble clic, sin servidor.`);
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message === "DEV_MODE"
+          ? "La descarga del HTML único está disponible en la versión publicada (npm run build → carpeta dist)."
+          : "No se pudo armar el archivo. Recargá la página y probá de nuevo.";
+      notify(msg, "err");
+    } finally {
+      setHtmlBusy(false);
+    }
+  }, [notify]);
+
   const clearAll = useCallback(() => {
     setTrades([]);
     setClearArmed(false);
@@ -383,22 +403,33 @@ export default function App() {
             navegador. Formato de alerta:{" "}
             <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
           </p>
-          {trades.length > 0 &&
-            (clearArmed ? (
-              <button
-                onClick={clearAll}
-                className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
-              >
-                Confirmar borrado total
-              </button>
-            ) : (
-              <button
-                onClick={() => setClearArmed(true)}
-                className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
-              >
-                Borrar diario
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={downloadHtml}
+              disabled={htmlBusy}
+              title="Descarga la app completa en un solo archivo .html, como la PWA original"
+              className="flex items-center gap-1.5 rounded-md border border-gold/45 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 active:scale-[0.97] disabled:cursor-wait disabled:opacity-50 disabled:hover:translate-y-0"
+            >
+              <IconDownload className="h-3 w-3" />
+              {htmlBusy ? "Preparando…" : "Descargar HTML (1 archivo)"}
+            </button>
+            {trades.length > 0 &&
+              (clearArmed ? (
+                <button
+                  onClick={clearAll}
+                  className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
+                >
+                  Confirmar borrado total
+                </button>
+              ) : (
+                <button
+                  onClick={() => setClearArmed(true)}
+                  className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
+                >
+                  Borrar diario
+                </button>
+              ))}
+          </div>
         </div>
       </footer>
 
