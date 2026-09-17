@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "DMCRIPTO",
+    "slug": "dmcripto-senales",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "dmcripto",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dmcripto.senales"
+    },
+    "android": {
+      "package": "com.dmcripto.senales",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0e14",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-notifications"],
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    }
+  }
+}

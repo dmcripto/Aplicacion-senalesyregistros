@@ -1,0 +1,8 @@
+{
+  "name": "@dmcripto/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/trading.ts",
+  "types": "src/trading.ts"
+}
