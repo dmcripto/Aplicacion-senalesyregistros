@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Política de privacidad — DMCRIPTO</title>
+<style>
+  :root {
+    --ink: #0a0e14;
+    --panel: #101720;
+    --line: #223042;
+    --snow: #e8eef6;
+    --fog: #93a5ba;
+    --gold: #f3b71e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--snow);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 {
+    font-size: 28px;
+    font-weight: 800;
+    margin: 0 0 6px;
+  }
+  h1 .dot { color: var(--gold); }
+  .updated { color: var(--fog); font-size: 13px; margin-bottom: 36px; }
+  h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 32px 0 10px;
+    color: var(--snow);
+  }
+  p, li { color: #c7d2de; font-size: 15px; }
+  ul { padding-left: 20px; }
+  a { color: var(--gold); }
+  .contact {
+    margin-top: 40px;
+    padding: 16px 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>DMCRIPTO<span class="dot">.</span> — Política de privacidad</h1>
+    <p class="updated">Última actualización: septiembre de 2026</p>
+
+    <p>
+      DMCRIPTO es un diario de trading personal que te permite registrar tus operaciones a mano
+      o recibirlas automáticamente mediante una alerta de TradingView. Esta página explica qué
+      datos maneja la app y cómo los usa.
+    </p>
+
+    <h2>Qué datos recolectamos</h2>
+    <ul>
+      <li><b>Email y contraseña</b> — para crear tu cuenta e iniciar sesión (gestionado por Supabase Auth).</li>
+      <li><b>Datos de tus operaciones</b> — símbolo, dirección, precio de entrada, take profit, stop loss, resultado y notas que cargues vos o que lleguen a través de tu webhook personal de TradingView.</li>
+      <li><b>Token de notificaciones push</b> — un identificador de tu dispositivo (Expo Push Token) para poder avisarte cuando llega una alerta.</li>
+    </ul>
+    <p>No recolectamos datos de ubicación, contactos, ni acceso a tu cámara o galería.</p>
+
+    <h2>Cómo usamos estos datos</h2>
+    <p>
+      Únicamente para brindarte la función principal de la app: guardar tu diario de operaciones,
+      calcular tus estadísticas y enviarte una notificación cuando se registra una nueva operación.
+      No usamos tus datos para publicidad ni los analizamos con fines comerciales.
+    </p>
+
+    <h2>Dónde se guardan</h2>
+    <p>
+      Los datos se almacenan en la infraestructura de <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a>,
+      cifrados en tránsito (HTTPS/TLS). El acceso a tus propias operaciones está restringido por
+      reglas de seguridad a nivel de base de datos (Row Level Security): ningún otro usuario puede
+      ver tus datos.
+    </p>
+
+    <h2>Con quién se comparten</h2>
+    <p>
+      No vendemos ni compartimos tus datos con terceros. Los únicos servicios externos que
+      procesan datos en tu nombre son Supabase (base de datos y autenticación) y Expo (envío de
+      notificaciones push) — ambos como proveedores de infraestructura, no como destinatarios
+      finales de tu información.
+    </p>
+
+    <h2>Tus derechos</h2>
+    <p>
+      Podés pedirnos en cualquier momento que te enviemos una copia de tus datos o que los
+      eliminemos por completo, escribiendo al contacto de abajo.
+    </p>
+
+    <h2>Cambios a esta política</h2>
+    <p>
+      Si actualizamos esta política, vamos a reflejar los cambios en esta misma página con una
+      nueva fecha de actualización.
+    </p>
+
+    <div class="contact">
+      <b>Contacto:</b> <a href="mailto:dmcripto925@gmail.com">dmcripto925@gmail.com</a>
+    </div>
+  </div>
+</body>
+</html>
