@@ -9,17 +9,18 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { supabase } from "../supabaseClient";
 import { colors } from "../theme";
 
-export default function LoginScreen() {
+export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
 
   const submit = async () => {
     setError(null);
@@ -36,6 +37,46 @@ export default function LoginScreen() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la operación.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forgotPassword = async () => {
+    if (!email.trim()) {
+      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: Linking.createURL("reset-password"),
+      });
+      if (err) throw err;
+      setNotice("Te enviamos un email para restablecer tu contraseña.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo enviar el email.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendConfirmation = async () => {
+    if (!email.trim()) {
+      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const { error: err } = await supabase.auth.resend({ type: "signup", email });
+      if (err) throw err;
+      setNotice("Te reenviamos el email de confirmación.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo reenviar el email.");
     } finally {
       setBusy(false);
     }
@@ -95,6 +136,15 @@ export default function LoginScreen() {
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Text style={styles.showBtnText}>{showPassword ? "Ocultar" : "Ver"}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.linksRow}>
+          <TouchableOpacity onPress={forgotPassword} disabled={busy}>
+            <Text style={styles.link}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={resendConfirmation} disabled={busy}>
+            <Text style={styles.link}>Reenviar confirmación</Text>
           </TouchableOpacity>
         </View>
 
@@ -160,6 +210,14 @@ const styles = StyleSheet.create({
   passwordInput: { paddingRight: 56 },
   showBtn: { position: "absolute", right: 12 },
   showBtnText: { color: colors.gold, fontSize: 11.5, fontWeight: "700" },
+  linksRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 10,
+  },
+  link: { color: colors.fog, fontSize: 11, fontWeight: "600", textDecorationLine: "underline" },
   error: { color: colors.bear, fontSize: 12, marginTop: 12 },
   notice: { color: colors.cyan, fontSize: 12, marginTop: 12 },
   submit: {

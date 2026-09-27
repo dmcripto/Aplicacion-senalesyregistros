@@ -37,6 +37,7 @@ import {
 } from "./tradesApi";
 import type { NewTrade } from "./lib";
 import Auth from "./components/Auth";
+import ResetPassword from "./components/ResetPassword";
 import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
@@ -483,7 +484,19 @@ function Dashboard({ userId }: { userId: string }) {
 }
 
 export default function App() {
-  const session = useSession();
+  const { session, isRecovery, clearRecovery } = useSession();
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+
+  if (isRecovery) {
+    return (
+      <ResetPassword
+        onDone={(notice) => {
+          clearRecovery();
+          setAuthNotice(notice);
+        }}
+      />
+    );
+  }
 
   if (session === undefined) {
     return (
@@ -493,7 +506,7 @@ export default function App() {
     );
   }
 
-  if (!session) return <Auth />;
+  if (!session) return <Auth initialNotice={authNotice} />;
 
   return <Dashboard userId={session.user.id} />;
 }

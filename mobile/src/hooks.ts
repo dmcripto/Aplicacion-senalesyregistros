@@ -6,14 +6,20 @@ import { fetchTrades, rowToTrade } from "./tradesApi";
 
 export function useSession() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [isRecovery, setIsRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s);
+      if (event === "PASSWORD_RECOVERY") setIsRecovery(true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  return session;
+  const clearRecovery = useCallback(() => setIsRecovery(false), []);
+
+  return { session, isRecovery, clearRecovery };
 }
 
 /** Diario de trades sincronizado con Supabase (carga inicial + Realtime). */

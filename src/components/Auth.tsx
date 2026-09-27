@@ -4,14 +4,14 @@ import { supabase } from "../supabaseClient";
 import { cx } from "../lib";
 import { IconAlert, ShieldLogo } from "../ui";
 
-export default function Auth() {
+export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
 
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
@@ -29,6 +29,46 @@ export default function Auth() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo completar la operación.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const forgotPassword = async () => {
+    if (!email.trim()) {
+      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      if (err) throw err;
+      setNotice("Te enviamos un email para restablecer tu contraseña.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo enviar el email.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendConfirmation = async () => {
+    if (!email.trim()) {
+      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      const { error: err } = await supabase.auth.resend({ type: "signup", email });
+      if (err) throw err;
+      setNotice("Te reenviamos el email de confirmación.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo reenviar el email.");
     } finally {
       setBusy(false);
     }
@@ -106,6 +146,25 @@ export default function Auth() {
                 {showPassword ? "Ocultar" : "Ver"}
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px]">
+            <button
+              type="button"
+              onClick={forgotPassword}
+              disabled={busy}
+              className="font-semibold text-fog underline-offset-2 hover:text-gold hover:underline disabled:opacity-50"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+            <button
+              type="button"
+              onClick={resendConfirmation}
+              disabled={busy}
+              className="font-semibold text-fog underline-offset-2 hover:text-gold hover:underline disabled:opacity-50"
+            >
+              Reenviar confirmación
+            </button>
           </div>
 
           {error && (
