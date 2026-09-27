@@ -16,6 +16,7 @@ export default function LoginScreen() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -79,14 +80,23 @@ export default function LoginScreen() {
         />
 
         <Text style={styles.label}>Contraseña</Text>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="••••••••"
-          placeholderTextColor={colors.dim}
-          secureTextEntry
-          style={styles.input}
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            placeholderTextColor={colors.dim}
+            secureTextEntry={!showPassword}
+            style={[styles.input, styles.passwordInput]}
+          />
+          <TouchableOpacity
+            style={styles.showBtn}
+            onPress={() => setShowPassword((v) => !v)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.showBtnText}>{showPassword ? "Ocultar" : "Ver"}</Text>
+          </TouchableOpacity>
+        </View>
 
         {error && <Text style={styles.error}>{error}</Text>}
         {notice && <Text style={styles.notice}>{notice}</Text>}
@@ -146,6 +156,10 @@ const styles = StyleSheet.create({
     color: colors.snow,
     fontSize: 14,
   },
+  passwordRow: { position: "relative", justifyContent: "center" },
+  passwordInput: { paddingRight: 56 },
+  showBtn: { position: "absolute", right: 12 },
+  showBtnText: { color: colors.gold, fontSize: 11.5, fontWeight: "700" },
   error: { color: colors.bear, fontSize: 12, marginTop: 12 },
   notice: { color: colors.cyan, fontSize: 12, marginTop: 12 },
   submit: {
