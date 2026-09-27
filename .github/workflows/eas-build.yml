@@ -1,0 +1,54 @@
+name: EAS Build
+
+# Dispara un build en la nube de Expo (EAS) desde GitHub, sin necesitar una
+# computadora propia. Requiere el secret EXPO_TOKEN (Settings → Secrets and
+# variables → Actions → New repository secret) con un token generado en
+# https://expo.dev/accounts/[cuenta]/settings/access-tokens
+#
+# Las variables EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY no
+# se pasan acá: se configuran como "Environment variables" del proyecto en
+# el dashboard de expo.dev, para que EAS las inyecte durante el build remoto.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Plataforma a compilar"
+        required: true
+        default: android
+        type: choice
+        options:
+          - android
+          - ios
+          - all
+      profile:
+        description: "Perfil de eas.json"
+        required: true
+        default: production
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies (npm workspaces)
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Trigger EAS build
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive
