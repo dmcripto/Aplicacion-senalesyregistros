@@ -1,23 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "./supabaseClient";
+import { fetchTrades, rowToTrade } from "./tradesApi";
+import type { Trade } from "./lib";
 
-export function useLocalStorage<T>(key: string, initial: T | (() => T)) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw != null) return JSON.parse(raw) as T;
-    } catch {
-      /* almacenamiento corrupto → usar inicial */
-    }
-    return typeof initial === "function" ? (initial as () => T)() : initial;
-  });
+export function useSession() {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      /* sin espacio o modo privado */
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return session;
+}
+
+/** Diario de trades sincronizado con Supabase (carga inicial + Realtime). */
+export function useTrades(userId: string | undefined) {
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!userId) {
+      setTrades([]);
+      setLoading(false);
+      return;
     }
-  }, [key, value]);
-  return [value, setValue] as const;
+    let cancelled = false;
+    setLoading(true);
+    fetchTrades()
+      .then((list) => {
+        if (!cancelled) setTrades(list);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    const channel = supabase
+      .channel(`trades-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "trades", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const t = rowToTrade(payload.new as never);
+            setTrades((prev) => (prev.some((x) => x.id === t.id) ? prev : [t, ...prev]));
+          } else if (payload.eventType === "UPDATE") {
+            const t = rowToTrade(payload.new as never);
+            setTrades((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+          } else if (payload.eventType === "DELETE") {
+            const oldId = (payload.old as { id: string }).id;
+            setTrades((prev) => prev.filter((x) => x.id !== oldId));
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  return { trades, loading };
 }
 
 export function useNow(intervalMs = 1000) {

@@ -3,3 +3,9 @@ node_modules/
 dist/
 build/
 *.log
+.env
+.env.local
+mobile/.expo/
+mobile/dist/
+mobile/node_modules/
+supabase/.temp/

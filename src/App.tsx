@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   EXAMPLE_ALERT,
-  STORAGE_KEY,
   computeStats,
   cx,
   downloadCsv,
@@ -10,12 +9,13 @@ import {
   resultR,
   rrOf,
   sampleTrades,
-  uid,
 } from "./lib";
-import type { NewTrade, Trade } from "./lib";
-import { useCountUp, useFlashId, useLocalStorage, useNow } from "./hooks";
+import type { Trade } from "./lib";
+import { useCountUp, useFlashId, useNow, useSession, useTrades } from "./hooks";
 import {
   CloseModal,
+  IconCheck,
+  IconClipboard,
   IconDownload,
   Reveal,
   ShieldLogo,
@@ -24,6 +24,19 @@ import {
   TriUp,
 } from "./ui";
 import type { ToastData } from "./ui";
+import { supabase } from "./supabaseClient";
+import {
+  closeTradeManually,
+  deleteAllTrades,
+  deleteTradeById,
+  fetchWebhookUrl,
+  insertFullTrades,
+  insertTrades,
+  markTradeOutcome,
+  reopenTradeById,
+} from "./tradesApi";
+import type { NewTrade } from "./lib";
+import Auth from "./components/Auth";
 import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
@@ -152,10 +165,68 @@ function StatsBand({ trades }: { trades: Trade[] }) {
   );
 }
 
+// ─── Webhook de TradingView ─────────────────────────────────────────────────
+
+function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWebhookUrl(userId)
+      .then((u) => !cancelled && setUrl(u))
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "No se pudo obtener la URL."));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const copy = async () => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      notify("URL de webhook copiada al portapapeles.");
+    } catch {
+      notify("No se pudo copiar automáticamente — seleccioná el texto a mano.", "err");
+    }
+  };
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-line bg-panel">
+      <header className="border-b border-line px-5 py-4">
+        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">WEBHOOK DE TRADINGVIEW</h2>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">
+          Pegá esta URL en el campo "Webhook URL" de tu alerta
+        </p>
+      </header>
+      <div className="space-y-3 p-5">
+        {error && <p className="text-[12px] text-bear">{error}</p>}
+        {url && (
+          <div className="flex items-center gap-2 rounded-md border border-line bg-ink px-3 py-2.5">
+            <code className="num flex-1 truncate text-[11px] text-fog">{url}</code>
+            <button
+              onClick={copy}
+              className="shrink-0 rounded border border-line px-2.5 py-1.5 text-[11px] font-semibold text-fog transition-colors hover:border-line2 hover:bg-raise hover:text-snow"
+            >
+              <IconClipboard className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+        <p className="text-[11px] leading-relaxed text-dim">
+          En el mensaje de la alerta usá el formato:{" "}
+          <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
+        </p>
+      </div>
+    </section>
+  );
+}
+
 // ─── App ────────────────────────────────────────────────────────────────────
 
-export default function App() {
-  const [trades, setTrades] = useLocalStorage<Trade[]>(STORAGE_KEY, []);
+type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
+
+function Dashboard({ userId }: { userId: string }) {
+  const { trades, loading } = useTrades(userId);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [clearArmed, setClearArmed] = useState(false);
@@ -168,90 +239,100 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, [clearArmed]);
 
-  const notify = useCallback((msg: string, kind: "ok" | "err" | "info" = "ok") => {
-    const id = uid();
+  const notify = useCallback<Notify>((msg, kind = "ok") => {
+    const id = crypto.randomUUID();
     setToasts((t) => [...t.slice(-3), { id, msg, kind }]);
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   }, []);
 
   const addTrades = useCallback(
-    (list: NewTrade[]) => {
-      const withIds: Trade[] = list.map((n) => ({ ...n, id: uid(), outcome: "ABIERTA" as const }));
-      setTrades((prev) => [...withIds, ...prev]);
-      flash(withIds[0].id);
-      notify(
-        list.length === 1
-          ? `Operación registrada: ${list[0].symbol} ${list[0].direction} @ ${list[0].entry}`
-          : `${list.length} operaciones registradas en el diario.`,
-      );
+    async (list: NewTrade[]) => {
+      try {
+        const ids = await insertTrades(userId, list);
+        if (ids[0]) flash(ids[0]);
+        notify(
+          list.length === 1
+            ? `Operación registrada: ${list[0].symbol} ${list[0].direction} @ ${list[0].entry}`
+            : `${list.length} operaciones registradas en el diario.`,
+        );
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo registrar la operación.", "err");
+      }
     },
-    [setTrades, flash, notify],
+    [userId, flash, notify],
   );
 
   const markOutcome = useCallback(
-    (id: string, outcome: "TP" | "SL") => {
+    async (id: string, outcome: "TP" | "SL") => {
       const t = trades.find((x) => x.id === id);
-      setTrades((prev) =>
-        prev.map((x) =>
-          x.id === id ? { ...x, outcome, closedAt: new Date().toISOString() } : x,
-        ),
-      );
-      if (t) {
-        const r = outcome === "TP" ? rrOf(t) : -1;
-        notify(`${t.symbol} cerrada en ${outcome} · ${fmtR(r)}R`, outcome === "TP" ? "ok" : "err");
+      try {
+        await markTradeOutcome(id, outcome);
+        if (t) {
+          const r = outcome === "TP" ? rrOf(t) : -1;
+          notify(`${t.symbol} cerrada en ${outcome} · ${fmtR(r)}R`, outcome === "TP" ? "ok" : "err");
+        }
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo cerrar la operación.", "err");
       }
     },
-    [trades, setTrades, notify],
+    [trades, notify],
   );
 
   const reopenTrade = useCallback(
-    (id: string) => {
-      setTrades((prev) =>
-        prev.map((x) =>
-          x.id === id ? { ...x, outcome: "ABIERTA" as const, closedAt: undefined, exit: undefined } : x,
-        ),
-      );
-      notify("Operación reabierta.", "info");
+    async (id: string) => {
+      try {
+        await reopenTradeById(id);
+        notify("Operación reabierta.", "info");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo reabrir la operación.", "err");
+      }
     },
-    [setTrades, notify],
+    [notify],
   );
 
   const deleteTrade = useCallback(
-    (id: string) => {
-      setTrades((prev) => prev.filter((x) => x.id !== id));
-      notify("Operación eliminada del diario.", "info");
+    async (id: string) => {
+      try {
+        await deleteTradeById(id);
+        notify("Operación eliminada del diario.", "info");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo eliminar la operación.", "err");
+      }
     },
-    [setTrades, notify],
+    [notify],
   );
 
   const closeManual = useCallback(
-    (exit: number) => {
+    async (exit: number) => {
       if (!manualTrade) return;
       const risk = Math.abs(manualTrade.entry - manualTrade.sl);
       const dir = manualTrade.direction === "LONG" ? 1 : -1;
       const r = risk > 0 ? (dir * (exit - manualTrade.entry)) / risk : 0;
-      setTrades((prev) =>
-        prev.map((x) =>
-          x.id === manualTrade.id
-            ? { ...x, outcome: "MANUAL" as const, exit, closedAt: new Date().toISOString() }
-            : x,
-        ),
-      );
-      setManualTrade(null);
-      notify(
-        r === 0
-          ? `${manualTrade.symbol} cerrada en Break Even · 0R`
-          : `${manualTrade.symbol} cerrada manualmente · ${fmtR(r)}R`,
-        r >= 0 ? "ok" : "err",
-      );
+      try {
+        await closeTradeManually(manualTrade.id, exit);
+        notify(
+          r === 0
+            ? `${manualTrade.symbol} cerrada en Break Even · 0R`
+            : `${manualTrade.symbol} cerrada manualmente · ${fmtR(r)}R`,
+          r >= 0 ? "ok" : "err",
+        );
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo cerrar la operación.", "err");
+      } finally {
+        setManualTrade(null);
+      }
     },
-    [manualTrade, setTrades, notify],
+    [manualTrade, notify],
   );
 
-  const loadSample = useCallback(() => {
-    setTrades(sampleTrades());
-    notify("17 operaciones de ejemplo cargadas — explorá el diario.", "info");
-  }, [setTrades, notify]);
+  const loadSample = useCallback(async () => {
+    try {
+      await insertFullTrades(userId, sampleTrades());
+      notify("17 operaciones de ejemplo cargadas — explorá el diario.", "info");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "No se pudieron cargar los datos de ejemplo.", "err");
+    }
+  }, [userId, notify]);
 
   const exportCsv = useCallback(() => {
     if (!trades.length) return;
@@ -259,11 +340,16 @@ export default function App() {
     notify("CSV exportado — compatible con Excel y Google Sheets.");
   }, [trades, notify]);
 
-  const clearAll = useCallback(() => {
-    setTrades([]);
-    setClearArmed(false);
-    notify("Diario borrado por completo.", "info");
-  }, [setTrades, notify]);
+  const clearAll = useCallback(async () => {
+    try {
+      await deleteAllTrades(userId);
+      notify("Diario borrado por completo.", "info");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "No se pudo borrar el diario.", "err");
+    } finally {
+      setClearArmed(false);
+    }
+  }, [userId, notify]);
 
   return (
     <div className="min-h-screen">
@@ -302,6 +388,12 @@ export default function App() {
           >
             <IconDownload className="h-3.5 w-3.5" /> Exportar CSV
           </button>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="rounded-md border border-line px-3.5 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow"
+          >
+            Salir
+          </button>
         </div>
       </header>
 
@@ -321,21 +413,30 @@ export default function App() {
               </div>
             </Reveal>
             <Reveal delay={140}>
-              <TradeTable
-                trades={trades}
-                flashId={flashId}
-                onMark={markOutcome}
-                onManual={setManualTrade}
-                onDelete={deleteTrade}
-                onReopen={reopenTrade}
-                onLoadSample={loadSample}
-              />
+              {loading ? (
+                <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
+                  Cargando diario…
+                </div>
+              ) : (
+                <TradeTable
+                  trades={trades}
+                  flashId={flashId}
+                  onMark={markOutcome}
+                  onManual={setManualTrade}
+                  onDelete={deleteTrade}
+                  onReopen={reopenTrade}
+                  onLoadSample={loadSample}
+                />
+              )}
             </Reveal>
           </div>
 
           <aside className="space-y-5">
             <Reveal delay={110}>
               <TradeForm onAdd={addTrades} notify={notify} />
+            </Reveal>
+            <Reveal delay={150}>
+              <WebhookCard userId={userId} notify={notify} />
             </Reveal>
             {trades.length > 0 && (
               <Reveal delay={180}>
@@ -350,9 +451,8 @@ export default function App() {
       <footer className="border-t border-line bg-panel/60">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
-            <span className="font-bold text-fog">DMCRIPTO</span> — tus operaciones se guardan solo en este
-            navegador. Formato de alerta:{" "}
-            <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
+            <span className="font-bold text-fog">DMCRIPTO</span> — tu diario se sincroniza en la nube entre
+            web y móvil.
           </p>
           {trades.length > 0 &&
             (clearArmed ? (
@@ -380,4 +480,20 @@ export default function App() {
       <ToastStack toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </div>
   );
+}
+
+export default function App() {
+  const session = useSession();
+
+  if (session === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <IconCheck className="h-6 w-6 animate-pulse text-gold" />
+      </div>
+    );
+  }
+
+  if (!session) return <Auth />;
+
+  return <Dashboard userId={session.user.id} />;
 }
