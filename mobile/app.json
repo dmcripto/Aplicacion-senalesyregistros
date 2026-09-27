@@ -25,9 +25,10 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": ["expo-notifications"],
+    "owner": "dmcriptos-team",
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+        "projectId": "b98c9aef-1809-4c90-aec3-8851efd49591"
       }
     }
   }
