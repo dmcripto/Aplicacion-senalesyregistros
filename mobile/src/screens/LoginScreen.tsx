@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as Linking from "expo-linking";
 import { supabase } from "../supabaseClient";
 import { colors } from "../theme";
 
@@ -52,10 +51,12 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
     setBusy(true);
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: Linking.createURL("reset-password"),
+        redirectTo: "https://aplicacion-senalesyregistros.vercel.app/",
       });
       if (err) throw err;
-      setNotice("Te enviamos un email para restablecer tu contraseña.");
+      setNotice(
+        "Te enviamos un email. Abrí el link desde el navegador (no desde Gmail directamente) para crear tu nueva contraseña en la web.",
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo enviar el email.");
     } finally {
