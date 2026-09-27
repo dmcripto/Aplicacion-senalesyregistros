@@ -3,6 +3,7 @@ import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, Touchable
 import { useSession } from "./src/hooks";
 import { registerForPushNotifications } from "./src/push";
 import LoginScreen from "./src/screens/LoginScreen";
+import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
 import JournalScreen from "./src/screens/JournalScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import { colors } from "./src/theme";
@@ -37,19 +38,27 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 }
 
 export default function App() {
-  const session = useSession();
+  const { session, isRecovery, clearRecovery } = useSession();
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
-      {session === undefined ? (
+      {isRecovery ? (
+        <ResetPasswordScreen
+          onDone={(notice) => {
+            clearRecovery();
+            setAuthNotice(notice);
+          }}
+        />
+      ) : session === undefined ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.gold} />
         </View>
       ) : session ? (
         <Dashboard userId={session.user.id} email={session.user.email} />
       ) : (
-        <LoginScreen />
+        <LoginScreen initialNotice={authNotice} />
       )}
     </SafeAreaView>
   );
