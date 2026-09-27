@@ -1,0 +1,345 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// DMC Corrección & Confluencias
+//
+// Reconstrucción en Pine Script de la lectura de mercado del video
+// https://youtu.be/QIMEy48CGS0 (Dylan, Cryptoss):
+//
+//   1. Tras un short squeeze se espera una corrección sana, no un cambio de tendencia.
+//   2. Las zonas para reposicionarse en LONG son donde convergen:
+//        · un FVG o un Order Block alcista (demanda)
+//        · las medias 50 y 200 de 4H y la media 50 semanal
+//        · los niveles donde se acumulan liquidaciones de longs
+//   3. Confirmación: doble piso y absorción de liquidez.
+//   4. Stop loss por debajo del punto de liquidación de la zona.
+//   5. Las zonas de oferta (FVG / OB bajista) avisan de posible corrección y
+//      son el lugar para tomar parciales, no para perseguir el precio.
+//   6. Volume Profile desde discount hasta premium con POC y área de valor.
+//
+// Lo que NO se puede reproducir en TradingView: flujos de ETF, flujo spot y
+// mapa de liquidaciones de Coinglass. Los niveles de liquidación aquí son una
+// aproximación por apalancamiento desde el último swing high.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("DMC Corrección & Confluencias", "DMC CONF", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ═══════════════════════════ INPUTS ═══════════════════════════
+gMA = "1) Medias móviles"
+maType  = input.string("EMA", "Tipo de media", options = ["EMA", "SMA"], group = gMA)
+tfMid   = input.timeframe("240", "Timeframe medias rápida/lenta", group = gMA)
+lenFast = input.int(50, "Media rápida", minval = 1, group = gMA)
+lenSlow = input.int(200, "Media lenta", minval = 1, group = gMA)
+tfHigh  = input.timeframe("W", "Timeframe media mayor", group = gMA)
+lenHigh = input.int(50, "Media mayor", minval = 1, group = gMA)
+maTol   = input.float(0.5, "Tolerancia media ↔ zona (x ATR)", minval = 0, step = 0.1, group = gMA)
+
+gZ = "2) Zonas: FVG y Order Blocks"
+showFvg   = input.bool(true, "Mostrar FVG", group = gZ)
+fvgMinAtr = input.float(0.3, "Tamaño mínimo FVG (x ATR)", minval = 0, step = 0.1, group = gZ)
+showOb    = input.bool(true, "Mostrar Order Blocks", group = gZ)
+swingLen  = input.int(5, "Pivotes para ruptura de estructura", minval = 2, group = gZ)
+obLook    = input.int(20, "Velas hacia atrás para buscar el OB", minval = 3, group = gZ)
+strongX   = input.float(2.0, "Volumen FUERTE (x media vol 20)", minval = 1, step = 0.1, group = gZ)
+modX      = input.float(1.2, "Volumen MODERADO (x media vol 20)", minval = 1, step = 0.1, group = gZ)
+maxZones  = input.int(30, "Máximo de zonas activas", minval = 5, maxval = 200, group = gZ)
+colDem    = input.color(color.new(color.teal, 80), "Color demanda", group = gZ)
+colSup    = input.color(color.new(color.red, 80), "Color oferta", group = gZ)
+
+gVP = "3) Volume Profile (discount → premium)"
+showVp  = input.bool(true, "Mostrar Volume Profile", group = gVP)
+vpLen   = input.int(300, "Velas del rango", minval = 20, maxval = 1500, group = gVP)
+vpRows  = input.int(40, "Filas", minval = 10, maxval = 100, group = gVP)
+vpWidth = input.int(60, "Ancho máximo (velas)", minval = 10, maxval = 300, group = gVP)
+vaPct   = input.float(0.70, "Área de valor", minval = 0.5, maxval = 0.95, step = 0.05, group = gVP)
+
+gDB = "4) Doble piso"
+dbLen    = input.int(5, "Pivote del doble piso", minval = 2, group = gDB)
+dbTolPct = input.float(1.0, "Tolerancia entre pisos (%)", minval = 0.1, step = 0.1, group = gDB)
+dbWindow = input.int(30, "Validez del doble piso (velas)", minval = 1, group = gDB)
+
+gS = "5) Señales"
+enLong   = input.bool(true, "Señal LONG en confluencia", group = gS)
+reqMa    = input.bool(true, "Exigir confluencia con una media", group = gS)
+reqDb    = input.bool(false, "Exigir doble piso reciente", group = gS)
+slAtr    = input.float(0.5, "Stop por debajo de la zona (x ATR)", minval = 0, step = 0.1, group = gS)
+rr       = input.float(2.0, "Ratio riesgo:beneficio", minval = 0.5, step = 0.5, group = gS)
+cooldown = input.int(10, "Velas mínimas entre señales", minval = 1, group = gS)
+enSupply = input.bool(true, "Aviso en zona de oferta (posible corrección)", group = gS)
+
+gL = "6) Liquidaciones aproximadas"
+showLiq = input.bool(true, "Niveles de liquidación de longs (aprox.)", group = gL)
+lev1    = input.int(25, "Apalancamiento 1", minval = 2, group = gL)
+lev2    = input.int(50, "Apalancamiento 2", minval = 2, group = gL)
+lev3    = input.int(100, "Apalancamiento 3", minval = 2, group = gL)
+
+// ═══════════════════════════ BASE ═══════════════════════════
+atr     = ta.atr(14)
+volSma  = ta.sma(volume, 20)
+llRange = ta.lowest(low, obLook * 2)
+hhRange = ta.highest(high, obLook * 2)
+vpHi    = ta.highest(high, vpLen)
+vpLo    = ta.lowest(low, vpLen)
+
+ma(src, len) =>
+    maType == "EMA" ? ta.ema(src, len) : ta.sma(src, len)
+
+maFast = request.security(syminfo.tickerid, tfMid, ma(close, lenFast))
+maSlow = request.security(syminfo.tickerid, tfMid, ma(close, lenSlow))
+maHigh = request.security(syminfo.tickerid, tfHigh, ma(close, lenHigh))
+
+plot(maFast, "Media rápida (4H 50)", color = color.orange, linewidth = 1)
+plot(maSlow, "Media lenta (4H 200)", color = color.blue, linewidth = 2)
+plot(maHigh, "Media mayor (W 50)", color = color.purple, linewidth = 2)
+
+// ═══════════════════════════ ZONAS ═══════════════════════════
+type Zone
+    box    bx
+    float  top
+    float  bot
+    int    dir
+    string kind
+    int    created
+    bool   tested
+
+var zones = array.new<Zone>()
+
+strengthOf(float ratio) =>
+    ratio >= strongX ? "FUERTE" : ratio >= modX ? "MODERADO" : "DÉBIL"
+
+addZone(float top, float bot, int dir, string kind, int left, float volQuote, float ratio) =>
+    string txt = kind + " · " + strengthOf(ratio) + " · " + str.tostring(volQuote, format.volume) + " " + syminfo.currency
+    color c = dir == 1 ? colDem : colSup
+    box b = box.new(left, top, bar_index, bot, border_color = color.new(c, 40), bgcolor = c, text = txt, text_size = size.tiny, text_color = color.new(chart.fg_color, 20), text_halign = text.align_left)
+    array.push(zones, Zone.new(b, top, bot, dir, kind, bar_index, false))
+    if array.size(zones) > maxZones
+        Zone old = array.shift(zones)
+        box.delete(old.bx)
+
+// Mantenimiento: invalidar zonas rotas por cierre, marcar las testeadas
+if array.size(zones) > 0
+    for i = array.size(zones) - 1 to 0
+        Zone z = array.get(zones, i)
+        bool invalid = z.dir == 1 ? close < z.bot : close > z.top
+        if invalid
+            box.delete(z.bx)
+            array.remove(zones, i)
+        else
+            box.set_right(z.bx, bar_index)
+            if z.created < bar_index
+                bool touch = z.dir == 1 ? low <= z.top : high >= z.bot
+                if touch and not z.tested
+                    z.tested := true
+                    box.set_border_style(z.bx, line.style_dashed)
+
+// FVG de tres velas
+bullFvg = low > high[2] and (low - high[2]) >= atr * fvgMinAtr
+bearFvg = high < low[2] and (low[2] - high) >= atr * fvgMinAtr
+if showFvg and bullFvg
+    addZone(low, high[2], 1, "FVG", bar_index - 1, volume[1] * close[1], volume[1] / volSma[1])
+if showFvg and bearFvg
+    addZone(low[2], high, -1, "FVG", bar_index - 1, volume[1] * close[1], volume[1] / volSma[1])
+
+// Order Blocks: última vela contraria antes de la ruptura de estructura
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low, swingLen, swingLen)
+var float lastPH   = na
+var float lastPL   = na
+var bool  phBroken = true
+var bool  plBroken = true
+var int   phBar    = na
+if not na(ph)
+    lastPH   := ph
+    phBroken := false
+    phBar    := bar_index - swingLen
+if not na(pl)
+    lastPL   := pl
+    plBroken := false
+
+bosUp = not phBroken and not na(lastPH) and close > lastPH
+bosDn = not plBroken and not na(lastPL) and close < lastPL
+
+if bosUp
+    phBroken := true
+    if showOb
+        int idx = -1
+        float lo = na
+        for i = 1 to obLook
+            if close[i] < open[i] and (na(lo) or low[i] < lo)
+                lo  := low[i]
+                idx := i
+        if idx > 0
+            bool swing = low[idx] <= llRange
+            addZone(high[idx], low[idx], 1, swing ? "OB SWING" : "OB", bar_index - idx, volume[idx] * close[idx], volume[idx] / volSma[idx])
+
+if bosDn
+    plBroken := true
+    if showOb
+        int idx = -1
+        float hi = na
+        for i = 1 to obLook
+            if close[i] > open[i] and (na(hi) or high[i] > hi)
+                hi  := high[i]
+                idx := i
+        if idx > 0
+            bool swing = high[idx] >= hhRange
+            addZone(high[idx], low[idx], -1, swing ? "OB SWING" : "OB", bar_index - idx, volume[idx] * close[idx], volume[idx] / volSma[idx])
+
+// ═══════════════════ LIQUIDACIONES APROXIMADAS ═══════════════════
+var liqLines  = array.new<line>()
+var liqLabels = array.new<label>()
+if showLiq and not na(ph)
+    if array.size(liqLines) > 0
+        for i = 0 to array.size(liqLines) - 1
+            line.delete(array.get(liqLines, i))
+            label.delete(array.get(liqLabels, i))
+    array.clear(liqLines)
+    array.clear(liqLabels)
+    levs = array.from(lev1, lev2, lev3)
+    for i = 0 to 2
+        int lv = array.get(levs, i)
+        float lvl = ph * (1 - 1.0 / lv)
+        array.push(liqLines, line.new(phBar, lvl, bar_index, lvl, extend = extend.right, color = color.new(color.yellow, 30), style = line.style_dotted))
+        array.push(liqLabels, label.new(bar_index, lvl, "Liq long ~" + str.tostring(lv) + "x", style = label.style_label_left, color = color.new(color.yellow, 70), textcolor = chart.fg_color, size = size.tiny))
+
+// ═══════════════════════════ DOBLE PISO ═══════════════════════════
+dbPl = ta.pivotlow(low, dbLen, dbLen)
+var float prevPl  = na
+var int   prevBar = na
+var int   dbBar   = na
+bool doubleBottom = false
+if not na(dbPl)
+    if not na(prevPl) and math.abs(dbPl - prevPl) / prevPl * 100 <= dbTolPct and (bar_index - dbLen - prevBar) >= dbLen
+        doubleBottom := true
+        dbBar := bar_index
+        label.new(bar_index - dbLen, dbPl, "Doble piso", style = label.style_label_up, color = color.new(color.teal, 30), textcolor = color.white, size = size.small)
+    prevPl  := dbPl
+    prevBar := bar_index - dbLen
+
+// ═══════════════════════════ SEÑALES ═══════════════════════════
+bool  inDemand = false
+bool  inSupply = false
+float zBot = na
+float zTop = na
+if array.size(zones) > 0
+    for i = 0 to array.size(zones) - 1
+        Zone z = array.get(zones, i)
+        if z.created < bar_index
+            if z.dir == 1 and low <= z.top and close >= z.bot
+                inDemand := true
+                zBot := na(zBot) ? z.bot : math.min(zBot, z.bot)
+                zTop := na(zTop) ? z.top : math.max(zTop, z.top)
+            if z.dir == -1 and high >= z.bot and close <= z.top
+                inSupply := true
+
+nearMa(float m, float lo, float hi) =>
+    not na(m) and m >= lo - atr * maTol and m <= hi + atr * maTol
+
+bool maConf = inDemand and (nearMa(maFast, zBot, zTop) or nearMa(maSlow, zBot, zTop) or nearMa(maHigh, zBot, zTop))
+bool dbOk   = not reqDb or (not na(dbBar) and bar_index - dbBar <= dbWindow)
+
+var int lastSig  = -100000
+var int lastWarn = -100000
+bool longSig = enLong and inDemand and (not reqMa or maConf) and dbOk and close > open and (bar_index - lastSig) > cooldown and barstate.isconfirmed
+if longSig
+    lastSig := bar_index
+    float sl = zBot - atr * slAtr
+    float tp = close + (close - sl) * rr
+    string t = "LONG confluencia" + (maConf ? " + MA" : "") + (reqDb ? " + doble piso" : "") + "\nEntrada " + str.tostring(close, format.mintick) + "\nSL " + str.tostring(sl, format.mintick) + "\nTP " + str.tostring(tp, format.mintick)
+    label.new(bar_index, low, t, style = label.style_label_up, color = color.new(color.green, 20), textcolor = color.white, size = size.small)
+    line.new(bar_index, sl, bar_index + 15, sl, color = color.red, width = 1)
+    line.new(bar_index, tp, bar_index + 15, tp, color = color.green, width = 1)
+    line.new(bar_index, close, bar_index + 15, close, color = color.gray, style = line.style_dotted)
+
+bool supplyWarn = enSupply and inSupply and close < open and (bar_index - lastWarn) > cooldown and barstate.isconfirmed
+if supplyWarn
+    lastWarn := bar_index
+    label.new(bar_index, high, "Oferta: posible corrección\nTomar parciales, no perseguir", style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
+
+// ═══════════════════════════ VOLUME PROFILE ═══════════════════════════
+var vpBoxes  = array.new<box>()
+var vpLines  = array.new<line>()
+var vpLabels = array.new<label>()
+if showVp and barstate.islast
+    if array.size(vpBoxes) > 0
+        for i = 0 to array.size(vpBoxes) - 1
+            box.delete(array.get(vpBoxes, i))
+    if array.size(vpLines) > 0
+        for i = 0 to array.size(vpLines) - 1
+            line.delete(array.get(vpLines, i))
+    if array.size(vpLabels) > 0
+        for i = 0 to array.size(vpLabels) - 1
+            label.delete(array.get(vpLabels, i))
+    array.clear(vpBoxes)
+    array.clear(vpLines)
+    array.clear(vpLabels)
+    float step = (vpHi - vpLo) / vpRows
+    if step > 0
+        vols = array.new<float>(vpRows, 0.0)
+        int nBars = math.min(vpLen, bar_index + 1)
+        for i = 0 to nBars - 1
+            float cH = high[i]
+            float cL = low[i]
+            float cV = volume[i]
+            int rTop = math.min(vpRows - 1, math.floor((cH - vpLo) / step))
+            int rBot = math.max(0, math.floor((cL - vpLo) / step))
+            if rTop >= rBot
+                float share = cV / (rTop - rBot + 1)
+                for r = rBot to rTop
+                    array.set(vols, r, array.get(vols, r) + share)
+        float maxV  = array.max(vols)
+        float total = array.sum(vols)
+        int pocIdx  = array.indexof(vols, maxV)
+        float va = array.get(vols, pocIdx)
+        int up = pocIdx + 1
+        int dn = pocIdx - 1
+        while va < total * vaPct and (up < vpRows or dn >= 0)
+            float vUp = up < vpRows ? array.get(vols, up) : -1.0
+            float vDn = dn >= 0 ? array.get(vols, dn) : -1.0
+            if vUp >= vDn
+                va += vUp
+                up += 1
+            else
+                va += vDn
+                dn -= 1
+        float vah = vpLo + up * step
+        float val = vpLo + (dn + 1) * step
+        float poc = vpLo + (pocIdx + 0.5) * step
+        float eq  = (vpHi + vpLo) / 2
+        int x0 = bar_index - nBars + 1
+        for r = 0 to vpRows - 1
+            int w = maxV > 0 ? math.max(1, math.round(array.get(vols, r) / maxV * vpWidth)) : 1
+            bool inVa = r >= dn + 1 and r <= up - 1
+            color c = r == pocIdx ? color.new(color.orange, 30) : inVa ? color.new(color.blue, 60) : color.new(color.gray, 75)
+            array.push(vpBoxes, box.new(x0, vpLo + (r + 1) * step, x0 + w, vpLo + r * step, border_color = color.new(color.gray, 100), bgcolor = c))
+        array.push(vpLines, line.new(x0, poc, bar_index, poc, color = color.orange, width = 2))
+        array.push(vpLines, line.new(x0, vah, bar_index, vah, color = color.blue, style = line.style_dashed))
+        array.push(vpLines, line.new(x0, val, bar_index, val, color = color.blue, style = line.style_dashed))
+        array.push(vpLines, line.new(x0, eq, bar_index, eq, color = color.gray, style = line.style_dotted))
+        array.push(vpLabels, label.new(bar_index, poc, "POC", style = label.style_label_left, color = color.new(color.orange, 40), textcolor = color.white, size = size.tiny))
+        array.push(vpLabels, label.new(bar_index, vah, "VAH", style = label.style_label_left, color = color.new(color.blue, 40), textcolor = color.white, size = size.tiny))
+        array.push(vpLabels, label.new(bar_index, val, "VAL", style = label.style_label_left, color = color.new(color.blue, 40), textcolor = color.white, size = size.tiny))
+        array.push(vpLabels, label.new(bar_index, eq, close > eq ? "EQ · precio en PREMIUM" : "EQ · precio en DISCOUNT", style = label.style_label_left, color = color.new(color.gray, 40), textcolor = color.white, size = size.tiny))
+
+// ═══════════════════════════ PANEL ═══════════════════════════
+var tbl = table.new(position.top_right, 2, 6, border_width = 1)
+if barstate.islast
+    string sesgo = close > maSlow ? "Alcista (sobre MA lenta)" : "Bajista (bajo MA lenta)"
+    string zona  = inDemand ? "DEMANDA" : inSupply ? "OFERTA" : "Sin zona"
+    string dbTxt = not na(dbBar) and bar_index - dbBar <= dbWindow ? "Sí (" + str.tostring(bar_index - dbBar) + " velas)" : "No"
+    table.cell(tbl, 0, 0, "DMC CONF", text_color = chart.fg_color, bgcolor = color.new(color.gray, 70))
+    table.cell(tbl, 1, 0, syminfo.ticker, text_color = chart.fg_color, bgcolor = color.new(color.gray, 70))
+    table.cell(tbl, 0, 1, "Sesgo", text_color = chart.fg_color)
+    table.cell(tbl, 1, 1, sesgo, text_color = close > maSlow ? color.green : color.red)
+    table.cell(tbl, 0, 2, "Zona actual", text_color = chart.fg_color)
+    table.cell(tbl, 1, 2, zona, text_color = inDemand ? color.teal : inSupply ? color.red : chart.fg_color)
+    table.cell(tbl, 0, 3, "Dist. MA rápida", text_color = chart.fg_color)
+    table.cell(tbl, 1, 3, str.tostring((close / maFast - 1) * 100, "#.##") + " %", text_color = chart.fg_color)
+    table.cell(tbl, 0, 4, "Dist. MA semanal", text_color = chart.fg_color)
+    table.cell(tbl, 1, 4, str.tostring((close / maHigh - 1) * 100, "#.##") + " %", text_color = chart.fg_color)
+    table.cell(tbl, 0, 5, "Doble piso reciente", text_color = chart.fg_color)
+    table.cell(tbl, 1, 5, dbTxt, text_color = chart.fg_color)
+
+// ═══════════════════════════ ALERTAS ═══════════════════════════
+alertcondition(longSig, "DMC: LONG en confluencia", "Precio en zona de demanda con confluencia de medias. Revisar SL bajo la zona.")
+alertcondition(supplyWarn, "DMC: zona de oferta", "Precio en zona de oferta. Posible corrección, tomar parciales.")
+alertcondition(doubleBottom, "DMC: doble piso", "Doble piso confirmado.")
+alertcondition(bullFvg or bearFvg, "DMC: nuevo FVG", "Se formó un nuevo FVG.")
