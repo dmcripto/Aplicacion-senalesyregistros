@@ -8,6 +8,7 @@ export default function Auth() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -86,16 +87,25 @@ export default function Auth() {
           </div>
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">Contraseña</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="field"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={6}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="field pr-14"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gold hover:brightness-110"
+              >
+                {showPassword ? "Ocultar" : "Ver"}
+              </button>
+            </div>
           </div>
 
           {error && (
