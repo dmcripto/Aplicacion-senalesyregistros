@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSession } from "./src/hooks";
 import { registerForPushNotifications } from "./src/push";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -69,7 +78,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) + 12 : 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
   },
