@@ -91,3 +91,35 @@ export async function fetchWebhookUrl(userId: string): Promise<string> {
   const base = (process.env.EXPO_PUBLIC_SUPABASE_URL as string).replace(/\/$/, "");
   return `${base}/functions/v1/tradingview-webhook/${data.webhook_token}`;
 }
+
+export async function insertFullTrades(userId: string, list: Trade[]) {
+  const { error } = await supabase.from("trades").insert(
+    list.map((t) => ({
+      user_id: userId,
+      symbol: t.symbol,
+      direction: t.direction,
+      entry: t.entry,
+      tp: t.tp,
+      sl: t.sl,
+      date: t.date,
+      outcome: t.outcome,
+      exit: t.exit ?? null,
+      closed_at: t.closedAt ?? null,
+      notes: t.notes ?? null,
+    })),
+  );
+  if (error) throw error;
+}
+
+export async function closeTradeManually(id: string, exit: number) {
+  const { error } = await supabase
+    .from("trades")
+    .update({ outcome: "MANUAL", exit, closed_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteAllTrades(userId: string) {
+  const { error } = await supabase.from("trades").delete().eq("user_id", userId);
+  if (error) throw error;
+}

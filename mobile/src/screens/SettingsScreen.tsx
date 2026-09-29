@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { EXAMPLE_ALERT } from "@dmcripto/core";
+import { tradesToCsv } from "@dmcripto/core";
+import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { fetchWebhookUrl } from "../tradesApi";
+import { deleteAllTrades, fetchWebhookUrl } from "../tradesApi";
+import AlertBuilder from "../AlertBuilder";
 import { colors } from "../theme";
 
-export default function SettingsScreen({ userId, email }: { userId: string; email?: string }) {
+export default function SettingsScreen({ userId, email, trades }: { userId: string; email?: string; trades: Trade[] }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -28,6 +30,17 @@ export default function SettingsScreen({ userId, email }: { userId: string; emai
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const exportCsv = () => Share.share({ title: "DMCRIPTO diario.csv", message: tradesToCsv(trades) });
+  const clearAll = () =>
+    Alert.alert("Borrar todo el diario", "Se eliminan todas tus operaciones (también en la web). No se puede deshacer.", [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Borrar todo",
+        style: "destructive",
+        onPress: () => deleteAllTrades(userId).catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo borrar.")),
+      },
+    ]);
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
       <Text style={styles.sectionTitle}>CUENTA</Text>
@@ -35,6 +48,16 @@ export default function SettingsScreen({ userId, email }: { userId: string; emai
         {email && <Text style={styles.email}>{email}</Text>}
         <TouchableOpacity style={styles.signOut} onPress={() => supabase.auth.signOut()}>
           <Text style={styles.signOutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionTitle}>DATOS</Text>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.signOut} onPress={exportCsv} disabled={!trades.length}>
+          <Text style={[styles.signOutText, { color: colors.gold }]}>Exportar diario (CSV)</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.signOut} onPress={clearAll} disabled={!trades.length}>
+          <Text style={styles.signOutText}>Borrar todo el diario</Text>
         </TouchableOpacity>
       </View>
 
@@ -54,10 +77,11 @@ export default function SettingsScreen({ userId, email }: { userId: string; emai
             </TouchableOpacity>
           </>
         )}
-        <Text style={styles.hint}>
-          En el mensaje de la alerta usá el formato:{"\n"}
-          <Text style={styles.code}>{EXAMPLE_ALERT}</Text>
-        </Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>ARMADOR DE ALERTAS</Text>
+      <View style={styles.card}>
+        <AlertBuilder />
       </View>
     </ScrollView>
   );
@@ -102,6 +126,5 @@ const styles = StyleSheet.create({
   urlText: { color: colors.fog, fontSize: 11.5 },
   copyBtn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
   copyText: { color: colors.ink, fontWeight: "800", fontSize: 12 },
-  code: { color: colors.gold, fontSize: 11 },
   error: { color: colors.bear, fontSize: 12 },
 });

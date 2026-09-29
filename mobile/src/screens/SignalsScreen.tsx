@@ -1,14 +1,10 @@
 import { useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { resultR } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
-import { Empty, EquityBars, MonthlyList, StatsGrid, TradeCard } from "../components";
+import { Empty, StatsGrid, TradeCard } from "../components";
 import { colors } from "../theme";
 
-type Filter = "all" | "won" | "lost";
-const LABELS: Record<Filter, string> = { all: "Todas", won: "Ganadas", lost: "Perdidas" };
-
-export default function JournalScreen({
+export default function SignalsScreen({
   trades,
   loading,
   refreshing,
@@ -19,12 +15,8 @@ export default function JournalScreen({
   refreshing: boolean;
   refresh: () => void;
 }) {
-  const [filter, setFilter] = useState<Filter>("all");
-  const closed = trades.filter((t) => t.outcome !== "ABIERTA");
-  const data = closed.filter((t) => {
-    const r = resultR(t) ?? 0;
-    return filter === "all" ? true : filter === "won" ? r > 0 : r < 0;
-  });
+  const [filter, setFilter] = useState<"open" | "all">("open");
+  const data = filter === "open" ? trades.filter((t) => t.outcome === "ABIERTA") : trades.slice(0, 30);
 
   return (
     <FlatList
@@ -36,20 +28,22 @@ export default function JournalScreen({
       ListHeaderComponent={
         <>
           <StatsGrid trades={trades} />
-          <EquityBars trades={trades} />
-          <MonthlyList trades={trades} />
-          <Text style={s.title}>HISTORIAL</Text>
           <View style={s.chips}>
-            {(Object.keys(LABELS) as Filter[]).map((f) => (
+            {(["open", "all"] as const).map((f) => (
               <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipOn]} onPress={() => setFilter(f)}>
-                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{LABELS[f]}</Text>
+                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{f === "open" ? "Abiertas" : "Últimas 30"}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </>
       }
       ListEmptyComponent={
-        !loading ? <Empty title="SIN OPERACIONES CERRADAS" text="Cuando marques TP, SL o un cierre manual en una señal, queda registrada acá." /> : null
+        !loading ? (
+          <Empty
+            title={filter === "open" ? "SIN SEÑALES ABIERTAS" : "AÚN NO HAY SEÑALES"}
+            text="Cuando llegue una alerta de TradingView aparece acá con una notificación. También podés cargarla a mano desde la pestaña Registrar."
+          />
+        ) : null
       }
       renderItem={({ item }) => <TradeCard trade={item} />}
     />
@@ -57,7 +51,6 @@ export default function JournalScreen({
 }
 
 const s = StyleSheet.create({
-  title: { color: colors.fog, fontSize: 10, fontWeight: "700", letterSpacing: 1.5, marginBottom: 8 },
   chips: { flexDirection: "row", gap: 8, marginBottom: 12 },
   chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14 },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
