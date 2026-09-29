@@ -30,7 +30,7 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const exportCsv = () => Share.share({ title: "DMCRIPTO diario.csv", message: tradesToCsv(trades) });
+  const exportCsv = () => Share.share({ title: "VELTRIX diario.csv", message: tradesToCsv(trades) });
   const clearAll = () =>
     Alert.alert("Borrar todo el diario", "Se eliminan todas tus operaciones (también en la web). No se puede deshacer.", [
       { text: "Cancelar", style: "cancel" },
@@ -88,7 +88,7 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink },
+  screen: { flex: 1 },
   sectionTitle: {
     color: colors.fog,
     fontSize: 10,

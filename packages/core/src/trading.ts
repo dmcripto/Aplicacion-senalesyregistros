@@ -1,4 +1,4 @@
-// ─── DMCRIPTO · Lógica del diario (compartida entre web y móvil) ───────────
+// ─── VELTRIX · Lógica del diario (compartida entre web y móvil) ───────────
 // Funciones puras, sin dependencias del DOM ni de un runtime en particular,
 // para poder importarse tanto desde la app web (Vite) como desde la app
 // móvil (Expo/React Native).
@@ -151,7 +151,7 @@ export function monthlySummary(trades: Trade[]): MonthRow[] {
 }
 
 // ─── Parser de alertas ──────────────────────────────────────────────────────
-// Formato: DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL  (también acepta 5 campos sin prefijo)
+// Formato: VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL  (también acepta 5 campos sin prefijo)
 
 const norm = (s: string) =>
   s
@@ -222,7 +222,7 @@ const short = (s: string) => `${s.slice(0, 42)}${s.length > 42 ? "…" : ""}`;
 
 /**
  * Acepta tres formatos, sin importar qué indicador genere la alerta:
- *  1. Pipes:  DMCRIPTO|SÍMBOLO|DIRECCIÓN|ENTRADA|TP|SL  (una alerta por línea)
+ *  1. Pipes:  VELTRIX|SÍMBOLO|DIRECCIÓN|ENTRADA|TP|SL  (una alerta por línea)
  *  2. JSON:   {"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500}
  *  3. Claves: symbol=BTCUSDT side=buy entry=65000 tp=66500 sl=64500
  */
@@ -263,7 +263,7 @@ export function parseAlerts(text: string): ParseResult {
     }
 
     let parts = line.split("|").map((p) => p.trim());
-    if (parts.length === 6 && norm(parts[0]).startsWith("DMCRIPTO")) parts = parts.slice(1);
+    if (parts.length === 6) parts = parts.slice(1);
     if (parts.length !== 5) {
       errors.push(`«${short(line)}» — se esperan 6 campos separados por |`);
       continue;
@@ -298,7 +298,7 @@ export function buildAlertMessage(o: AlertMessageOptions): string {
     const side = o.direction === "LONG" ? "buy" : "sell";
     return `{"symbol":"{{ticker}}","side":"${side}","entry":${entry},"tp":${tp},"sl":${sl}}`;
   }
-  return `DMCRIPTO|{{ticker}}|${o.direction === "LONG" ? "COMPRA" : "VENTA"}|${entry}|${tp}|${sl}`;
+  return `VELTRIX|{{ticker}}|${o.direction === "LONG" ? "COMPRA" : "VENTA"}|${entry}|${tp}|${sl}`;
 }
 
 // ─── Formateo ───────────────────────────────────────────────────────────────
@@ -405,4 +405,4 @@ export function sampleTrades(): Trade[] {
   ];
 }
 
-export const EXAMPLE_ALERT = "DMCRIPTO|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";
+export const EXAMPLE_ALERT = "VELTRIX|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";

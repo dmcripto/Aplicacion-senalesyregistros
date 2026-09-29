@@ -78,13 +78,13 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)]">
         <div className="flex flex-col items-center gap-3 border-b border-line px-6 py-7">
-          <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(243,183,30,.25)]" />
+          <ShieldLogo className="h-20 w-20 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
           <div className="text-center">
             <h1 className="font-display text-3xl font-extrabold tracking-[0.04em] text-snow">
-              DMCRIPTO<span className="text-gold">.</span>
+              VELTRIX
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              Diario de trading · SMC / ICT
+              Diario de trading · En vivo
             </p>
           </div>
         </div>

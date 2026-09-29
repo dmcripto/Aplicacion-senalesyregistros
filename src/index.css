@@ -18,8 +18,8 @@
   --color-bulldeep: #0d3b29;
   --color-bear: #ff4d67;
   --color-beardeep: #471827;
-  --color-gold: #f3b71e;
-  --color-golddeep: #423310;
+  --color-gold: #2ec4f1;
+  --color-golddeep: #0d3a52;
   --color-cyan: #3fc1f0;
 }
 
@@ -44,7 +44,7 @@ body::before {
   pointer-events: none;
   background:
     radial-gradient(900px 520px at 10% -8%, rgba(22, 217, 138, 0.075), transparent 62%),
-    radial-gradient(1000px 620px at 104% 4%, rgba(243, 183, 30, 0.065), transparent 62%),
+    radial-gradient(1000px 620px at 104% 4%, rgba(46, 196, 241, 0.065), transparent 62%),
     radial-gradient(820px 620px at 82% 112%, rgba(63, 193, 240, 0.05), transparent 60%),
     linear-gradient(rgba(147, 165, 186, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(147, 165, 186, 0.05) 1px, transparent 1px);
@@ -68,7 +68,7 @@ body::after {
 }
 
 ::selection {
-  background: rgba(243, 183, 30, 0.28);
+  background: rgba(46, 196, 241, 0.28);
   color: #fff7e0;
 }
 
@@ -176,7 +176,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 
 @keyframes rowFlash {
   from {
-    background-color: rgba(243, 183, 30, 0.14);
+    background-color: rgba(46, 196, 241, 0.14);
   }
   to {
     background-color: transparent;
@@ -219,8 +219,8 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .field:focus {
   outline: none;
-  border-color: rgba(243, 183, 30, 0.65);
-  box-shadow: 0 0 0 3px rgba(243, 183, 30, 0.12);
+  border-color: rgba(46, 196, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(46, 196, 241, 0.12);
 }
 .field-error {
   border-color: rgba(255, 77, 103, 0.7) !important;

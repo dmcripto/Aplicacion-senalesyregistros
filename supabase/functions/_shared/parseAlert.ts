@@ -82,7 +82,7 @@ const short = (s: string) => `${s.slice(0, 42)}${s.length > 42 ? "…" : ""}`;
 
 /**
  * Acepta tres formatos, sin importar qué indicador genere la alerta:
- *  1. Pipes:  DMCRIPTO|SÍMBOLO|DIRECCIÓN|ENTRADA|TP|SL  (una alerta por línea)
+ *  1. Pipes:  VELTRIX|SÍMBOLO|DIRECCIÓN|ENTRADA|TP|SL  (una alerta por línea)
  *  2. JSON:   {"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500}
  *  3. Claves: symbol=BTCUSDT side=buy entry=65000 tp=66500 sl=64500
  */
@@ -123,7 +123,7 @@ export function parseAlerts(text: string): ParseResult {
     }
 
     let parts = line.split("|").map((p) => p.trim());
-    if (parts.length === 6 && norm(parts[0]).startsWith("DMCRIPTO")) parts = parts.slice(1);
+    if (parts.length === 6) parts = parts.slice(1);
     if (parts.length !== 5) {
       errors.push(`«${short(line)}» — se esperan 6 campos separados por |`);
       continue;

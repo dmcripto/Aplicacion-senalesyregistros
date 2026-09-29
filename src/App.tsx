@@ -87,7 +87,7 @@ function Ticker({ trades }: { trades: Trade[] }) {
         </div>
       ) : (
         <p className="num py-1.5 text-center text-[11px] text-dim">
-          DMCRIPTO · cuando cierres operaciones, el ticker de resultados corre acá
+          VELTRIX · cuando cierres operaciones, el ticker de resultados corre acá
         </p>
       )}
       <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-ink to-transparent" />
@@ -356,13 +356,13 @@ function Dashboard({ userId }: { userId: string }) {
       {/* Cabecera */}
       <header className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-4 px-4 py-5 lg:px-8">
         <div className="flex items-center gap-3.5">
-          <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(243,183,30,.25)]" />
+          <ShieldLogo className="h-14 w-14 drop-shadow-[0_0_18px_rgba(46,196,241,.35)]" />
           <div>
             <h1 className="font-display text-[34px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
-              DMCRIPTO<span className="text-gold">.</span>
+              VELTRIX
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              Diario de trading · SMC / ICT
+              Diario de trading · En vivo
             </p>
           </div>
         </div>
@@ -382,7 +382,7 @@ function Dashboard({ userId }: { userId: string }) {
           <button
             onClick={exportCsv}
             disabled={!trades.length}
-            className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(243,183,30,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+            className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
             <IconDownload className="h-3.5 w-3.5" /> Exportar CSV
           </button>
@@ -449,7 +449,7 @@ function Dashboard({ userId }: { userId: string }) {
       <footer className="border-t border-line bg-panel/60">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
-            <span className="font-bold text-fog">DMCRIPTO</span> — tu diario se sincroniza en la nube entre
+            <span className="font-bold text-fog">VELTRIX</span> — tu diario se sincroniza en la nube entre
             web y móvil.
           </p>
           {trades.length > 0 &&

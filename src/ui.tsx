@@ -9,18 +9,7 @@ import { useInView } from "./hooks";
 type IconProps = { className?: string };
 
 export const ShieldLogo = ({ className }: IconProps) => (
-  <svg viewBox="0 0 32 32" className={className} aria-hidden>
-    <path
-      d="M16 2 28 7v9c0 8-5.4 12.6-12 14C9.4 28.6 4 24 4 16V7z"
-      fill="#0d131b"
-      stroke="var(--color-gold)"
-      strokeWidth="1.8"
-    />
-    <rect x="9.6" y="12.5" width="3.2" height="8.5" rx="0.6" fill="var(--color-bull)" />
-    <rect x="11" y="9.5" width="1" height="14.5" fill="var(--color-bull)" />
-    <rect x="19.2" y="9" width="3.2" height="8.5" rx="0.6" fill="var(--color-bear)" />
-    <rect x="20.6" y="6.5" width="1" height="14.5" fill="var(--color-bear)" />
-  </svg>
+  <img src="/logo.png" alt="VELTRIX" className={className} />
 );
 
 export const TriUp = ({ className }: IconProps) => (
@@ -147,7 +136,7 @@ export const DirBadge = ({ dir }: { dir: Trade["direction"] }) => (
 export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
   if (trade.outcome === "ABIERTA") {
     return (
-      <span className="num inline-flex items-center gap-1.5 rounded bg-gold/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-gold" style={{ boxShadow: "inset 0 0 0 1px rgba(243,183,30,.4)" }}>
+      <span className="num inline-flex items-center gap-1.5 rounded bg-gold/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-gold" style={{ boxShadow: "inset 0 0 0 1px rgba(46,196,241,.4)" }}>
         <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-gold" />
         ABIERTA
       </span>

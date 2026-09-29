@@ -18,6 +18,7 @@ import JournalScreen from "./src/screens/JournalScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SignalsScreen from "./src/screens/SignalsScreen";
 import AddScreen from "./src/screens/AddScreen";
+import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 
 type Tab = "signals" | "journal" | "add" | "settings";
@@ -46,11 +47,16 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   }, [refresh]);
 
   return (
-    <View style={styles.screen}>
+    <View style={{ flex: 1 }}>
       <View style={styles.header}>
+        <Logo size={30} />
         <Text style={styles.brand}>
-          DMCRIPTO<Text style={{ color: colors.gold }}>.</Text>
+          VELTRIX
         </Text>
+        <View style={styles.live}>
+          <LiveDot />
+          <Text style={styles.liveText}>EN VIVO{open > 0 ? ` · ${open}` : ""}</Text>
+        </View>
       </View>
       <View style={{ flex: 1 }}>
         {tab === "signals" && <SignalsScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
@@ -59,14 +65,23 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} />}
       </View>
       <View style={styles.tabBar}>
-        {TABS.map((tb) => (
-          <TouchableOpacity key={tb.key} style={styles.tabBtn} onPress={() => setTab(tb.key)}>
-            <Text style={[styles.tabLabel, tab === tb.key && styles.tabLabelActive]}>
-              {tb.label}
-              {tb.key === "signals" && open > 0 ? ` (${open})` : ""}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {TABS.map((tb) => {
+          const on = tab === tb.key;
+          return (
+            <TouchableOpacity key={tb.key} style={styles.tabBtn} onPress={() => setTab(tb.key)}>
+              {on && <View style={styles.tabIndicator} />}
+              <View>
+                <TabIcon name={tb.key} color={on ? colors.gold : colors.dim} />
+                {tb.key === "signals" && open > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{open}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.tabLabel, on && styles.tabLabelActive]}>{tb.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -77,8 +92,10 @@ export default function App() {
   const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.ink} />
+    <View style={styles.screen}>
+      <AppBackground />
+      <SafeAreaView style={{ flex: 1 }}>
+      <StatusBar barStyle="light-content" backgroundColor="#070b11" />
       {isRecovery ? (
         <ResetPasswordScreen
           onDone={(notice) => {
@@ -95,28 +112,59 @@ export default function App() {
       ) : (
         <LoginScreen initialNotice={authNotice} />
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink },
+  screen: { flex: 1, backgroundColor: "#070b11" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) + 12 : 12,
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) + 10 : 10,
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: colors.line,
+    backgroundColor: "rgba(10,14,20,0.6)",
   },
-  brand: { color: colors.snow, fontSize: 20, fontWeight: "800", letterSpacing: 1 },
+  brand: { color: colors.snow, fontSize: 20, fontWeight: "900", letterSpacing: 1.2, flex: 1 },
+  live: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(22,217,138,0.4)",
+    backgroundColor: "rgba(22,217,138,0.1)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  liveText: { color: colors.bull, fontSize: 10.5, fontWeight: "800", letterSpacing: 1 },
   tabBar: {
     flexDirection: "row",
     borderTopWidth: 1,
     borderTopColor: colors.line,
-    backgroundColor: colors.panel,
+    backgroundColor: "rgba(10,14,20,0.94)",
   },
-  tabBtn: { flex: 1, alignItems: "center", paddingVertical: 12 },
-  tabLabel: { color: colors.dim, fontWeight: "700", fontSize: 12, letterSpacing: 0.5 },
+  tabBtn: { flex: 1, alignItems: "center", paddingTop: 10, paddingBottom: 10, gap: 4 },
+  tabIndicator: { position: "absolute", top: 0, width: 34, height: 3, borderRadius: 2, backgroundColor: colors.gold },
+  tabLabel: { color: colors.dim, fontWeight: "700", fontSize: 10.5, letterSpacing: 0.5 },
   tabLabelActive: { color: colors.gold },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -9,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.bull,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  badgeText: { color: colors.ink, fontSize: 9.5, fontWeight: "900" },
 });
