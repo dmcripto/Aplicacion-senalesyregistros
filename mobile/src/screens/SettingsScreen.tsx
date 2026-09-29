@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Share, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { tradesToCsv } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchWebhookUrl, regenerateWebhookUrl } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
@@ -13,6 +13,19 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [autoClose, setAutoCloseState] = useState(true);
+
+  useEffect(() => {
+    fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
+  }, [userId]);
+
+  const toggleAutoClose = (value: boolean) => {
+    setAutoCloseState(value);
+    setAutoClose(userId, value).catch((e) => {
+      setAutoCloseState(!value);
+      Alert.alert("Error", e instanceof Error ? e.message : "No se pudo guardar el cambio.");
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +96,22 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
         <TouchableOpacity style={styles.dangerLink} onPress={deleteAccount}>
           <Text style={styles.dangerLinkText}>Eliminar mi cuenta y mis datos</Text>
         </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionTitle}>CIERRE AUTOMÁTICO</Text>
+      <View style={styles.card}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Text style={[styles.hint, { flex: 1 }]}>
+            VELTRIX sigue el precio y marca TP o SL solo cuando el precio los toca (criptomonedas). Si una misma vela
+            toca ambos, se toma SL. Podés apagarlo si preferís cerrar a mano.
+          </Text>
+          <Switch
+            value={autoClose}
+            onValueChange={toggleAutoClose}
+            trackColor={{ false: colors.line2, true: colors.gold }}
+            thumbColor={colors.snow}
+          />
+        </View>
       </View>
 
       <Text style={styles.sectionTitle}>DATOS</Text>

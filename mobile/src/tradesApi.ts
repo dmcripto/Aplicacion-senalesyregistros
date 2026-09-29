@@ -17,6 +17,7 @@ interface TradeRow {
   exit: number | null;
   closed_at: string | null;
   notes: string | null;
+  auto_closed?: boolean | null;
 }
 
 export function rowToTrade(row: TradeRow): Trade {
@@ -32,6 +33,7 @@ export function rowToTrade(row: TradeRow): Trade {
     exit: row.exit == null ? undefined : Number(row.exit),
     closedAt: row.closed_at ?? undefined,
     notes: row.notes ?? undefined,
+    autoClosed: row.auto_closed ?? undefined,
   };
 }
 
@@ -135,4 +137,15 @@ export async function deleteMyAccount() {
   const { error } = await supabase.rpc("delete_my_account");
   if (error) throw error;
   await supabase.auth.signOut();
+}
+
+export async function fetchAutoClose(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("profiles").select("auto_close").eq("id", userId).single();
+  if (error) throw error;
+  return data.auto_close !== false;
+}
+
+export async function setAutoClose(userId: string, enabled: boolean) {
+  const { error } = await supabase.from("profiles").update({ auto_close: enabled }).eq("id", userId);
+  if (error) throw error;
 }

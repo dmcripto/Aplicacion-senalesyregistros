@@ -206,6 +206,7 @@ export function TradeCard({ trade, big }: { trade: Trade; big?: boolean }) {
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
         {trade.exit != null && <Text style={s.date}>Salida {fmtPrice(trade.exit)}</Text>}
+        {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>⚡ Cerrada automáticamente</Text>}
 
         <View style={s.actions}>
           {abierta ? (
