@@ -9,6 +9,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
@@ -177,6 +178,29 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
             <div className="rounded-md border border-cyan/30 bg-ink px-3 py-2 text-[12px] text-cyan">{notice}</div>
           )}
 
+          {mode === "signup" && (
+            <label className="flex cursor-pointer items-start gap-2.5 text-[11.5px] leading-relaxed text-fog">
+              <input
+                type="checkbox"
+                required
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-gold)]"
+              />
+              <span>
+                Acepto los{" "}
+                <a href="/terms.html" target="_blank" rel="noopener" className="font-semibold text-gold underline">
+                  términos de uso
+                </a>{" "}
+                y la{" "}
+                <a href="/privacy.html" target="_blank" rel="noopener" className="font-semibold text-gold underline">
+                  política de privacidad
+                </a>
+                .
+              </span>
+            </label>
+          )}
+
           <button
             type="submit"
             disabled={busy}
@@ -185,6 +209,10 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
             {busy ? "Un momento…" : mode === "login" ? "Ingresar" : "Crear cuenta"}
           </button>
         </form>
+        <p className="border-t border-line px-6 py-4 text-[10.5px] leading-relaxed text-dim">
+          VELTRIX es una herramienta de registro, no brinda asesoramiento financiero. Operar implica riesgo de
+          pérdida. No está afiliado a TradingView.
+        </p>
       </div>
     </div>
   );
