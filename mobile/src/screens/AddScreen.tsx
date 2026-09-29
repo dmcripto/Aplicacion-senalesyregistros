@@ -1,15 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { EXAMPLE_ALERT, parseAlerts, sampleTrades } from "@dmcripto/core";
-import type { Direction, NewTrade } from "@dmcripto/core";
+import { EXAMPLE_ALERT, fmtPrice, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
+import type { Direction, NewTrade, ParseResult, Trade } from "@dmcripto/core";
 import { insertFullTrades, insertTrades } from "../tradesApi";
 import { colors } from "../theme";
 
 export default function AddScreen({ userId, onAdded }: { userId: string; onAdded: () => void }) {
   const [mode, setMode] = useState<"paste" | "manual">("paste");
   const [text, setText] = useState("");
-  const [errors, setErrors] = useState<string[]>([]);
+  const [parsed, setParsed] = useState<ParseResult | null>(null);
+  const [clip, setClip] = useState<string | null>(null);
+
+  useEffect(() => {
+    Clipboard.getStringAsync()
+      .then((c) => {
+        if (c && parseAlerts(c).valid.length > 0) setClip(c);
+      })
+      .catch(() => {});
+  }, []);
   const [busy, setBusy] = useState(false);
 
   const [symbol, setSymbol] = useState("");
@@ -30,15 +39,27 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
     }
   };
 
-  const interpret = async () => {
-    const { valid, errors: errs } = parseAlerts(text);
-    setErrors(errs);
-    if (!valid.length) return;
-    await save(valid);
-    if (!errs.length) setText("");
+  const interpret = (value = text) => setParsed(parseAlerts(value));
+
+  const confirm = async () => {
+    if (!parsed?.valid.length) return;
+    await save(parsed.valid);
+    setText("");
+    setParsed(null);
   };
 
-  const paste = async () => setText(await Clipboard.getStringAsync());
+  const useClip = () => {
+    if (!clip) return;
+    setText(clip);
+    setParsed(parseAlerts(clip));
+    setClip(null);
+  };
+
+  const paste = async () => {
+    const c = await Clipboard.getStringAsync();
+    setText(c);
+    if (c.trim()) setParsed(parseAlerts(c));
+  };
 
   const saveManual = async () => {
     const n = (v: string) => Number(v.replace(",", "."));
@@ -86,36 +107,73 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
         <View style={s.tabs}>
           {(["paste", "manual"] as const).map((m) => (
             <TouchableOpacity key={m} style={[s.tab, mode === m && s.tabOn]} onPress={() => setMode(m)}>
-              <Text style={[s.tabText, mode === m && { color: colors.ink }]}>{m === "paste" ? "Pegar alerta" : "Manual"}</Text>
+              <Text style={[s.tabText, mode === m && { color: colors.ink }]}>{m === "paste" ? "Pegar señal" : "Manual"}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {mode === "paste" ? (
           <View style={s.card}>
+            {clip && !text && (
+              <TouchableOpacity style={s.clipBanner} onPress={useClip} activeOpacity={0.8}>
+                <Text style={s.clipTitle}>Detectamos una señal en tu portapapeles</Text>
+                <Text style={s.clipText} numberOfLines={2}>
+                  {clip}
+                </Text>
+                <Text style={s.clipAction}>Tocá para usarla</Text>
+              </TouchableOpacity>
+            )}
             <TextInput
               value={text}
-              onChangeText={setText}
+              onChangeText={(v) => {
+                setText(v);
+                setParsed(null);
+              }}
               multiline
-              placeholder={`VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL\n${EXAMPLE_ALERT}`}
+              placeholder={`Pegá una señal de cualquier fuente, por ejemplo:\n#BTC/USDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500\n\nO en formato simple:\n${EXAMPLE_ALERT}`}
               placeholderTextColor={colors.dim}
-              style={[s.input, { minHeight: 110, textAlignVertical: "top" }]}
+              style={[s.input, { minHeight: 150, textAlignVertical: "top" }]}
               autoCapitalize="none"
             />
             <View style={s.row}>
-              <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={interpret} disabled={busy}>
-                <Text style={[s.btnText, { color: colors.ink }]}>Interpretar y guardar</Text>
+              <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={() => interpret()} disabled={busy || !text.trim()}>
+                <Text style={[s.btnText, { color: colors.ink }]}>Interpretar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.btn} onPress={paste}>
                 <Text style={s.btnText}>Pegar</Text>
               </TouchableOpacity>
             </View>
-            {errors.map((e, i) => (
+
+            {parsed?.valid.map((v, i) => (
+              <View key={i} style={s.previewRow}>
+                <Text style={[s.previewDir, { color: v.direction === "LONG" ? colors.bull : colors.bear }]}>
+                  {v.direction === "LONG" ? "▲" : "▼"}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.previewSymbol}>{v.symbol}</Text>
+                  <Text style={s.previewLevels}>
+                    Entrada {fmtPrice(v.entry)} · TP {fmtPrice(v.tp)} · SL {fmtPrice(v.sl)}
+                  </Text>
+                </View>
+                <Text style={s.previewRR}>1:{rrOf({ ...v, id: "", outcome: "ABIERTA" } as Trade).toFixed(2)}</Text>
+              </View>
+            ))}
+            {parsed?.errors.map((e, i) => (
               <Text key={i} style={s.err}>
                 {e}
               </Text>
             ))}
-            <Text style={s.hint}>Aceptá varias líneas a la vez. Dirección: COMPRA/VENTA o LONG/SHORT.</Text>
+            {parsed && parsed.valid.length > 0 && (
+              <TouchableOpacity style={[s.btn, s.btnBull]} onPress={confirm} disabled={busy}>
+                <Text style={[s.btnText, { color: colors.ink }]}>
+                  Confirmar {parsed.valid.length} {parsed.valid.length === 1 ? "operación" : "operaciones"}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text style={s.hint}>
+              Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio formato.
+              Revisá lo que entendió antes de confirmar.
+            </Text>
           </View>
         ) : (
           <View style={s.card}>
@@ -163,6 +221,16 @@ const s = StyleSheet.create({
   btn: { borderWidth: 1, borderColor: colors.line2, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 14, alignItems: "center" },
   btnGold: { backgroundColor: colors.gold, borderColor: colors.gold },
   btnText: { color: colors.fog, fontWeight: "700", fontSize: 12.5 },
+  clipBanner: { borderWidth: 1, borderColor: colors.gold + "88", backgroundColor: colors.gold + "14", borderRadius: 10, padding: 12, gap: 4 },
+  clipTitle: { color: colors.gold, fontSize: 12, fontWeight: "800" },
+  clipText: { color: colors.fog, fontSize: 11.5 },
+  clipAction: { color: colors.snow, fontSize: 11, fontWeight: "700", marginTop: 2 },
+  previewRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 10, backgroundColor: colors.ink },
+  previewDir: { fontSize: 18, fontWeight: "900" },
+  previewSymbol: { color: colors.snow, fontWeight: "800", fontSize: 14 },
+  previewLevels: { color: colors.fog, fontSize: 11, marginTop: 2 },
+  previewRR: { color: colors.gold, fontWeight: "800", fontSize: 12 },
+  btnBull: { backgroundColor: colors.bull, borderColor: colors.bull },
   err: { color: colors.bear, fontSize: 11.5 },
   hint: { color: colors.dim, fontSize: 11 },
 });
