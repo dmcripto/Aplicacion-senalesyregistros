@@ -124,9 +124,9 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>WEBHOOK DE TRADINGVIEW</Text>
+      <Text style={styles.sectionTitle}>CONECTÁ TU FUENTE DE SEÑALES</Text>
       <View style={styles.card}>
-        <Text style={styles.hint}>Pegá esta URL en el campo "Webhook URL" de tu alerta de TradingView:</Text>
+        <Text style={styles.hint}>Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram o WhatsApp, pegá el mensaje en Registrar → Pegar señal.</Text>
         {error && <Text style={styles.error}>{error}</Text>}
         {url && (
           <>

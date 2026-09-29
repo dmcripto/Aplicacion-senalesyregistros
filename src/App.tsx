@@ -233,9 +233,9 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   return (
     <section className="overflow-hidden rounded-lg border border-line bg-panel">
       <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">WEBHOOK DE TRADINGVIEW</h2>
+        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">CONECTÁ TU FUENTE DE SEÑALES</h2>
         <p className="text-[11px] uppercase tracking-[0.16em] text-dim">
-          Pegá esta URL en el campo "Webhook URL" de tu alerta
+          Enviá tus señales a esta URL, vengan de donde vengan
         </p>
       </header>
       <div className="space-y-3 p-5">
@@ -263,6 +263,18 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             solo cuando el precio los toca. Si una misma vela toca ambos, se toma SL.
           </span>
         </label>
+        <details className="group rounded-md border border-line bg-ink/40 text-[11.5px] leading-relaxed text-fog">
+          <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">
+            ¿Desde dónde puedo enviar señales?
+          </summary>
+          <ul className="space-y-2 border-t border-line px-3 py-3">
+            <li><b className="text-snow">TradingView</b> (plan con webhooks): pegá la URL en "Webhook URL" de la alerta.</li>
+            <li><b className="text-snow">Telegram, WhatsApp o Discord:</b> copiá el mensaje de la señal y pegalo en "Registrar → Pegar señal". Lo interpreta solo.</li>
+            <li><b className="text-snow">Zapier, Make o n8n:</b> usá la acción "Webhooks → POST" hacia esta URL con el texto de la señal como cuerpo.</li>
+            <li><b className="text-snow">Bots y plataformas propias:</b> un POST con JSON, por ejemplo <span className="num text-gold">{"{"}"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500{"}"}</span>.</li>
+            <li><b className="text-snow">A mano:</b> "Registrar → Manual".</li>
+          </ul>
+        </details>
         <AlertBuilder notify={notify} />
         {url &&
           (regenArmed ? (

@@ -113,14 +113,14 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
       <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
         <div>
           <h2 className="font-display text-2xl font-bold tracking-wide text-snow">REGISTRAR OPERACIÓN</h2>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">Alerta del indicador o carga manual</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">Pegá una señal de cualquier fuente o cargala a mano</p>
         </div>
       </header>
 
       <div className="p-5">
         <div className="mb-4 flex gap-1 rounded-lg border border-line bg-ink p-1">
           <button onClick={() => setTab("pegar")} className={tabBtn(tab === "pegar")}>
-            <IconClipboard className="h-3.5 w-3.5" /> Pegar alerta
+            <IconClipboard className="h-3.5 w-3.5" /> Pegar señal
           </button>
           <button onClick={() => setTab("manual")} className={tabBtn(tab === "manual")}>
             <IconPlus className="h-3.5 w-3.5" /> Manual
@@ -135,9 +135,9 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
                 setText(e.target.value);
                 setParsed(null);
               }}
-              rows={3}
+              rows={5}
               spellCheck={false}
-              placeholder={"VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL\n" + EXAMPLE_ALERT}
+              placeholder={"Pegá una señal de cualquier fuente, por ejemplo:\n#BTC/USDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500\n\nO en formato simple:\n" + EXAMPLE_ALERT}
               className="field num min-h-[86px] resize-y text-[12px] leading-relaxed"
             />
             <div className="flex flex-wrap gap-2">
@@ -199,8 +199,8 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
             )}
 
             <p className="text-[11px] leading-relaxed text-dim">
-              Acepta varias líneas a la vez, con o sin el prefijo <span className="num text-fog">VELTRIX</span>.
-              Dirección: COMPRA/VENTA o LONG/SHORT.
+              Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio
+              formato (<span className="num text-fog">VELTRIX|…</span>, JSON). Revisá lo que entendió antes de confirmar.
             </p>
           </div>
         ) : (
