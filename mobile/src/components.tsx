@@ -32,7 +32,7 @@ export function StatsGrid({ trades }: { trades: Trade[] }) {
         <StatTile label="Ops" value={String(st.total)} sub={`${st.abiertas} abiertas`} />
       </View>
       <View style={s.tileRow}>
-        <StatTile label="Profit factor" value={st.pf == null ? "∞" : st.pf.toFixed(2)} />
+        <StatTile label="Profit factor" value={!st.cerradas ? "—" : st.pf == null ? "∞" : st.pf.toFixed(2)} />
         <StatTile label="R promedio" value={st.cerradas ? `${fmtR(st.avgR)}R` : "—"} color={rColor(st.avgR)} />
         <StatTile label="Mejor / peor" value={st.cerradas ? `${fmtR(st.bestR)} / ${fmtR(st.worstR)}` : "—"} />
       </View>
