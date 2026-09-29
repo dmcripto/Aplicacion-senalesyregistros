@@ -29,6 +29,8 @@ import {
   deleteAllTrades,
   deleteTradeById,
   fetchWebhookUrl,
+  regenerateWebhookUrl,
+  deleteMyAccount,
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
@@ -171,6 +173,23 @@ function StatsBand({ trades }: { trades: Trade[] }) {
 function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [regenArmed, setRegenArmed] = useState(false);
+
+  useEffect(() => {
+    if (!regenArmed) return;
+    const id = window.setTimeout(() => setRegenArmed(false), 4000);
+    return () => window.clearTimeout(id);
+  }, [regenArmed]);
+
+  const regenerate = async () => {
+    setRegenArmed(false);
+    try {
+      setUrl(await regenerateWebhookUrl());
+      notify("URL regenerada. Actualizala en tus alertas de TradingView: la anterior dejó de funcionar.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "No se pudo regenerar la URL.", "err");
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +233,22 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
           </div>
         )}
         <AlertBuilder notify={notify} />
+        {url &&
+          (regenArmed ? (
+            <button
+              onClick={regenerate}
+              className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
+            >
+              Confirmar: la URL actual dejará de funcionar
+            </button>
+          ) : (
+            <button
+              onClick={() => setRegenArmed(true)}
+              className="w-full rounded-md border border-line px-3 py-2 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
+            >
+              Regenerar URL del webhook
+            </button>
+          ))}
       </div>
     </section>
   );
@@ -228,8 +263,24 @@ function Dashboard({ userId }: { userId: string }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [clearArmed, setClearArmed] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
   const [flashId, flash] = useFlashId();
   const now = useNow(1000);
+
+  useEffect(() => {
+    if (!deleteArmed) return;
+    const id = window.setTimeout(() => setDeleteArmed(false), 5000);
+    return () => window.clearTimeout(id);
+  }, [deleteArmed]);
+
+  const deleteAccount = async () => {
+    try {
+      await deleteMyAccount();
+    } catch (err) {
+      setDeleteArmed(false);
+      notify(err instanceof Error ? err.message : "No se pudo eliminar la cuenta.", "err");
+    }
+  };
 
   useEffect(() => {
     if (!clearArmed) return;
@@ -452,6 +503,22 @@ function Dashboard({ userId }: { userId: string }) {
             <span className="font-bold text-fog">VELTRIX</span> — tu diario se sincroniza en la nube entre
             web y móvil.
           </p>
+          <div className="flex flex-wrap items-center gap-2">
+          {deleteArmed ? (
+            <button
+              onClick={deleteAccount}
+              className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
+            >
+              Confirmar: eliminar cuenta y todos mis datos
+            </button>
+          ) : (
+            <button
+              onClick={() => setDeleteArmed(true)}
+              className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
+            >
+              Eliminar mi cuenta
+            </button>
+          )}
           {trades.length > 0 &&
             (clearArmed ? (
               <button
@@ -468,6 +535,7 @@ function Dashboard({ userId }: { userId: string }) {
                 Borrar diario
               </button>
             ))}
+          </div>
         </div>
       </footer>
 

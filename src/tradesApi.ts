@@ -128,3 +128,16 @@ export async function fetchWebhookUrl(userId: string): Promise<string> {
   const base = import.meta.env.VITE_SUPABASE_URL.replace(/\/$/, "");
   return `${base}/functions/v1/tradingview-webhook/${data.webhook_token}`;
 }
+
+export async function regenerateWebhookUrl(): Promise<string> {
+  const { data, error } = await supabase.rpc("regenerate_webhook_token");
+  if (error) throw error;
+  const base = import.meta.env.VITE_SUPABASE_URL.replace(/\/$/, "");
+  return `${base}/functions/v1/tradingview-webhook/${data}`;
+}
+
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc("delete_my_account");
+  if (error) throw error;
+  await supabase.auth.signOut();
+}
