@@ -6,6 +6,7 @@ import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
 import { deleteAllTrades, deleteMyAccount, fetchWebhookUrl, regenerateWebhookUrl } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
+import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 
 export default function SettingsScreen({ userId, email, trades }: { userId: string; email?: string; trades: Trade[] }) {
@@ -119,6 +120,20 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
       <View style={styles.card}>
         <AlertBuilder />
       </View>
+
+      <Text style={styles.sectionTitle}>LEGAL</Text>
+      <View style={styles.card}>
+        <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.terms)}>
+          <Text style={styles.legalLink}>Términos de uso</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.privacy)}>
+          <Text style={styles.legalLink}>Política de privacidad</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.deleteData)}>
+          <Text style={styles.legalLink}>Eliminación de datos</Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>{DISCLAIMER}</Text>
+      </View>
     </ScrollView>
   );
 }
@@ -153,6 +168,7 @@ const styles = StyleSheet.create({
   signOutText: { color: colors.bear, fontWeight: "700", fontSize: 12 },
   dangerLink: { alignItems: "center", paddingVertical: 6 },
   dangerLinkText: { color: colors.dim, fontSize: 11.5, textDecorationLine: "underline" },
+  legalLink: { color: colors.gold, fontSize: 13, fontWeight: "600", textDecorationLine: "underline" },
   hint: { color: colors.dim, fontSize: 11.5, lineHeight: 17 },
   urlBox: {
     backgroundColor: colors.ink,

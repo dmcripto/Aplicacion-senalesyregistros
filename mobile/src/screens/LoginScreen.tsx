@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { supabase } from "../supabaseClient";
 import { Logo } from "../ui";
+import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
@@ -18,6 +19,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
@@ -31,6 +33,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
       } else {
+        if (!accepted) throw new Error("Tenés que aceptar los términos de uso y la política de privacidad.");
         const { error: err } = await supabase.auth.signUp({ email, password });
         if (err) throw err;
         setNotice("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada.");
@@ -153,6 +156,25 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
           </TouchableOpacity>
         </View>
 
+        {mode === "signup" && (
+          <TouchableOpacity style={styles.accept} onPress={() => setAccepted((v) => !v)} activeOpacity={0.8}>
+            <View style={[styles.checkbox, accepted && styles.checkboxOn]}>
+              {accepted && <Text style={styles.checkMark}>✓</Text>}
+            </View>
+            <Text style={styles.acceptText}>
+              Acepto los{" "}
+              <Text style={styles.acceptLink} onPress={() => openLink(LEGAL_LINKS.terms)}>
+                términos de uso
+              </Text>{" "}
+              y la{" "}
+              <Text style={styles.acceptLink} onPress={() => openLink(LEGAL_LINKS.privacy)}>
+                política de privacidad
+              </Text>
+              .
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {error && <Text style={styles.error}>{error}</Text>}
         {notice && <Text style={styles.notice}>{notice}</Text>}
 
@@ -163,6 +185,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
             <Text style={styles.submitText}>{mode === "login" ? "Ingresar" : "Crear cuenta"}</Text>
           )}
         </TouchableOpacity>
+        <Text style={styles.disclaimer}>{DISCLAIMER}</Text>
       </View>
     </KeyboardAvoidingView>
   );
@@ -223,6 +246,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   link: { color: colors.fog, fontSize: 11, fontWeight: "600", textDecorationLine: "underline" },
+  accept: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 14 },
+  checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: colors.line2, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  checkboxOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  checkMark: { color: colors.ink, fontSize: 13, fontWeight: "900" },
+  acceptText: { flex: 1, color: colors.fog, fontSize: 12, lineHeight: 18 },
+  acceptLink: { color: colors.gold, fontWeight: "700", textDecorationLine: "underline" },
+  disclaimer: { color: colors.dim, fontSize: 10, lineHeight: 15, marginTop: 16, textAlign: "center" },
   error: { color: colors.bear, fontSize: 12, marginTop: 12 },
   notice: { color: colors.cyan, fontSize: 12, marginTop: 12 },
   submit: {

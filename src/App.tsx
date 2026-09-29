@@ -537,6 +537,22 @@ function Dashboard({ userId }: { userId: string }) {
             ))}
           </div>
         </div>
+        <div className="mx-auto max-w-[1440px] border-t border-line/60 px-4 py-4 lg:px-8">
+          <p className="text-[10.5px] leading-relaxed text-dim">
+            VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de
+            inversión. Operar en mercados financieros implica riesgo de pérdida. Los resultados pasados no garantizan
+            resultados futuros. No está afiliado a TradingView.{" "}
+            <a href="/terms.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              Términos
+            </a>{" · "}
+            <a href="/privacy.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              Privacidad
+            </a>{" · "}
+            <a href="/delete-account.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              Eliminar datos
+            </a>
+          </p>
+        </div>
       </footer>
 
       {manualTrade && (
