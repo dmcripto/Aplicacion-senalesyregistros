@@ -3,7 +3,7 @@
 // token.
 //
 // URL: POST /functions/v1/tradingview-webhook/<webhook_token>
-// Body (texto plano o JSON): DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL
+// Body (texto plano o JSON): VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL
 //   o {"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500}
 
 import { createClient } from "npm:@supabase/supabase-js@2";

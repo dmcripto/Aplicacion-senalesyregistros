@@ -28,7 +28,7 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)]">
         <div className="flex flex-col items-center gap-3 border-b border-line px-6 py-7">
-          <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(243,183,30,.25)]" />
+          <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(46,196,241,.25)]" />
           <div className="text-center">
             <h1 className="font-display text-2xl font-extrabold tracking-[0.04em] text-snow">
               Nueva contraseña

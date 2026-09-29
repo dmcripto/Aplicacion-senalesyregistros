@@ -88,7 +88,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
           <div>
             <h3 className="font-display text-3xl font-bold tracking-wide text-snow">EL DIARIO ESTÁ VACÍO</h3>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-fog">
-              Pegá una alerta del indicador <span className="num text-gold">DMCRIPTO</span> en el panel de registro,
+              Pegá una alerta del indicador <span className="num text-gold">VELTRIX</span> en el panel de registro,
               cargá tu primera operación manual, o explorá la app con datos de ejemplo.
             </p>
           </div>

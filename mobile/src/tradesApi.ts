@@ -1,4 +1,4 @@
-// ─── DMCRIPTO · acceso a Supabase para el diario de trades (móvil) ─────────
+// ─── VELTRIX · acceso a Supabase para el diario de trades (móvil) ─────────
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 

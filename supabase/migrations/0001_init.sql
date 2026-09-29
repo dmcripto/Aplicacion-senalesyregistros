@@ -1,4 +1,4 @@
--- DMCRIPTO · esquema inicial: perfiles con token de webhook, diario de trades
+-- VELTRIX · esquema inicial: perfiles con token de webhook, diario de trades
 -- y tokens de dispositivo para push notifications.
 
 create extension if not exists pgcrypto;

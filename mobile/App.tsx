@@ -51,7 +51,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
       <View style={styles.header}>
         <Logo size={30} />
         <Text style={styles.brand}>
-          DMCRIPTO<Text style={{ color: colors.gold }}>.</Text>
+          VELTRIX
         </Text>
         <View style={styles.live}>
           <LiveDot />

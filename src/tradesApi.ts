@@ -1,4 +1,4 @@
-// ─── DMCRIPTO · acceso a Supabase para el diario de trades ─────────────────
+// ─── VELTRIX · acceso a Supabase para el diario de trades ─────────────────
 // Convierte entre las filas de la tabla `trades` (snake_case) y el tipo
 // `Trade` de @dmcripto/core (camelCase), y expone las mutaciones que antes
 // vivían como setState directo sobre localStorage.

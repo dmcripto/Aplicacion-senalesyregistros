@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, StyleSheet, Text, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle, Defs, G, Line, LinearGradient as SvgGradient, Path, Polyline, Rect, Stop } from "react-native-svg";
@@ -7,15 +7,7 @@ import type { Trade } from "@dmcripto/core";
 import { colors } from "./theme";
 
 export function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 32 32">
-      <Path d="M16 2 28 7v9c0 8-5.4 12.6-12 14C9.4 28.6 4 24 4 16V7z" fill="#0d131b" stroke={colors.gold} strokeWidth={1.8} />
-      <Rect x={9.6} y={12.5} width={3.2} height={8.5} rx={0.6} fill={colors.bull} />
-      <Rect x={11} y={9.5} width={1} height={14.5} fill={colors.bull} />
-      <Rect x={19.2} y={9} width={3.2} height={8.5} rx={0.6} fill={colors.bear} />
-      <Rect x={20.6} y={6.5} width={1} height={14.5} fill={colors.bear} />
-    </Svg>
-  );
+  return <Image source={require("../assets/logo.png")} style={{ width: size, height: size }} resizeMode="contain" />;
 }
 
 const CANDLES: Array<[number, number, number, boolean]> = [
@@ -28,7 +20,7 @@ export function AppBackground() {
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <LinearGradient colors={["#070b11", "#0a111b", "#08130f"]} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={StyleSheet.absoluteFill} />
       <LinearGradient colors={["rgba(22,217,138,0.14)", "transparent"]} start={{ x: 0, y: 0 }} end={{ x: 0.7, y: 0.45 }} style={StyleSheet.absoluteFill} />
-      <LinearGradient colors={["transparent", "rgba(243,183,30,0.10)"]} start={{ x: 0.3, y: 0.55 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={["transparent", "rgba(46,196,241,0.10)"]} start={{ x: 0.3, y: 0.55 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMax slice">
         {[100, 200, 300, 400, 500, 600, 700].map((y) => (
           <Line key={y} x1={0} y1={y} x2={400} y2={y} stroke="rgba(147,165,186,0.045)" strokeWidth={1} />

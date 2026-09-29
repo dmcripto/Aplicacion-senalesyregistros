@@ -105,7 +105,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
   const tabBtn = (active: boolean) =>
     cx(
       "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] transition-all duration-200",
-      active ? "bg-gold text-ink shadow-[0_4px_18px_rgba(243,183,30,.25)]" : "text-fog hover:text-snow",
+      active ? "bg-gold text-ink shadow-[0_4px_18px_rgba(46,196,241,.25)]" : "text-fog hover:text-snow",
     );
 
   return (
@@ -137,7 +137,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
               }}
               rows={3}
               spellCheck={false}
-              placeholder={"DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL\n" + EXAMPLE_ALERT}
+              placeholder={"VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL\n" + EXAMPLE_ALERT}
               className="field num min-h-[86px] resize-y text-[12px] leading-relaxed"
             />
             <div className="flex flex-wrap gap-2">
@@ -199,7 +199,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
             )}
 
             <p className="text-[11px] leading-relaxed text-dim">
-              Acepta varias líneas a la vez, con o sin el prefijo <span className="num text-fog">DMCRIPTO</span>.
+              Acepta varias líneas a la vez, con o sin el prefijo <span className="num text-fog">VELTRIX</span>.
               Dirección: COMPRA/VENTA o LONG/SHORT.
             </p>
           </div>

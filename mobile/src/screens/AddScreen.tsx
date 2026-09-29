@@ -97,7 +97,7 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
               value={text}
               onChangeText={setText}
               multiline
-              placeholder={`DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL\n${EXAMPLE_ALERT}`}
+              placeholder={`VELTRIX|SYMBOL|DIRECCION|ENTRADA|TP|SL\n${EXAMPLE_ALERT}`}
               placeholderTextColor={colors.dim}
               style={[s.input, { minHeight: 110, textAlignVertical: "top" }]}
               autoCapitalize="none"

@@ -91,12 +91,12 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
     >
       <View style={styles.card}>
         <View style={{ alignItems: "center", marginBottom: 10 }}>
-          <Logo size={64} />
+          <Logo size={96} />
         </View>
         <Text style={styles.title}>
-          DMCRIPTO<Text style={{ color: colors.gold }}>.</Text>
+          VELTRIX
         </Text>
-        <Text style={styles.subtitle}>DIARIO DE TRADING · SMC / ICT</Text>
+        <Text style={styles.subtitle}>DIARIO DE TRADING · EN VIVO</Text>
 
         <View style={styles.tabs}>
           <TouchableOpacity

@@ -1,4 +1,4 @@
-// ─── DMCRIPTO · Lógica del diario (capa web) ────────────────────────────────
+// ─── VELTRIX · Lógica del diario (capa web) ────────────────────────────────
 // La lógica pura (tipos, cálculos, parser de alertas, formateo) vive en
 // @dmcripto/core para poder compartirse con la app móvil. Acá sólo queda lo
 // que depende del navegador: exportar el CSV a un archivo descargable.
@@ -12,7 +12,7 @@ export function downloadCsv(trades: Trade[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "diario-dmcripto.csv";
+  a.download = "diario-veltrix.csv";
   document.body.appendChild(a);
   a.click();
   a.remove();
