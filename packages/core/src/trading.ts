@@ -18,9 +18,10 @@ export interface Trade {
   exit?: number;
   closedAt?: string;
   notes?: string;
+  autoClosed?: boolean;
 }
 
-export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit">;
+export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed">;
 
 export const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");

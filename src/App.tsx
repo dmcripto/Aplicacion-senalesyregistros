@@ -28,6 +28,8 @@ import {
   closeTradeManually,
   deleteAllTrades,
   deleteTradeById,
+  fetchAutoClose,
+  setAutoClose,
   fetchWebhookUrl,
   regenerateWebhookUrl,
   deleteMyAccount,
@@ -174,6 +176,23 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [regenArmed, setRegenArmed] = useState(false);
+  const [autoClose, setAutoCloseState] = useState(true);
+
+  useEffect(() => {
+    fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
+  }, [userId]);
+
+  const toggleAutoClose = async () => {
+    const next = !autoClose;
+    setAutoCloseState(next);
+    try {
+      await setAutoClose(userId, next);
+      notify(next ? "Cierre automático activado." : "Cierre automático desactivado.");
+    } catch (err) {
+      setAutoCloseState(!next);
+      notify(err instanceof Error ? err.message : "No se pudo guardar el cambio.", "err");
+    }
+  };
 
   useEffect(() => {
     if (!regenArmed) return;
@@ -232,6 +251,18 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             </button>
           </div>
         )}
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[11.5px] leading-relaxed text-fog">
+          <input
+            type="checkbox"
+            checked={autoClose}
+            onChange={toggleAutoClose}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-gold)]"
+          />
+          <span>
+            <b className="text-snow">Cierre automático:</b> VELTRIX sigue el precio (criptomonedas) y marca TP o SL
+            solo cuando el precio los toca. Si una misma vela toca ambos, se toma SL.
+          </span>
+        </label>
         <AlertBuilder notify={notify} />
         {url &&
           (regenArmed ? (
