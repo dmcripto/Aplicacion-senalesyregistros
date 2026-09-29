@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { EXAMPLE_ALERT, tradesToCsv } from "@dmcripto/core";
+import { tradesToCsv } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
 import { deleteAllTrades, fetchWebhookUrl } from "../tradesApi";
+import AlertBuilder from "../AlertBuilder";
 import { colors } from "../theme";
 
 export default function SettingsScreen({ userId, email, trades }: { userId: string; email?: string; trades: Trade[] }) {
@@ -76,10 +77,11 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
             </TouchableOpacity>
           </>
         )}
-        <Text style={styles.hint}>
-          En el mensaje de la alerta usá el formato:{"\n"}
-          <Text style={styles.code}>{EXAMPLE_ALERT}</Text>
-        </Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>ARMADOR DE ALERTAS</Text>
+      <View style={styles.card}>
+        <AlertBuilder />
       </View>
     </ScrollView>
   );
@@ -124,6 +126,5 @@ const styles = StyleSheet.create({
   urlText: { color: colors.fog, fontSize: 11.5 },
   copyBtn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
   copyText: { color: colors.ink, fontWeight: "800", fontSize: 12 },
-  code: { color: colors.gold, fontSize: 11 },
   error: { color: colors.bear, fontSize: 12 },
 });

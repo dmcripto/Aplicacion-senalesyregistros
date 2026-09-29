@@ -172,39 +172,133 @@ export interface ParseResult {
   errors: string[];
 }
 
+const KEY_ALIASES: Record<"symbol" | "direction" | "entry" | "tp" | "sl", string[]> = {
+  symbol: ["symbol", "ticker", "pair", "instrument", "simbolo", "par", "activo"],
+  direction: ["direction", "side", "action", "dir", "type", "order", "direccion", "signal", "senal", "position"],
+  entry: ["entry", "entryprice", "price", "entrada", "close", "precio", "open"],
+  tp: ["tp", "tp1", "takeprofit", "target", "objetivo"],
+  sl: ["sl", "stoploss", "stop", "stoploss1"],
+};
+
+const normKey = (k: string) =>
+  k
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const toNum = (v: unknown) => Number(String(v ?? "").trim().replace(",", "."));
+
+/** Interpreta un objeto con campos de una alerta (JSON o clave=valor), con nombres alternativos. */
+function tradeFromFields(fields: Record<string, unknown>, label: string): { value?: NewTrade; error?: string } {
+  const byKey = new Map<string, unknown>();
+  for (const [k, v] of Object.entries(fields)) byKey.set(normKey(k), v);
+  const get = (name: keyof typeof KEY_ALIASES) => {
+    for (const alias of KEY_ALIASES[name]) {
+      const v = byKey.get(alias);
+      if (v !== undefined && v !== null && String(v).trim() !== "") return v;
+    }
+    return undefined;
+  };
+
+  const rawSymbol = String(get("symbol") ?? "").trim();
+  const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop()! : rawSymbol;
+  if (!symbol) return { error: `«${label}» — falta el símbolo.` };
+
+  const dirRaw = String(get("direction") ?? "");
+  const direction = parseDirection(dirRaw);
+  if (!direction) return { error: `«${label}» — dirección «${dirRaw}» no reconocida (usá COMPRA/VENTA, BUY/SELL o LONG/SHORT).` };
+
+  const entry = toNum(get("entry"));
+  const tp = toNum(get("tp"));
+  const sl = toNum(get("sl"));
+  if (![entry, tp, sl].every((n) => Number.isFinite(n) && n > 0)) {
+    return { error: `«${label}» — entrada, TP y SL deben ser números válidos.` };
+  }
+  return { value: { symbol: norm(symbol), direction, entry, tp, sl, date: new Date().toISOString() } };
+}
+
+const short = (s: string) => `${s.slice(0, 42)}${s.length > 42 ? "…" : ""}`;
+
+/**
+ * Acepta tres formatos, sin importar qué indicador genere la alerta:
+ *  1. Pipes:  DMCRIPTO|SÍMBOLO|DIRECCIÓN|ENTRADA|TP|SL  (una alerta por línea)
+ *  2. JSON:   {"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500}
+ *  3. Claves: symbol=BTCUSDT side=buy entry=65000 tp=66500 sl=64500
+ */
 export function parseAlerts(text: string): ParseResult {
   const valid: NewTrade[] = [];
   const errors: string[] = [];
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return { valid, errors: ["Pegá al menos una línea de alerta."] };
+  const body = text.trim();
+  if (!body) return { valid, errors: ["Pegá al menos una línea de alerta."] };
 
+  if (body.startsWith("{") || body.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(body);
+      const list = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of list) {
+        if (!item || typeof item !== "object") {
+          errors.push("JSON inválido: cada alerta debe ser un objeto.");
+          continue;
+        }
+        const r = tradeFromFields(item as Record<string, unknown>, short(JSON.stringify(item)));
+        if (r.value) valid.push(r.value);
+        else errors.push(r.error!);
+      }
+    } catch {
+      errors.push("El JSON no es válido (revisá comillas y comas).");
+    }
+    return { valid, errors };
+  }
+
+  const lines = body.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   for (const line of lines) {
+    if (!line.includes("|") && /[=:]/.test(line)) {
+      const fields: Record<string, string> = {};
+      for (const m of line.matchAll(/([A-Za-z_]+)\s*[=:]\s*([^\s,;]+)/g)) fields[m[1]] = m[2];
+      const r = tradeFromFields(fields, short(line));
+      if (r.value) valid.push(r.value);
+      else errors.push(r.error!);
+      continue;
+    }
+
     let parts = line.split("|").map((p) => p.trim());
     if (parts.length === 6 && norm(parts[0]).startsWith("DMCRIPTO")) parts = parts.slice(1);
     if (parts.length !== 5) {
-      errors.push(`«${line.slice(0, 42)}${line.length > 42 ? "…" : ""}» — se esperan 6 campos separados por |`);
+      errors.push(`«${short(line)}» — se esperan 6 campos separados por |`);
       continue;
     }
-    const [symbol, dirRaw, entryRaw, tpRaw, slRaw] = parts;
-    const direction = parseDirection(dirRaw);
-    const entry = Number(entryRaw.replace(",", "."));
-    const tp = Number(tpRaw.replace(",", "."));
-    const sl = Number(slRaw.replace(",", "."));
-    if (!symbol) {
-      errors.push(`«${line.slice(0, 42)}» — falta el símbolo.`);
-      continue;
-    }
-    if (!direction) {
-      errors.push(`«${line.slice(0, 42)}» — dirección «${dirRaw}» no reconocida (usá COMPRA/VENTA o LONG/SHORT).`);
-      continue;
-    }
-    if (![entry, tp, sl].every((n) => Number.isFinite(n) && n > 0)) {
-      errors.push(`«${line.slice(0, 42)}» — entrada, TP y SL deben ser números válidos.`);
-      continue;
-    }
-    valid.push({ symbol: norm(symbol), direction, entry, tp, sl, date: new Date().toISOString() });
+    const [symbol, dirRaw, entry, tp, sl] = parts;
+    const r = tradeFromFields({ symbol, direction: dirRaw, entry, tp, sl }, short(line));
+    if (r.value) valid.push(r.value);
+    else errors.push(r.error!);
   }
   return { valid, errors };
+}
+
+// ─── Armador de mensajes de alerta ──────────────────────────────────────────
+
+export type AlertFormat = "pipe" | "json";
+
+export interface AlertMessageOptions {
+  format: AlertFormat;
+  direction: Direction;
+  /** Lo que va en cada campo: un {{placeholder}} de TradingView o un número fijo. */
+  entry: string;
+  tp: string;
+  sl: string;
+}
+
+/** Genera el texto que hay que pegar en el campo "Mensaje" de la alerta de TradingView. */
+export function buildAlertMessage(o: AlertMessageOptions): string {
+  const entry = o.entry.trim() || "{{close}}";
+  const tp = o.tp.trim() || "TP";
+  const sl = o.sl.trim() || "SL";
+  if (o.format === "json") {
+    const side = o.direction === "LONG" ? "buy" : "sell";
+    return `{"symbol":"{{ticker}}","side":"${side}","entry":${entry},"tp":${tp},"sl":${sl}}`;
+  }
+  return `DMCRIPTO|{{ticker}}|${o.direction === "LONG" ? "COMPRA" : "VENTA"}|${entry}|${tp}|${sl}`;
 }
 
 // ─── Formateo ───────────────────────────────────────────────────────────────

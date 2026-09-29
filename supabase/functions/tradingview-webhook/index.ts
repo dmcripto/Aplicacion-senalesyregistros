@@ -3,10 +3,11 @@
 // token.
 //
 // URL: POST /functions/v1/tradingview-webhook/<webhook_token>
-// Body (texto plano): DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL
+// Body (texto plano o JSON): DMCRIPTO|SYMBOL|DIRECCION|ENTRADA|TP|SL
+//   o {"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500}
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { parseAlertLine } from "../_shared/parseAlert.ts";
+import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 
 const supabase = createClient(
@@ -42,9 +43,10 @@ Deno.serve(async (req) => {
     return new Response("El cuerpo de la alerta está vacío", { status: 400 });
   }
 
-  const { value: alert, error: parseError } = parseAlertLine(body);
+  const { valid, errors } = parseAlerts(body);
+  const alert = valid[0];
   if (!alert) {
-    return new Response(`No se pudo interpretar la alerta: ${parseError}`, { status: 422 });
+    return new Response(`No se pudo interpretar la alerta: ${errors.join(" · ")}`, { status: 422 });
   }
 
   const { data: trade, error: insertError } = await supabase

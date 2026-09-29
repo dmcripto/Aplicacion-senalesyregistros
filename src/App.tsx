@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  EXAMPLE_ALERT,
   computeStats,
   cx,
   downloadCsv,
@@ -42,6 +41,7 @@ import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
 import MonthlySummary from "./components/MonthlySummary";
+import AlertBuilder from "./components/AlertBuilder";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -213,10 +213,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             </button>
           </div>
         )}
-        <p className="text-[11px] leading-relaxed text-dim">
-          En el mensaje de la alerta usá el formato:{" "}
-          <span className="num rounded bg-ink px-1.5 py-0.5 text-[10.5px] text-gold">{EXAMPLE_ALERT}</span>
-        </p>
+        <AlertBuilder notify={notify} />
       </div>
     </section>
   );
