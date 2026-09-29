@@ -123,3 +123,16 @@ export async function deleteAllTrades(userId: string) {
   const { error } = await supabase.from("trades").delete().eq("user_id", userId);
   if (error) throw error;
 }
+
+export async function regenerateWebhookUrl(): Promise<string> {
+  const { data, error } = await supabase.rpc("regenerate_webhook_token");
+  if (error) throw error;
+  const base = (process.env.EXPO_PUBLIC_SUPABASE_URL as string).replace(/\/$/, "");
+  return `${base}/functions/v1/tradingview-webhook/${data}`;
+}
+
+export async function deleteMyAccount() {
+  const { error } = await supabase.rpc("delete_my_account");
+  if (error) throw error;
+  await supabase.auth.signOut();
+}

@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { tradesToCsv } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, fetchWebhookUrl } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchWebhookUrl, regenerateWebhookUrl } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { colors } from "../theme";
 
@@ -30,6 +30,36 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const regenerate = () =>
+    Alert.alert(
+      "Regenerar URL del webhook",
+      "La URL actual dejará de funcionar. Vas a tener que actualizarla en tus alertas de TradingView.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Regenerar",
+          style: "destructive",
+          onPress: () =>
+            regenerateWebhookUrl()
+              .then(setUrl)
+              .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo regenerar la URL.")),
+        },
+      ],
+    );
+  const deleteAccount = () =>
+    Alert.alert(
+      "Eliminar mi cuenta",
+      "Se borran tu cuenta y todos tus datos (operaciones, webhook y dispositivos) de forma permanente. No se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar todo",
+          style: "destructive",
+          onPress: () =>
+            deleteMyAccount().catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo eliminar la cuenta.")),
+        },
+      ],
+    );
   const exportCsv = () => Share.share({ title: "VELTRIX diario.csv", message: tradesToCsv(trades) });
   const clearAll = () =>
     Alert.alert("Borrar todo el diario", "Se eliminan todas tus operaciones (también en la web). No se puede deshacer.", [
@@ -48,6 +78,9 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
         {email && <Text style={styles.email}>{email}</Text>}
         <TouchableOpacity style={styles.signOut} onPress={() => supabase.auth.signOut()}>
           <Text style={styles.signOutText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.dangerLink} onPress={deleteAccount}>
+          <Text style={styles.dangerLinkText}>Eliminar mi cuenta y mis datos</Text>
         </TouchableOpacity>
       </View>
 
@@ -74,6 +107,9 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
             </View>
             <TouchableOpacity style={styles.copyBtn} onPress={copy}>
               <Text style={styles.copyText}>{copied ? "¡Copiado!" : "Copiar URL"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.signOut} onPress={regenerate}>
+              <Text style={[styles.signOutText, { color: colors.fog }]}>Regenerar URL</Text>
             </TouchableOpacity>
           </>
         )}
@@ -115,6 +151,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signOutText: { color: colors.bear, fontWeight: "700", fontSize: 12 },
+  dangerLink: { alignItems: "center", paddingVertical: 6 },
+  dangerLinkText: { color: colors.dim, fontSize: 11.5, textDecorationLine: "underline" },
   hint: { color: colors.dim, fontSize: 11.5, lineHeight: 17 },
   urlBox: {
     backgroundColor: colors.ink,
