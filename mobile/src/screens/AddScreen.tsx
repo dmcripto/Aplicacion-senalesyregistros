@@ -151,7 +151,7 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
 }
 
 const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink },
+  screen: { flex: 1 },
   tabs: { flexDirection: "row", backgroundColor: colors.panel, borderRadius: 10, borderWidth: 1, borderColor: colors.line, padding: 4, marginBottom: 14 },
   tab: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center" },
   tabOn: { backgroundColor: colors.gold },

@@ -88,7 +88,7 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink },
+  screen: { flex: 1 },
   sectionTitle: {
     color: colors.fog,
     fontSize: 10,

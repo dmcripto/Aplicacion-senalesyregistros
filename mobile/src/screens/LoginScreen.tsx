@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../supabaseClient";
+import { Logo } from "../ui";
 import { colors } from "../theme";
 
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
@@ -89,6 +90,9 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.card}>
+        <View style={{ alignItems: "center", marginBottom: 10 }}>
+          <Logo size={64} />
+        </View>
         <Text style={styles.title}>
           DMCRIPTO<Text style={{ color: colors.gold }}>.</Text>
         </Text>
@@ -165,9 +169,9 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink, justifyContent: "center", padding: 20 },
+  screen: { flex: 1, justifyContent: "center", padding: 20 },
   card: {
-    backgroundColor: colors.panel,
+    backgroundColor: "rgba(16,23,32,0.92)",
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.line,

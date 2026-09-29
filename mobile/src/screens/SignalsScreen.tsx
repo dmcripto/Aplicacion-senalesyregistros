@@ -20,7 +20,7 @@ export default function SignalsScreen({
 
   return (
     <FlatList
-      style={{ flex: 1, backgroundColor: colors.ink }}
+      style={{ flex: 1 }}
       data={data}
       keyExtractor={(t) => t.id}
       contentContainerStyle={{ padding: 16, paddingBottom: 32 }}

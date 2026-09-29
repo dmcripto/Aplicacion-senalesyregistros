@@ -68,7 +68,7 @@ export default function ResetPasswordScreen({ onDone }: { onDone: (notice: strin
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.ink, justifyContent: "center", padding: 20 },
+  screen: { flex: 1, justifyContent: "center", padding: 20 },
   card: {
     backgroundColor: colors.panel,
     borderRadius: 12,
