@@ -22,10 +22,11 @@ interface Props {
   onManual: (t: Trade) => void;
   onDelete: (id: string) => void;
   onReopen: (id: string) => void;
+  onNotes: (t: Trade) => void;
   onLoadSample: () => void;
 }
 
-export default function TradeTable({ trades, flashId, onMark, onManual, onDelete, onReopen, onLoadSample }: Props) {
+export default function TradeTable({ trades, flashId, onMark, onManual, onDelete, onReopen, onNotes, onLoadSample }: Props) {
   const [q, setQ] = useState("");
   const [dirF, setDirF] = useState<"all" | "LONG" | "SHORT">("all");
   const [estado, setEstado] = useState<EstadoF>("all");
@@ -211,6 +212,15 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     <td className="px-3 py-3">
                       <span className="num font-bold tracking-wide text-snow">{t.symbol}</span>
                       {t.notes && <p className="mt-0.5 max-w-[220px] truncate text-[10.5px] italic text-dim" title={t.notes}>{t.notes}</p>}
+                      {!!t.tags?.length && (
+                        <div className="mt-1 flex max-w-[240px] flex-wrap gap-1">
+                          {t.tags.map((tag) => (
+                            <span key={tag} className="rounded-full border border-gold/40 bg-gold/10 px-2 py-px text-[9.5px] font-semibold text-gold">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       <DirBadge dir={t.direction} />
@@ -224,6 +234,13 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => onNotes(t)}
+                          title="Notas y etiquetas"
+                          className={cx(iconBtn, "hover:border-gold/50 hover:bg-gold/10 hover:text-gold")}
+                        >
+                          ✎ Notas
+                        </button>
                         {abierta ? (
                           <>
                             <button

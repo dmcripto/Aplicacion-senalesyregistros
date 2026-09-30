@@ -18,6 +18,7 @@ interface TradeRow {
   closed_at: string | null;
   notes: string | null;
   auto_closed?: boolean | null;
+  tags?: string[] | null;
 }
 
 export function rowToTrade(row: TradeRow): Trade {
@@ -34,6 +35,7 @@ export function rowToTrade(row: TradeRow): Trade {
     closedAt: row.closed_at ?? undefined,
     notes: row.notes ?? undefined,
     autoClosed: row.auto_closed ?? undefined,
+    tags: row.tags ?? undefined,
   };
 }
 
@@ -147,5 +149,13 @@ export async function fetchAutoClose(userId: string): Promise<boolean> {
 
 export async function setAutoClose(userId: string, enabled: boolean) {
   const { error } = await supabase.from("profiles").update({ auto_close: enabled }).eq("id", userId);
+  if (error) throw error;
+}
+
+export async function updateTradeNotes(id: string, notes: string, tags: string[]) {
+  const { error } = await supabase
+    .from("trades")
+    .update({ notes: notes.trim() || null, tags })
+    .eq("id", id);
   if (error) throw error;
 }

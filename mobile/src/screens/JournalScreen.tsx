@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { resultR } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
-import { Empty, EquityBars, MonthlyList, StatsGrid, TradeCard } from "../components";
+import { Empty, EquityBars, MonthlyList, StatsGrid, TagList, TradeCard } from "../components";
 import { colors } from "../theme";
 
 type Filter = "all" | "won" | "lost";
@@ -38,6 +38,7 @@ export default function JournalScreen({
           <StatsGrid trades={trades} />
           <EquityBars trades={trades} />
           <MonthlyList trades={trades} />
+          <TagList trades={trades} />
           <Text style={s.title}>HISTORIAL</Text>
           <View style={s.chips}>
             {(Object.keys(LABELS) as Filter[]).map((f) => (

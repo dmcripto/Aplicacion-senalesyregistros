@@ -14,6 +14,7 @@ import type { Trade } from "./lib";
 import { useCountUp, useFlashId, useNow, useSession, useTrades } from "./hooks";
 import {
   CloseModal,
+  NotesModal,
   IconCheck,
   IconClipboard,
   IconDownload,
@@ -35,6 +36,7 @@ import {
   fetchWebhookUrl,
   regenerateWebhookUrl,
   deleteMyAccount,
+  updateTradeNotes,
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
@@ -49,6 +51,7 @@ import TradeTable from "./components/TradeTable";
 import MonthlySummary from "./components/MonthlySummary";
 import AlertBuilder from "./components/AlertBuilder";
 import RiskCalculator from "./components/RiskCalculator";
+import TagStats from "./components/TagStats";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -378,6 +381,7 @@ function Dashboard({ userId }: { userId: string }) {
   const { trades, loading } = useTrades(userId);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
+  const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
   const [clearArmed, setClearArmed] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [flashId, flash] = useFlashId();
@@ -465,6 +469,21 @@ function Dashboard({ userId }: { userId: string }) {
       }
     },
     [notify],
+  );
+
+  const saveNotes = useCallback(
+    async (notes: string, tags: string[]) => {
+      if (!notesTrade) return;
+      try {
+        await updateTradeNotes(notesTrade.id, notes, tags);
+        notify("Notas guardadas.");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudieron guardar las notas.", "err");
+      } finally {
+        setNotesTrade(null);
+      }
+    },
+    [notesTrade, notify],
   );
 
   const closeManual = useCallback(
@@ -599,6 +618,7 @@ function Dashboard({ userId }: { userId: string }) {
                   onManual={setManualTrade}
                   onDelete={deleteTrade}
                   onReopen={reopenTrade}
+                  onNotes={setNotesTrade}
                   onLoadSample={loadSample}
                 />
               )}
@@ -618,6 +638,11 @@ function Dashboard({ userId }: { userId: string }) {
             {trades.length > 0 && (
               <Reveal delay={180} className="max-lg:order-5">
                 <MonthlySummary trades={trades} />
+              </Reveal>
+            )}
+            {trades.some((x) => x.tags?.length) && (
+              <Reveal delay={200} className="max-lg:order-5">
+                <TagStats trades={trades} />
               </Reveal>
             )}
           </aside>
@@ -686,6 +711,9 @@ function Dashboard({ userId }: { userId: string }) {
         </div>
       </footer>
 
+      {notesTrade && (
+        <NotesModal trade={notesTrade} onSave={saveNotes} onCancel={() => setNotesTrade(null)} />
+      )}
       {manualTrade && (
         <CloseModal trade={manualTrade} onConfirm={closeManual} onCancel={() => setManualTrade(null)} />
       )}

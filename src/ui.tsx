@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { cx, fmtPrice, fmtR, resultR, riskOf } from "./lib";
+import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtPrice, fmtR, resultR, riskOf } from "./lib";
 import type { Trade } from "./lib";
 import { useInView } from "./hooks";
 
@@ -182,6 +182,132 @@ export function Reveal({
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
+    </div>
+  );
+}
+
+export function NotesModal({
+  trade,
+  onSave,
+  onCancel,
+}: {
+  trade: Trade;
+  onSave: (notes: string, tags: string[]) => void;
+  onCancel: () => void;
+}) {
+  const [notes, setNotes] = useState(trade.notes ?? "");
+  const [tags, setTags] = useState<string[]>(trade.tags ?? []);
+  const [custom, setCustom] = useState("");
+
+  const has = (tag: string) => tags.some((x) => x.toLowerCase() === tag.toLowerCase());
+  const toggle = (tag: string) =>
+    setTags((cur) => (has(tag) ? cur.filter((x) => x.toLowerCase() !== tag.toLowerCase()) : cleanTags([...cur, tag])));
+  const addCustom = () => {
+    if (custom.trim()) setTags((cur) => cleanTags([...cur, custom]));
+    setCustom("");
+  };
+
+  return (
+    <div
+      className="fade-in fixed inset-0 z-[80] flex items-center justify-center bg-ink/80 p-4 backdrop-blur-[3px]"
+      onMouseDown={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div className="pop-in max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.6)]">
+        <div className="border-b border-line px-5 py-4">
+          <h3 className="font-display text-xl font-bold tracking-wide text-snow">Notas y etiquetas</h3>
+          <p className="num mt-0.5 text-[11px] text-fog">
+            {trade.symbol} · {trade.direction} @ {fmtPrice(trade.entry)}
+          </p>
+        </div>
+        <div className="space-y-4 p-5">
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">
+              ¿Qué pasó en esta operación?
+            </span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+              maxLength={600}
+              placeholder="Por qué entraste, cómo te sentiste, qué aprendiste…"
+              className="field resize-y text-[13px]"
+            />
+          </label>
+
+          {PRESET_TAGS.map((g) => (
+            <div key={g.group}>
+              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">{g.group}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {g.tags.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggle(tag)}
+                    className={cx(
+                      "rounded-full border px-3 py-1 text-[11.5px] font-semibold transition-colors",
+                      has(tag) ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow",
+                    )}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">Etiqueta propia</p>
+            <div className="flex gap-2">
+              <input
+                value={custom}
+                onChange={(e) => setCustom(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
+                maxLength={24}
+                placeholder="Ej: Apertura de Nueva York"
+                className="field"
+              />
+              <button
+                type="button"
+                onClick={addCustom}
+                className="shrink-0 rounded-md border border-line px-3 text-[12px] font-bold text-fog transition-colors hover:border-line2 hover:text-snow"
+              >
+                Agregar
+              </button>
+            </div>
+            {tags.some((x) => !PRESET_TAGS.some((g) => g.tags.includes(x))) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {tags
+                  .filter((x) => !PRESET_TAGS.some((g) => g.tags.includes(x)))
+                  .map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggle(tag)}
+                      className="rounded-full border border-gold bg-gold px-3 py-1 text-[11.5px] font-semibold text-ink"
+                    >
+                      {tag} ✕
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+          <p className="text-[10.5px] text-dim">{tags.length}/{MAX_TAGS} etiquetas</p>
+        </div>
+        <div className="flex gap-2 border-t border-line px-5 py-4">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-md border border-line px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSave(notes, tags)}
+            className="flex-1 rounded-md bg-gold px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
