@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { EXAMPLE_ALERT, fmtPrice, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
-import type { Direction, NewTrade, ParseResult, Trade } from "@dmcripto/core";
+import type { DailyStatus, Direction, NewTrade, ParseResult, Trade } from "@dmcripto/core";
 import { insertFullTrades, insertTrades } from "../tradesApi";
 import { colors } from "../theme";
 
-export default function AddScreen({ userId, onAdded }: { userId: string; onAdded: () => void }) {
+export default function AddScreen({ userId, onAdded, limitStatus }: { userId: string; onAdded: () => void; limitStatus?: DailyStatus }) {
   const [mode, setMode] = useState<"paste" | "manual">("paste");
   const [text, setText] = useState("");
   const [parsed, setParsed] = useState<ParseResult | null>(null);
@@ -27,7 +27,7 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
   const [tp, setTp] = useState("");
   const [sl, setSl] = useState("");
 
-  const save = async (list: NewTrade[]) => {
+  const doSave = async (list: NewTrade[]) => {
     setBusy(true);
     try {
       await insertTrades(userId, list);
@@ -38,6 +38,18 @@ export default function AddScreen({ userId, onAdded }: { userId: string; onAdded
       setBusy(false);
     }
   };
+
+  const save = (list: NewTrade[]) =>
+    new Promise<void>((resolve) => {
+      if (limitStatus?.level === "stop") {
+        Alert.alert("Frená por hoy", `${limitStatus.messages.join("\n")}\n\n¿Querés registrar la operación igual?`, [
+          { text: "No", style: "cancel", onPress: () => resolve() },
+          { text: "Registrar igual", style: "destructive", onPress: () => doSave(list).then(resolve) },
+        ]);
+      } else {
+        doSave(list).then(resolve);
+      }
+    });
 
   const interpret = (value = text) => setParsed(parseAlerts(value));
 

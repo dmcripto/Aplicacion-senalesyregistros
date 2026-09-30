@@ -21,7 +21,9 @@ import SignalsScreen from "./src/screens/SignalsScreen";
 import AddScreen from "./src/screens/AddScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import RiskScreen from "./src/screens/RiskScreen";
-import type { Trade } from "@dmcripto/core";
+import { dailyStatus } from "@dmcripto/core";
+import type { DailyLimits, Trade } from "@dmcripto/core";
+import { fetchLimits, saveLimits } from "./src/tradesApi";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 
@@ -40,6 +42,18 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const [tab, setTab] = useState<Tab>("signals");
   const { trades, loading, refreshing, refresh } = useTrades(userId);
   const open = trades.filter((t) => t.outcome === "ABIERTA").length;
+  const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
+  const limitStatus = dailyStatus(trades, limits);
+
+  useEffect(() => {
+    fetchLimits(userId).then(setLimits).catch(() => {});
+  }, [userId]);
+
+  const persistLimits = async (l: DailyLimits) => {
+    await saveLimits(userId, l);
+    setLimits(l);
+  };
+
   const [calcTrade, setCalcTrade] = useState<Trade | null>(null);
   const [onboarding, setOnboarding] = useState<boolean | null>(null);
 
@@ -88,15 +102,16 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             loading={loading}
             refreshing={refreshing}
             refresh={refresh}
+            limitStatus={limitStatus}
             onCalculate={(t) => {
               setCalcTrade(t);
               setTab("risk");
             }}
           />}
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
-        {tab === "add" && <AddScreen userId={userId} onAdded={() => { refresh(); setTab("signals"); }} />}
+        {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); setTab("signals"); }} />}
         {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
-        {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} />}
+        {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} />}
       </View>
       <View style={styles.tabBar}>
         {TABS.map((tb) => {
