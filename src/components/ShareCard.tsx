@@ -151,7 +151,7 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   // Pie
   c.fillStyle = "#e8eef6";
   c.font = font(700, 34);
-  c.fillText("Registrá tus señales y mejorá tus resultados", W / 2, 1200);
+  c.fillText("Llevá tu diario de trading con VELTRIX", W / 2, 1200);
   c.fillStyle = "#2ec4f1";
   c.font = font(600, 30);
   c.fillText(SITE, W / 2, 1250);

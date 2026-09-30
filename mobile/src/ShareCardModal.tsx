@@ -90,7 +90,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
               <Stat label="MEJOR" value={s.closed ? `${fmtR(s.bestR)}R` : "—"} />
             </View>
 
-            <Text style={st.cta}>Registrá tus señales y mejorá tus resultados</Text>
+            <Text style={st.cta}>Llevá tu diario de trading con VELTRIX</Text>
             <Text style={st.site}>{SITE}</Text>
             <Text style={st.legal}>Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.</Text>
           </View>
