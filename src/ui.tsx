@@ -24,6 +24,12 @@ export const TriDown = ({ className }: IconProps) => (
   </svg>
 );
 
+export const IconTelegram = ({ className }: IconProps) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+    <path d="M21.5 3.3 2.6 10.6c-1 .4-1 1.2-.2 1.5l4.8 1.5 1.9 5.9c.2.6.4.8.9.8.4 0 .6-.2.9-.4l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.8c.3-1.2-.4-1.8-1.3-1.3ZM9 13.6l9.3-5.9c.4-.3.8-.1.5.2l-7.6 7-.3 3.1-1.9-4.4Z" />
+  </svg>
+);
+
 export const IconTarget = ({ className }: IconProps) => (
   <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
     <circle cx="8" cy="8" r="5.5" />

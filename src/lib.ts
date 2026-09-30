@@ -18,3 +18,5 @@ export function downloadCsv(trades: Trade[]) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+export const COMMUNITY_URL = "https://t.me/DMCRIPTOCOMU";

@@ -6,6 +6,7 @@ import { computeStats, equitySeries, fmtDateTime, fmtPct, fmtPrice, fmtR, monthl
 import type { Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
+import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
 
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
@@ -249,6 +250,21 @@ function Level({ label, value, color }: { label: string; value: string; color?: 
   );
 }
 
+export function CommunityCard() {
+  return (
+    <TouchableOpacity style={s.community} onPress={() => openLink(COMMUNITY_URL)} activeOpacity={0.85}>
+      <View style={s.communityIcon}>
+        <Text style={s.communityIconText}>✈</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={s.communityTitle}>Comunidad de VELTRIX</Text>
+        <Text style={s.communityText}>Sumate en Telegram: señales, ideas y otros traders.</Text>
+      </View>
+      <Text style={s.communityGo}>Unirme ›</Text>
+    </TouchableOpacity>
+  );
+}
+
 export function Empty({ title, text }: { title: string; text: string }) {
   return (
     <View style={{ alignItems: "center", paddingVertical: 48, paddingHorizontal: 24 }}>
@@ -269,6 +285,22 @@ const s = StyleSheet.create({
   pill: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   pillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold },
   pillText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  community: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderColor: colors.cyan + "66",
+    backgroundColor: colors.cyan + "14",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  communityIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.cyan + "26", alignItems: "center", justifyContent: "center" },
+  communityIconText: { color: colors.cyan, fontSize: 18 },
+  communityTitle: { color: colors.snow, fontWeight: "800", fontSize: 13.5 },
+  communityText: { color: colors.fog, fontSize: 11.5, marginTop: 2 },
+  communityGo: { color: colors.cyan, fontWeight: "800", fontSize: 12 },
   tileRow: { flexDirection: "row", gap: 8 },
   tile: { flex: 1, backgroundColor: "rgba(16,23,32,0.85)", borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 10, minHeight: 68 },
   tileLabel: { color: colors.fog, fontSize: 9, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase" },

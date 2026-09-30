@@ -6,6 +6,7 @@ import type { Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
 import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
+import { CommunityCard } from "../components";
 import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 
@@ -87,6 +88,8 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
+      <CommunityCard />
+
       <Text style={styles.sectionTitle}>CUENTA</Text>
       <View style={styles.card}>
         {email && <Text style={styles.email}>{email}</Text>}

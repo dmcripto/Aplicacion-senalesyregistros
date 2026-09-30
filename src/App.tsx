@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  COMMUNITY_URL,
   computeStats,
   cx,
   downloadCsv,
@@ -16,6 +17,7 @@ import {
   IconCheck,
   IconClipboard,
   IconDownload,
+  IconTelegram,
   Reveal,
   ShieldLogo,
   ToastStack,
@@ -473,6 +475,14 @@ function Dashboard({ userId }: { userId: string }) {
               </p>
             </div>
           </div>
+          <a
+            href={COMMUNITY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 rounded-md border border-cyan/45 bg-cyan/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-all hover:-translate-y-px hover:bg-cyan/20 active:scale-[0.98]"
+          >
+            <IconTelegram className="h-4 w-4" /> Comunidad
+          </a>
           <button
             onClick={exportCsv}
             disabled={!trades.length}
@@ -585,6 +595,9 @@ function Dashboard({ userId }: { userId: string }) {
             VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de
             inversión. Operar en mercados financieros implica riesgo de pérdida. Los resultados pasados no garantizan
             resultados futuros. No está afiliado a TradingView.{" "}
+            <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="text-cyan underline hover:text-snow">
+              Comunidad
+            </a>{" · "}
             <a href="/terms.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
               Términos
             </a>{" · "}
