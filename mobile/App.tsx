@@ -29,6 +29,10 @@ import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 import { LangProvider } from "./src/lang";
+import ErrorBoundary from "./src/ErrorBoundary";
+import { installGlobalErrorHandlers } from "./src/errorReport";
+
+installGlobalErrorHandlers();
 import { t } from "@dmcripto/core";
 
 const ONBOARDING_KEY = "veltrix_onboarding_v1";
@@ -176,6 +180,7 @@ export default function App() {
       <SafeAreaView style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" backgroundColor="#070b11" />
       <LangProvider>
+      <ErrorBoundary>
       {isRecovery ? (
         <ResetPasswordScreen
           onDone={(notice) => {
@@ -192,6 +197,7 @@ export default function App() {
       ) : (
         <LoginScreen initialNotice={authNotice} />
       )}
+      </ErrorBoundary>
       </LangProvider>
       </SafeAreaView>
     </View>
