@@ -25,3 +25,6 @@ verify_jwt = false
 
 [functions.exchanges]
 verify_jwt = false
+
+[functions.telegram-bot]
+verify_jwt = false

@@ -7,6 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { detectHit, fetchCandles, parseMarketSymbol, rOfHit } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
+import { esc, notifyTelegram } from "../_shared/telegram.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -97,6 +98,11 @@ Deno.serve(async () => {
     closed++;
 
     const r = rOfHit(trade, hit.outcome);
+    await notifyTelegram(supabase, trade.user_id, (lang) => {
+      const ok = hit.outcome === "TP";
+      const title = ok ? (lang === "en" ? "TP hit" : "TP alcanzado") : lang === "en" ? "SL hit" : "SL alcanzado";
+      return `${ok ? "✅" : "❌"} <b>${title}</b> · ${esc(trade.symbol)}\n${lang === "en" ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
+    });
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {
       // Idioma del usuario (columna opcional: si todavía no existe, se usa español).
