@@ -443,6 +443,72 @@ export function buildAlertMessage(o: AlertMessageOptions): string {
   return `VELTRIX|{{ticker}}|${o.direction === "LONG" ? "COMPRA" : "VENTA"}|${entry}|${tp}|${sl}`;
 }
 
+
+// ─── Calculadora de riesgo ──────────────────────────────────────────────────
+
+export interface PositionInput {
+  capital: number;
+  riskPct: number; // % del capital que se acepta perder si toca el SL
+  entry: number;
+  sl: number;
+  tp?: number;
+  leverage?: number;
+  feePct?: number; // comisión por operación (entrada y salida), en %
+}
+
+export interface PositionResult {
+  riskAmount: number; // dinero que se arriesga
+  stopDistance: number;
+  stopPct: number; // distancia al SL en % del precio de entrada
+  units: number; // cantidad del activo
+  notional: number; // valor de la posición
+  margin: number | null; // margen necesario (con apalancamiento)
+  fees: number; // comisiones estimadas (entrada + salida)
+  profitAtTp: number | null;
+  rr: number | null;
+  direction: Direction;
+  warnings: string[];
+}
+
+/** Tamaño de posición para arriesgar un % fijo del capital. Devuelve null si faltan datos válidos. */
+export function calcPosition(i: PositionInput): PositionResult | null {
+  const { capital, riskPct, entry, sl } = i;
+  if (![capital, riskPct, entry, sl].every((n) => Number.isFinite(n) && n > 0)) return null;
+  const stopDistance = Math.abs(entry - sl);
+  if (stopDistance <= 0) return null;
+
+  const direction: Direction = sl < entry ? "LONG" : "SHORT";
+  const riskAmount = (capital * riskPct) / 100;
+  const feeRate = Number.isFinite(i.feePct) && (i.feePct ?? 0) > 0 ? (i.feePct as number) / 100 : 0;
+  // Se descuentan las comisiones del riesgo para que el peor caso siga siendo el % elegido.
+  const units = riskAmount / (stopDistance + entry * feeRate * 2);
+  const notional = units * entry;
+  const leverage = Number.isFinite(i.leverage) && (i.leverage ?? 0) > 0 ? (i.leverage as number) : null;
+  const margin = leverage ? notional / leverage : null;
+  const fees = notional * feeRate * 2;
+
+  const tp = i.tp != null && Number.isFinite(i.tp) && i.tp > 0 ? i.tp : null;
+  const validTp = tp != null && (direction === "LONG" ? tp > entry : tp < entry);
+  const profitAtTp = validTp ? units * Math.abs(tp! - entry) - fees : null;
+  const rr = validTp ? Math.abs(tp! - entry) / stopDistance : null;
+
+  const warnings: string[] = [];
+  if (tp != null && !validTp) warnings.push("El TP está del lado equivocado: en una " + (direction === "LONG" ? "compra debe estar arriba" : "venta debe estar abajo") + " de la entrada.");
+  if (riskPct > 5) warnings.push("Arriesgás más del 5 % por operación: es un riesgo muy alto.");
+  else if (riskPct > 2) warnings.push("Lo habitual es arriesgar entre 0,5 % y 2 % por operación.");
+  const needed = margin ?? notional;
+  if (needed > capital) {
+    warnings.push(
+      margin
+        ? "Necesitás más margen (" + margin.toFixed(2) + ") que tu capital. Bajá el riesgo, acercá el stop o subí el apalancamiento."
+        : "La posición vale más que tu capital: solo podés hacerla con apalancamiento.",
+    );
+  }
+  if (rr != null && rr < 1) warnings.push("La relación riesgo/beneficio es menor a 1:1.");
+
+  return { riskAmount, stopDistance, stopPct: (stopDistance / entry) * 100, units, notional, margin, fees, profitAtTp, rr, direction, warnings };
+}
+
 // ─── Formateo ───────────────────────────────────────────────────────────────
 
 export const fmtPrice = (n: number) =>
@@ -548,3 +614,9 @@ export function sampleTrades(): Trade[] {
 }
 
 export const EXAMPLE_ALERT = "VELTRIX|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";
+
+export const fmtQty = (n: number) =>
+  n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : n.toLocaleString("en-US", { maximumFractionDigits: 8 });
+
+export const fmtMoney = (n: number) =>
+  (n < 0 ? "−" : "") + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

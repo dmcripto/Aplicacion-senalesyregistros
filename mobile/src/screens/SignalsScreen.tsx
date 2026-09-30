@@ -9,11 +9,13 @@ export default function SignalsScreen({
   loading,
   refreshing,
   refresh,
+  onCalculate,
 }: {
   trades: Trade[];
   loading: boolean;
   refreshing: boolean;
   refresh: () => void;
+  onCalculate?: (t: Trade) => void;
 }) {
   const [filter, setFilter] = useState<"open" | "all">("open");
   const data = filter === "open" ? trades.filter((t) => t.outcome === "ABIERTA") : trades.slice(0, 30);
@@ -46,7 +48,7 @@ export default function SignalsScreen({
           />
         ) : null
       }
-      renderItem={({ item }) => <TradeCard trade={item} />}
+      renderItem={({ item }) => <TradeCard trade={item} onCalculate={onCalculate} />}
     />
   );
 }

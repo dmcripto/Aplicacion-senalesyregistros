@@ -48,6 +48,7 @@ import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
 import MonthlySummary from "./components/MonthlySummary";
 import AlertBuilder from "./components/AlertBuilder";
+import RiskCalculator from "./components/RiskCalculator";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -580,7 +581,7 @@ function Dashboard({ userId }: { userId: string }) {
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="min-w-0 space-y-5 max-lg:contents">
-            <Reveal delay={70} className="max-lg:order-3">
+            <Reveal delay={70} className="max-lg:order-4">
               <div className="overflow-hidden rounded-lg border border-line bg-panel">
                 <EquityChart trades={trades} />
               </div>
@@ -608,11 +609,14 @@ function Dashboard({ userId }: { userId: string }) {
             <Reveal delay={110} className="max-lg:order-2">
               <TradeForm onAdd={addTrades} notify={notify} />
             </Reveal>
-            <Reveal delay={150} className="max-lg:order-5">
+            <Reveal delay={130} className="max-lg:order-3">
+              <RiskCalculator notify={notify} />
+            </Reveal>
+            <Reveal delay={150} className="max-lg:order-6">
               <WebhookCard userId={userId} notify={notify} />
             </Reveal>
             {trades.length > 0 && (
-              <Reveal delay={180} className="max-lg:order-4">
+              <Reveal delay={180} className="max-lg:order-5">
                 <MonthlySummary trades={trades} />
               </Reveal>
             )}

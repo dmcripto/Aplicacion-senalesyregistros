@@ -20,16 +20,19 @@ import SettingsScreen from "./src/screens/SettingsScreen";
 import SignalsScreen from "./src/screens/SignalsScreen";
 import AddScreen from "./src/screens/AddScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
+import RiskScreen from "./src/screens/RiskScreen";
+import type { Trade } from "@dmcripto/core";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 
 const ONBOARDING_KEY = "veltrix_onboarding_v1";
 
-type Tab = "signals" | "journal" | "add" | "settings";
+type Tab = "signals" | "journal" | "add" | "risk" | "settings";
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "signals", label: "Señales" },
   { key: "journal", label: "Diario" },
   { key: "add", label: "Registrar" },
+  { key: "risk", label: "Riesgo" },
   { key: "settings", label: "Ajustes" },
 ];
 
@@ -37,6 +40,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const [tab, setTab] = useState<Tab>("signals");
   const { trades, loading, refreshing, refresh } = useTrades(userId);
   const open = trades.filter((t) => t.outcome === "ABIERTA").length;
+  const [calcTrade, setCalcTrade] = useState<Trade | null>(null);
   const [onboarding, setOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -79,9 +83,19 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         </View>
       </View>
       <View style={{ flex: 1 }}>
-        {tab === "signals" && <SignalsScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
+        {tab === "signals" && <SignalsScreen
+            trades={trades}
+            loading={loading}
+            refreshing={refreshing}
+            refresh={refresh}
+            onCalculate={(t) => {
+              setCalcTrade(t);
+              setTab("risk");
+            }}
+          />}
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
         {tab === "add" && <AddScreen userId={userId} onAdded={() => { refresh(); setTab("signals"); }} />}
+        {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
         {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} />}
       </View>
       <View style={styles.tabBar}>
