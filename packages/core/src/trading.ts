@@ -592,6 +592,46 @@ export function dailyStatus(trades: Trade[], limits: DailyLimits, now = new Date
 }
 
 
+// ─── Capital y dinero ───────────────────────────────────────────────────────
+
+export interface MoneySettings {
+  capital: number | null; // capital inicial
+  riskPct: number | null; // % del capital que vale 1R
+  currency: string; // "USD", "EUR", "ARS"…
+}
+
+export const NO_MONEY: MoneySettings = { capital: null, riskPct: null, currency: "USD" };
+
+/** Cuánto dinero vale 1R (riesgo fijo por operación sobre el capital inicial). */
+export function rValueMoney(m: MoneySettings): number | null {
+  return m.capital && m.riskPct && m.capital > 0 && m.riskPct > 0 ? (m.capital * m.riskPct) / 100 : null;
+}
+
+const SYMBOLS: Record<string, string> = { USD: "$", USDT: "$", USDC: "$", EUR: "€", GBP: "£" };
+
+/** "+$120.00" · "−$45.50" · "+ARS 1,200.00" (con signo opcional). */
+export function fmtCurrency(n: number, currency: string, signed = true): string {
+  const sym = SYMBOLS[currency.toUpperCase()] ?? currency.toUpperCase() + " ";
+  const body = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sign = n < 0 ? "−" : signed && n > 0 ? "+" : "";
+  return `${sign}${sym}${body}`;
+}
+
+export interface BalanceInfo {
+  unit: number; // valor de 1R
+  pnl: number; // resultado acumulado en dinero
+  balance: number; // capital + resultado
+  returnPct: number; // rendimiento sobre el capital inicial
+}
+
+/** Resultado en dinero de las operaciones cerradas; null si no hay capital y riesgo configurados. */
+export function balanceInfo(trades: Trade[], m: MoneySettings): BalanceInfo | null {
+  const unit = rValueMoney(m);
+  if (unit == null || !m.capital) return null;
+  const pnl = computeStats(trades).netR * unit;
+  return { unit, pnl, balance: m.capital + pnl, returnPct: (pnl / m.capital) * 100 };
+}
+
 // ─── Resumen para compartir ─────────────────────────────────────────────────
 
 export type SharePeriod = "week" | "month" | "all";

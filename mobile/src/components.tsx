@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
 import type { DailyStatus, GroupRow, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
+import { useMoney } from "./money";
 
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
 
@@ -30,6 +31,8 @@ export function StatsGrid({ trades }: { trades: Trade[] }) {
   const st = useMemo(() => computeStats(trades), [trades]);
   const curve = useMemo(() => [0, ...equitySeries(trades).slice(-40).map((p) => p.cum)], [trades]);
   const accent = st.netR > 0 ? colors.bull : st.netR < 0 ? colors.bear : colors.fog;
+  const { money } = useMoney();
+  const bal = useMemo(() => balanceInfo(trades, money), [trades, money]);
   return (
     <View style={{ gap: 8, marginBottom: 16 }}>
       <View style={[s.hero, { borderColor: st.netR === 0 ? colors.line : accent + "55" }]}>
@@ -44,6 +47,12 @@ export function StatsGrid({ trades }: { trades: Trade[] }) {
         <Text style={s.tileSub}>
           {st.cerradas} cerradas · {st.abiertas} abiertas · {st.ganadas}G / {st.perdidas}P
         </Text>
+        {bal && (
+          <Text style={[s.heroMoney, { color: accent }]}>
+            {fmtCurrency(bal.pnl, money.currency)} · balance {fmtCurrency(bal.balance, money.currency, false)}
+            {bal.returnPct != null ? ` (${bal.returnPct >= 0 ? "+" : ""}${bal.returnPct.toFixed(1)}%)` : ""}
+          </Text>
+        )}
         <View style={{ marginTop: 10 }}>
           <AreaChart values={curve} color={accent === colors.fog ? colors.cyan : accent} />
         </View>
@@ -96,6 +105,7 @@ export function EquityBars({ trades }: { trades: Trade[] }) {
 
 export function MonthlyList({ trades }: { trades: Trade[] }) {
   const rows = useMemo(() => monthlySummary(trades), [trades]);
+  const { money, unit } = useMoney();
   if (!rows.length) return null;
   return (
     <View style={s.section}>
@@ -105,7 +115,12 @@ export function MonthlyList({ trades }: { trades: Trade[] }) {
           <Text style={[s.monthLabel, { textTransform: "capitalize" }]}>{r.label}</Text>
           <Text style={s.monthCell}>{r.ops} ops</Text>
           <Text style={s.monthCell}>{r.cerradas ? `${Math.round(r.winRate)}%` : "—"}</Text>
-          <Text style={[s.monthR, { color: rColor(r.netR) }]}>{r.cerradas ? `${fmtR(r.netR)}R` : "—"}</Text>
+          <View style={{ alignItems: "flex-end", minWidth: 74 }}>
+            <Text style={[s.monthR, { color: rColor(r.netR), flex: 0 }]}>{r.cerradas ? `${fmtR(r.netR)}R` : "—"}</Text>
+            {unit && r.cerradas ? (
+              <Text style={[s.monthMoney, { color: rColor(r.netR) }]}>{fmtCurrency(r.netR * unit, money.currency)}</Text>
+            ) : null}
+          </View>
         </View>
       ))}
     </View>
@@ -355,6 +370,7 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
   const abierta = trade.outcome === "ABIERTA";
   const r = resultR(trade);
   const long = trade.direction === "LONG";
+  const { money, unit } = useMoney();
 
   const run = (fn: () => Promise<void>, msg: string) => fn().catch((e) => fail(e, msg));
   const confirmDelete = () =>
@@ -388,7 +404,9 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
           <View style={[s.pill, { borderColor: abierta ? colors.gold + "88" : rColor(r ?? 0) + "88", backgroundColor: (abierta ? colors.gold : rColor(r ?? 0)) + "1a" }]}>
             {abierta && <View style={s.pillDot} />}
             <Text style={[s.pillText, { color: abierta ? colors.gold : rColor(r ?? 0) }]}>
-              {abierta ? "ABIERTA" : `${trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} ${fmtR(r ?? 0)}R`}
+              {abierta
+                ? "ABIERTA"
+                : `${trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} ${fmtR(r ?? 0)}R${unit ? ` · ${fmtCurrency((r ?? 0) * unit, money.currency)}` : ""}`}
             </Text>
           </View>
         </View>
@@ -496,6 +514,7 @@ export function Empty({ title, text }: { title: string; text: string }) {
 const s = StyleSheet.create({
   hero: { borderWidth: 1, borderRadius: 14, padding: 16, overflow: "hidden", backgroundColor: "rgba(16,23,32,0.85)" },
   heroLabel: { color: colors.fog, fontSize: 10, fontWeight: "800", letterSpacing: 2 },
+  heroMoney: { fontSize: 13, fontWeight: "800", marginTop: 6 },
   heroValue: { fontSize: 44, fontWeight: "900", marginTop: 2, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 18 },
   stripe: { width: 4 },
   arrow: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: "center", justifyContent: "center" },
@@ -550,6 +569,7 @@ const s = StyleSheet.create({
   monthRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.line },
   monthLabel: { flex: 1.4, color: colors.snow, fontWeight: "600", fontSize: 12.5 },
   monthCell: { flex: 1, color: colors.fog, fontSize: 12, textAlign: "right" },
+  monthMoney: { fontSize: 10.5, fontWeight: "700", opacity: 0.85 },
   monthR: { flex: 1, fontWeight: "800", fontSize: 12.5, textAlign: "right" },
   card: { flexDirection: "row", backgroundColor: "rgba(16,23,32,0.9)", borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: "hidden" },
   cardTop: { flexDirection: "row", alignItems: "center", gap: 10 },

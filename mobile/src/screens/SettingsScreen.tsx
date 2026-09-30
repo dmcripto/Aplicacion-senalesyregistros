@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { tradesToCsv } from "@dmcripto/core";
-import type { DailyLimits, DailyStatus, Trade } from "@dmcripto/core";
+import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
+import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
 import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
@@ -11,6 +11,7 @@ import { sendTestPush, setupPush } from "../push";
 import type { PushStatus } from "../push";
 import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
+import { useMoney } from "../money";
 
 export default function SettingsScreen({
   userId,
@@ -19,6 +20,7 @@ export default function SettingsScreen({
   limits,
   limitStatus,
   onSaveLimits,
+  onSaveMoney,
 }: {
   userId: string;
   email?: string;
@@ -26,6 +28,7 @@ export default function SettingsScreen({
   limits: DailyLimits;
   limitStatus: DailyStatus;
   onSaveLimits: (l: DailyLimits) => Promise<void>;
+  onSaveMoney: (m: MoneySettings) => Promise<void>;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +50,28 @@ export default function SettingsScreen({
     onSaveLimits({ maxLossR: positive(lossStr), maxTrades: positive(tradesStr) ? Math.round(positive(tradesStr)!) : null })
       .then(() => Alert.alert("Listo", "Límites guardados."))
       .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudieron guardar los límites."));
+
+  const { money, unit } = useMoney();
+  const [capStr, setCapStr] = useState("");
+  const [riskStr, setRiskStr] = useState("");
+  const [curStr, setCurStr] = useState("USD");
+  useEffect(() => {
+    setCapStr(money.capital == null ? "" : String(money.capital));
+    setRiskStr(money.riskPct == null ? "" : String(money.riskPct));
+    setCurStr(money.currency);
+  }, [money]);
+  const bal = balanceInfo(trades, money);
+  const saveMoneyNow = () => {
+    const risk = positive(riskStr);
+    if (risk != null && risk > 100) return Alert.alert("Revisá el riesgo", "El riesgo por operación no puede pasar de 100 %.");
+    return onSaveMoney({
+      capital: positive(capStr),
+      riskPct: risk,
+      currency: curStr.trim().toUpperCase().slice(0, 5) || "USD",
+    })
+      .then(() => Alert.alert("Listo", "Capital guardado. Ahora ves tus resultados también en dinero."))
+      .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo guardar."));
+  };
 
   const [push, setPush] = useState<PushStatus | null>(null);
   const [pushNote, setPushNote] = useState<string | null>(null);
@@ -150,6 +175,36 @@ export default function SettingsScreen({
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
       <CommunityCard />
+
+      <Text style={styles.sectionTitle}>CAPITAL Y DINERO</Text>
+      <View style={styles.card}>
+        {bal ? (
+          <Text style={[styles.hint, { color: colors.snow, fontWeight: "800" }]}>
+            Balance {fmtCurrency(bal.balance, money.currency, false)} · resultado {fmtCurrency(bal.pnl, money.currency)}
+          </Text>
+        ) : (
+          <Text style={styles.hint}>Cargá tu capital y el % que arriesgás por operación para ver tus resultados en dinero, no solo en R.</Text>
+        )}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 2, gap: 4 }}>
+            <Text style={styles.fieldLabel}>CAPITAL</Text>
+            <TextInput value={capStr} onChangeText={setCapStr} keyboardType="decimal-pad" placeholder="ej: 1000" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+          </View>
+          <View style={{ flex: 1.3, gap: 4 }}>
+            <Text style={styles.fieldLabel}>RIESGO (%)</Text>
+            <TextInput value={riskStr} onChangeText={setRiskStr} keyboardType="decimal-pad" placeholder="ej: 1" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+          </View>
+          <View style={{ flex: 1.2, gap: 4 }}>
+            <Text style={styles.fieldLabel}>MONEDA</Text>
+            <TextInput value={curStr} onChangeText={setCurStr} autoCapitalize="characters" maxLength={5} placeholder="USD" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+          </View>
+        </View>
+        {unit ? <Text style={styles.hint}>1R equivale a {fmtCurrency(unit, curStr.trim().toUpperCase() || money.currency, false)}.</Text> : null}
+        <TouchableOpacity style={styles.copyBtn} onPress={saveMoneyNow}>
+          <Text style={styles.copyText}>Guardar capital</Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>Es una estimación: multiplica tus R por lo que arriesgás. Las tarjetas para compartir siguen mostrando solo R.</Text>
+      </View>
 
       <Text style={styles.sectionTitle}>LÍMITES DIARIOS</Text>
       <View style={styles.card}>

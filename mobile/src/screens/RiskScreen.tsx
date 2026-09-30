@@ -5,6 +5,7 @@ import * as Clipboard from "expo-clipboard";
 import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
+import { useMoney } from "../money";
 
 const STORE_KEY = "veltrix_risk_settings_v1";
 
@@ -23,6 +24,13 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   const [tp, setTp] = useState("");
   const [symbol, setSymbol] = useState("");
   const [copied, setCopied] = useState(false);
+  const { money } = useMoney();
+
+  // Si configuraste tu capital en Ajustes, la calculadora lo usa de base.
+  useEffect(() => {
+    if (money.capital != null) setCapital(String(money.capital));
+    if (money.riskPct != null) setRiskPct(String(money.riskPct));
+  }, [money.capital, money.riskPct]);
 
   useEffect(() => {
     AsyncStorage.getItem(STORE_KEY)

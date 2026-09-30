@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
@@ -22,8 +22,10 @@ import AddScreen from "./src/screens/AddScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import RiskScreen from "./src/screens/RiskScreen";
 import { dailyStatus } from "@dmcripto/core";
-import type { DailyLimits, Trade } from "@dmcripto/core";
-import { fetchLimits, saveLimits } from "./src/tradesApi";
+import { NO_MONEY } from "@dmcripto/core";
+import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
+import { fetchLimits, fetchMoney, saveLimits, saveMoney } from "./src/tradesApi";
+import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 
@@ -52,6 +54,18 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const persistLimits = async (l: DailyLimits) => {
     await saveLimits(userId, l);
     setLimits(l);
+  };
+
+  const [money, setMoney] = useState<MoneySettings>(NO_MONEY);
+  const moneyCtx = useMemo(() => makeMoneyCtx(money), [money]);
+
+  useEffect(() => {
+    fetchMoney(userId).then(setMoney).catch(() => {});
+  }, [userId]);
+
+  const persistMoney = async (m: MoneySettings) => {
+    await saveMoney(userId, m);
+    setMoney(m);
   };
 
   const [calcTrade, setCalcTrade] = useState<Trade | null>(null);
@@ -85,6 +99,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   if (onboarding) return <OnboardingScreen userId={userId} onDone={finishOnboarding} />;
 
   return (
+    <MoneyContext.Provider value={moneyCtx}>
     <View style={{ flex: 1 }}>
       <View style={styles.header}>
         <Logo size={30} />
@@ -111,7 +126,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
         {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); setTab("signals"); }} />}
         {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
-        {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} />}
+        {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} onSaveMoney={persistMoney} />}
       </View>
       <View style={styles.tabBar}>
         {TABS.map((tb) => {
@@ -133,6 +148,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         })}
       </View>
     </View>
+    </MoneyContext.Provider>
   );
 }
 
