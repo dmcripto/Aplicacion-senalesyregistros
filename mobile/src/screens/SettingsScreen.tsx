@@ -7,6 +7,8 @@ import { supabase } from "../supabaseClient";
 import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
+import { sendTestPush, setupPush } from "../push";
+import type { PushStatus } from "../push";
 import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 
@@ -15,6 +17,34 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
+  const [push, setPush] = useState<PushStatus | null>(null);
+  const [pushNote, setPushNote] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+
+  const checkPush = async () => {
+    setPushBusy(true);
+    setPushNote(null);
+    try {
+      setPush(await setupPush(userId));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const testPush = async () => {
+    if (!push?.token) return;
+    setPushBusy(true);
+    try {
+      setPushNote(await sendTestPush(push.token));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    checkPush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
@@ -89,6 +119,26 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
       <CommunityCard />
+
+      <Text style={styles.sectionTitle}>NOTIFICACIONES</Text>
+      <View style={styles.card}>
+        <Text style={[styles.hint, { color: push ? (push.ok ? colors.bull : colors.bear) : colors.dim }]}>
+          {push ? push.message : "Revisando…"}
+        </Text>
+        {pushNote && <Text style={styles.hint}>{pushNote}</Text>}
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity style={[styles.signOut, { flex: 1 }]} onPress={checkPush} disabled={pushBusy}>
+            <Text style={[styles.signOutText, { color: colors.fog }]}>Revisar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.signOut, { flex: 1, opacity: push?.token ? 1 : 0.4 }]}
+            onPress={testPush}
+            disabled={pushBusy || !push?.token}
+          >
+            <Text style={[styles.signOutText, { color: colors.gold }]}>Enviar prueba</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <Text style={styles.sectionTitle}>CUENTA</Text>
       <View style={styles.card}>

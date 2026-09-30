@@ -312,6 +312,63 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   );
 }
 
+// ─── Bienvenida ─────────────────────────────────────────────────────────────
+
+const WELCOME_KEY = "veltrix_welcome_v1";
+
+function WelcomeCard() {
+  const [visible, setVisible] = useState(() => {
+    try {
+      return localStorage.getItem(WELCOME_KEY) !== "done";
+    } catch {
+      return false;
+    }
+  });
+  if (!visible) return null;
+  const close = () => {
+    setVisible(false);
+    try {
+      localStorage.setItem(WELCOME_KEY, "done");
+    } catch {
+      /* sin almacenamiento */
+    }
+  };
+  const steps = [
+    ["1", "Cargá tu primera señal", 'Pegá un mensaje de Telegram o WhatsApp en "Registrar operación", o cargala a mano.'],
+    ["2", "Conectá tu fuente", 'Abajo, en "Conectá tu fuente de señales", copiá tu URL personal para TradingView u otras herramientas.'],
+    ["3", "Mirá tus resultados", "VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático."],
+  ];
+  return (
+    <section className="rounded-lg border border-gold/40 bg-golddeep/30 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">BIENVENIDO A VELTRIX</h2>
+          <p className="text-[12px] text-fog">Empezá en tres pasos.</p>
+        </div>
+        <button
+          onClick={close}
+          className="shrink-0 rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+        >
+          Entendido
+        </button>
+      </div>
+      <ol className="mt-4 grid gap-3 md:grid-cols-3">
+        {steps.map(([n, title, text]) => (
+          <li key={n} className="flex gap-3 rounded-md border border-line bg-panel/70 p-3.5">
+            <span className="num flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold text-[13px] font-bold text-ink">
+              {n}
+            </span>
+            <span>
+              <b className="block text-[13px] text-snow">{title}</b>
+              <span className="text-[12px] leading-relaxed text-fog">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 // ─── App ────────────────────────────────────────────────────────────────────
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -516,6 +573,7 @@ function Dashboard({ userId }: { userId: string }) {
 
       {/* Contenido */}
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-5 lg:px-8">
+        <WelcomeCard />
         <Reveal>
           <StatsBand trades={trades} />
         </Reveal>
