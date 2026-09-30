@@ -160,7 +160,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         <p className="num mt-1.5 text-[11px] text-dim">por operación cerrada</p>
       </div>
 
-      <div className="col-span-2 bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:col-span-1 md:py-5">
+      <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">Operaciones</p>
         <p className="num mt-1 text-3xl font-bold leading-none text-snow">{stats.total}</p>
         <p className="num mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
@@ -178,6 +178,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [regenArmed, setRegenArmed] = useState(false);
+  const [open, setOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 1024px)").matches);
   const [autoClose, setAutoCloseState] = useState(true);
 
   useEffect(() => {
@@ -234,12 +235,23 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
   return (
     <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">CONECTÁ TU FUENTE DE SEÑALES</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">
-          Enviá tus señales a esta URL, vengan de donde vengan
-        </p>
-      </header>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
+      >
+        <span>
+          <span className="block font-display text-2xl font-bold tracking-wide text-snow">CONECTÁ TU FUENTE DE SEÑALES</span>
+          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">
+            Enviá tus señales a esta URL, vengan de donde vengan
+          </span>
+        </span>
+        <span className="shrink-0 text-lg text-gold" aria-hidden>
+          {open ? "▾" : "▸"}
+        </span>
+      </button>
+      {open && (
       <div className="space-y-3 p-5">
         {error && <p className="text-[12px] text-bear">{error}</p>}
         {url && (
@@ -295,6 +307,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             </button>
           ))}
       </div>
+      )}
     </section>
   );
 }
@@ -508,13 +521,13 @@ function Dashboard({ userId }: { userId: string }) {
         </Reveal>
 
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="min-w-0 space-y-5">
-            <Reveal delay={70}>
+          <div className="min-w-0 space-y-5 max-lg:contents">
+            <Reveal delay={70} className="max-lg:order-3">
               <div className="overflow-hidden rounded-lg border border-line bg-panel">
                 <EquityChart trades={trades} />
               </div>
             </Reveal>
-            <Reveal delay={140}>
+            <Reveal delay={140} className="max-lg:order-1">
               {loading ? (
                 <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
                   Cargando diario…
@@ -533,15 +546,15 @@ function Dashboard({ userId }: { userId: string }) {
             </Reveal>
           </div>
 
-          <aside className="space-y-5">
-            <Reveal delay={110}>
+          <aside className="space-y-5 max-lg:contents">
+            <Reveal delay={110} className="max-lg:order-2">
               <TradeForm onAdd={addTrades} notify={notify} />
             </Reveal>
-            <Reveal delay={150}>
+            <Reveal delay={150} className="max-lg:order-5">
               <WebhookCard userId={userId} notify={notify} />
             </Reveal>
             {trades.length > 0 && (
-              <Reveal delay={180}>
+              <Reveal delay={180} className="max-lg:order-4">
                 <MonthlySummary trades={trades} />
               </Reveal>
             )}
