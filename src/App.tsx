@@ -56,6 +56,7 @@ import AlertBuilder from "./components/AlertBuilder";
 import RiskCalculator from "./components/RiskCalculator";
 import TagStats from "./components/TagStats";
 import Analysis from "./components/Analysis";
+import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
@@ -387,6 +388,7 @@ function Dashboard({ userId }: { userId: string }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
+  const [sharing, setSharing] = useState(false);
   const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
   const limitStatus = useMemo(() => dailyStatus(trades, limits), [trades, limits]);
 
@@ -600,6 +602,13 @@ function Dashboard({ userId }: { userId: string }) {
             <IconTelegram className="h-4 w-4" /> Comunidad
           </a>
           <button
+            onClick={() => setSharing(true)}
+            disabled={!trades.length}
+            className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+          >
+            ↗ Compartir
+          </button>
+          <button
             onClick={exportCsv}
             disabled={!trades.length}
             className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
@@ -744,6 +753,7 @@ function Dashboard({ userId }: { userId: string }) {
         </div>
       </footer>
 
+      {sharing && <ShareCard trades={trades} onClose={() => setSharing(false)} notify={notify} />}
       {notesTrade && (
         <NotesModal trade={notesTrade} onSave={saveNotes} onCancel={() => setNotesTrade(null)} />
       )}

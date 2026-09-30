@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } fr
 import { resultR } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { AnalysisBlock, Empty, EquityBars, MonthlyList, StatsGrid, TagList, TradeCard } from "../components";
+import ShareCardModal from "../ShareCardModal";
 import { colors } from "../theme";
 
 type Filter = "all" | "won" | "lost";
@@ -20,6 +21,7 @@ export default function JournalScreen({
   refresh: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [sharing, setSharing] = useState(false);
   const closed = trades.filter((t) => t.outcome !== "ABIERTA");
   const data = closed.filter((t) => {
     const r = resultR(t) ?? 0;
@@ -27,6 +29,8 @@ export default function JournalScreen({
   });
 
   return (
+    <>
+    <ShareCardModal visible={sharing} trades={trades} onClose={() => setSharing(false)} />
     <FlatList
       style={{ flex: 1 }}
       data={data}
@@ -36,6 +40,9 @@ export default function JournalScreen({
       ListHeaderComponent={
         <>
           <StatsGrid trades={trades} />
+          <TouchableOpacity style={s.shareBtn} onPress={() => setSharing(true)} disabled={!closed.length}>
+            <Text style={s.shareText}>↗ Compartir mi resultado</Text>
+          </TouchableOpacity>
           <EquityBars trades={trades} />
           <MonthlyList trades={trades} />
           <AnalysisBlock trades={trades} />
@@ -55,10 +62,13 @@ export default function JournalScreen({
       }
       renderItem={({ item }) => <TradeCard trade={item} />}
     />
+    </>
   );
 }
 
 const s = StyleSheet.create({
+  shareBtn: { borderWidth: 1, borderColor: colors.bull + "66", backgroundColor: colors.bull + "14", borderRadius: 12, paddingVertical: 12, alignItems: "center", marginBottom: 16 },
+  shareText: { color: colors.bull, fontWeight: "900", fontSize: 13.5, letterSpacing: 0.3 },
   title: { color: colors.fog, fontSize: 10, fontWeight: "700", letterSpacing: 1.5, marginBottom: 8 },
   chips: { flexDirection: "row", gap: 8, marginBottom: 12 },
   chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 14 },

@@ -592,6 +592,39 @@ export function dailyStatus(trades: Trade[], limits: DailyLimits, now = new Date
 }
 
 
+// ─── Resumen para compartir ─────────────────────────────────────────────────
+
+export type SharePeriod = "week" | "month" | "all";
+
+export interface ResultSummary {
+  period: SharePeriod;
+  label: string;
+  closed: number;
+  netR: number;
+  winRate: number;
+  pf: number | null;
+  bestR: number;
+  curve: number[]; // R acumulado (empieza en 0)
+}
+
+/** Resumen de resultados (solo en R, sin montos de dinero) de un período, listo para una tarjeta. */
+export function summarize(trades: Trade[], period: SharePeriod, now = new Date()): ResultSummary {
+  let from = 0;
+  let label = "Todo el historial";
+  if (period === "week") {
+    from = now.getTime() - 7 * 86_400_000;
+    label = "Últimos 7 días";
+  } else if (period === "month") {
+    from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    label = now.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+    label = label.charAt(0).toUpperCase() + label.slice(1);
+  }
+  const inPeriod = trades.filter((t) => t.outcome !== "ABIERTA" && new Date(t.closedAt ?? t.date).getTime() >= from);
+  const st = computeStats(inPeriod);
+  const curve = [0, ...equitySeries(inPeriod).map((p) => p.cum)];
+  return { period, label, closed: st.cerradas, netR: st.netR, winRate: st.winRate, pf: st.pf, bestR: st.bestR, curve };
+}
+
 // ─── Etiquetas ──────────────────────────────────────────────────────────────
 
 export const PRESET_TAGS: Array<{ group: string; tags: string[] }> = [
