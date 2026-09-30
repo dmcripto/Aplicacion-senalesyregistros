@@ -14,7 +14,6 @@ const PERIODS: Array<[SharePeriod, string]> = [
   ["month", "Este mes"],
   ["all", "Todo"],
 ];
-const SITE = "aplicacion-senalesyregistros.vercel.app";
 
 export default function ShareCardModal({ visible, trades, onClose }: { visible: boolean; trades: Trade[]; onClose: () => void }) {
   const [period, setPeriod] = useState<SharePeriod>("month");
@@ -92,7 +91,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             </View>
 
             <Text style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
-            <Text style={st.site}>{SITE}</Text>
+            <Text style={st.site}>{t("Próximamente en Google Play")}</Text>
             <Text style={st.legal}>{t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.")}</Text>
           </View>
 
