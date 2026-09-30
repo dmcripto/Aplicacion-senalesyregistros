@@ -1,9 +1,11 @@
 import { useMemo } from "react";
-import { cx, fmtR, monthlySummary } from "../lib";
+import { cx, fmtCurrency, fmtR, monthlySummary } from "../lib";
+import { useMoney } from "../money";
 import type { Trade } from "../lib";
 
 export default function MonthlySummary({ trades }: { trades: Trade[] }) {
   const rows = useMemo(() => monthlySummary(trades), [trades]);
+  const { money, unit } = useMoney();
 
   const totals = useMemo(() => {
     const ops = rows.reduce((a, r) => a + r.ops, 0);
@@ -56,6 +58,7 @@ export default function MonthlySummary({ trades }: { trades: Trade[] }) {
                 )}
               >
                 {r.cerradas ? `${fmtR(r.netR)}R` : "—"}
+                {unit && r.cerradas ? <span className="block text-[10px] font-semibold opacity-80">{fmtCurrency(r.netR * unit, money.currency)}</span> : null}
               </span>
             </li>
           ))}
@@ -72,6 +75,7 @@ export default function MonthlySummary({ trades }: { trades: Trade[] }) {
             )}
           >
             {fmtR(totals.netR)}R
+            {unit ? <span className="ml-2 text-sm opacity-80">{fmtCurrency(totals.netR * unit, money.currency)}</span> : null}
           </span>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtPrice, fmtR, resultR, riskOf } from "./lib";
+import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtCurrency, fmtPrice, fmtR, resultR, riskOf } from "./lib";
+import { useMoney } from "./money";
 import type { Trade } from "./lib";
 import { useInView } from "./hooks";
 
@@ -140,6 +141,7 @@ export const DirBadge = ({ dir }: { dir: Trade["direction"] }) => (
 );
 
 export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
+  const { money, unit } = useMoney();
   if (trade.outcome === "ABIERTA") {
     return (
       <span className="num inline-flex items-center gap-1.5 rounded bg-gold/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-gold" style={{ boxShadow: "inset 0 0 0 1px rgba(46,196,241,.4)" }}>
@@ -153,12 +155,14 @@ export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
   return (
     <span
       className={cx(
-        "num inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-[11px] font-bold tracking-wide",
+        "num inline-flex flex-wrap items-center gap-x-1.5 whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-bold tracking-wide",
         pos ? "bg-bull/12 text-bull" : "bg-bear/12 text-bear",
       )}
       style={{ boxShadow: `inset 0 0 0 1px ${pos ? "rgba(22,217,138,.35)" : "rgba(255,77,103,.35)"}` }}
+      title={unit ? fmtCurrency(r * unit, money.currency) : undefined}
     >
-      {trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} · {fmtR(r)}R
+      {trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} · {fmtR(r)}R{unit ? " ·" : ""}
+      {unit ? <span className="font-semibold opacity-80">{fmtCurrency(r * unit, money.currency)}</span> : null}
     </span>
   );
 };

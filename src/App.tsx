@@ -11,7 +11,8 @@ import {
   rrOf,
   sampleTrades,
 } from "./lib";
-import type { DailyLimits, Trade } from "./lib";
+import { NO_MONEY, balanceInfo, fmtCurrency } from "./lib";
+import type { DailyLimits, MoneySettings, Trade } from "./lib";
 import { useCountUp, useFlashId, useNow, useSession, useTrades } from "./hooks";
 import {
   CloseModal,
@@ -40,6 +41,8 @@ import {
   updateTradeNotes,
   fetchLimits,
   saveLimits,
+  fetchMoney,
+  saveMoney,
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
@@ -56,6 +59,8 @@ import AlertBuilder from "./components/AlertBuilder";
 import RiskCalculator from "./components/RiskCalculator";
 import TagStats from "./components/TagStats";
 import Analysis from "./components/Analysis";
+import MoneyCard from "./components/MoneyCard";
+import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
 
@@ -120,6 +125,8 @@ function StatsBand({ trades }: { trades: Trade[] }) {
   const winRate = useCountUp(stats.winRate);
   const avgR = useCountUp(stats.avgR);
   const winPos = stats.winRate >= 50;
+  const { money } = useMoney();
+  const bal = useMemo(() => balanceInfo(trades, money), [trades, money]);
 
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-4 xl:grid-cols-[1.5fr_1fr_1fr_1fr_1.15fr]">
@@ -137,6 +144,19 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         <p className="num mt-1.5 text-[11px] text-dim">
           mejor {fmtR(stats.bestR)}R · peor {fmtR(stats.worstR)}R
         </p>
+        {bal && (
+          <p className="num mt-1 text-[12px] font-semibold text-fog">
+            <span className={bal.pnl >= 0 ? "text-bull" : "text-bear"}>{fmtCurrency(bal.pnl, money.currency)}</span>
+            {" · balance "}
+            <span className="text-snow">{fmtCurrency(bal.balance, money.currency, false)}</span>
+            {" ("}
+            <span className={bal.returnPct >= 0 ? "text-bull" : "text-bear"}>
+              {bal.returnPct >= 0 ? "+" : "−"}
+              {Math.abs(bal.returnPct).toFixed(1)}%
+            </span>
+            {")"}
+          </p>
+        )}
       </div>
 
       <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
@@ -389,6 +409,12 @@ function Dashboard({ userId }: { userId: string }) {
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [money, setMoney] = useState<MoneySettings>(NO_MONEY);
+  const moneyCtx = useMemo(() => makeMoneyCtx(money), [money]);
+
+  useEffect(() => {
+    fetchMoney(userId).then(setMoney).catch(() => {});
+  }, [userId]);
   const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
   const limitStatus = useMemo(() => dailyStatus(trades, limits), [trades, limits]);
 
@@ -436,6 +462,19 @@ function Dashboard({ userId }: { userId: string }) {
         notify("Límites guardados.");
       } catch (err) {
         notify(err instanceof Error ? err.message : "No se pudieron guardar los límites.", "err");
+      }
+    },
+    [userId, notify],
+  );
+
+  const persistMoney = useCallback(
+    async (m: MoneySettings) => {
+      try {
+        await saveMoney(userId, m);
+        setMoney(m);
+        notify("Capital guardado.");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudo guardar el capital.", "err");
       }
     },
     [userId, notify],
@@ -564,6 +603,7 @@ function Dashboard({ userId }: { userId: string }) {
   }, [userId, notify]);
 
   return (
+    <MoneyContext.Provider value={moneyCtx}>
     <div className="min-h-screen">
       <Ticker trades={trades} />
 
@@ -674,6 +714,9 @@ function Dashboard({ userId }: { userId: string }) {
             <Reveal delay={150} className="max-lg:order-6">
               <WebhookCard userId={userId} notify={notify} />
             </Reveal>
+            <Reveal delay={165} className="max-lg:order-3">
+              <MoneyCard money={money} trades={trades} onSave={persistMoney} />
+            </Reveal>
             <Reveal delay={170} className="max-lg:order-3">
               <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
             </Reveal>
@@ -763,6 +806,7 @@ function Dashboard({ userId }: { userId: string }) {
 
       <ToastStack toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </div>
+    </MoneyContext.Provider>
   );
 }
 
