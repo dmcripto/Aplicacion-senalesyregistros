@@ -1,0 +1,276 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { cx, fmtR, summarize } from "../lib";
+import type { ResultSummary, SharePeriod, Trade } from "../lib";
+
+const W = 1080;
+const H = 1350;
+const PERIODS: Array<[SharePeriod, string]> = [
+  ["week", "7 días"],
+  ["month", "Este mes"],
+  ["all", "Todo"],
+];
+const SITE = "aplicacion-senalesyregistros.vercel.app";
+
+const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+};
+
+function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElement | null) {
+  const c = canvas.getContext("2d");
+  if (!c) return;
+  canvas.width = W;
+  canvas.height = H;
+  const font = (w: number, px: number) => `${w} ${px}px "Space Grotesk", system-ui, sans-serif`;
+  const good = s.netR >= 0;
+  const accent = s.closed === 0 ? "#93a5ba" : good ? "#16d98a" : "#ff4d67";
+
+  const bg = c.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, "#070b11");
+  bg.addColorStop(1, "#0a1a2a");
+  c.fillStyle = bg;
+  c.fillRect(0, 0, W, H);
+  const glow1 = c.createRadialGradient(140, 120, 0, 140, 120, 620);
+  glow1.addColorStop(0, "rgba(46,196,241,0.28)");
+  glow1.addColorStop(1, "rgba(46,196,241,0)");
+  c.fillStyle = glow1;
+  c.fillRect(0, 0, W, H);
+  const glow2 = c.createRadialGradient(W - 100, H - 200, 0, W - 100, H - 200, 640);
+  glow2.addColorStop(0, good ? "rgba(22,217,138,0.22)" : "rgba(255,77,103,0.20)");
+  glow2.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = glow2;
+  c.fillRect(0, 0, W, H);
+  c.strokeStyle = "rgba(147,165,186,0.06)";
+  c.lineWidth = 1;
+  for (let x = 0; x <= W; x += 54) (c.beginPath(), c.moveTo(x, 0), c.lineTo(x, H), c.stroke());
+  for (let y = 0; y <= H; y += 54) (c.beginPath(), c.moveTo(0, y), c.lineTo(W, y), c.stroke());
+
+  // Encabezado
+  if (logo) c.drawImage(logo, 60, 56, 120, 120);
+  c.fillStyle = "#e8eef6";
+  c.font = font(700, 64);
+  c.textBaseline = "alphabetic";
+  c.textAlign = "left";
+  c.fillText("VELTRIX", 200, 130);
+  c.fillStyle = "#2ec4f1";
+  c.font = font(600, 26);
+  c.fillText("Diario de trading", 202, 168);
+  c.textAlign = "right";
+  c.fillStyle = "#e8eef6";
+  c.font = font(700, 34);
+  c.fillText(s.label, W - 60, 118);
+  c.fillStyle = "#93a5ba";
+  c.font = font(500, 26);
+  c.fillText(`${s.closed} ${s.closed === 1 ? "operación cerrada" : "operaciones cerradas"}`, W - 60, 160);
+
+  // Resultado
+  c.textAlign = "center";
+  c.fillStyle = "#93a5ba";
+  c.font = font(700, 30);
+  c.fillText("RESULTADO NETO", W / 2, 300);
+  c.save();
+  c.shadowColor = accent;
+  c.shadowBlur = 50;
+  c.fillStyle = accent;
+  c.font = font(700, 230);
+  c.fillText(s.closed === 0 ? "0R" : `${fmtR(s.netR)}R`, W / 2, 500);
+  c.restore();
+
+  // Curva
+  const px = 60, py = 560, pw = W - 120, ph = 330;
+  c.fillStyle = "rgba(16,23,32,0.85)";
+  rr(c, px, py, pw, ph, 28);
+  c.fill();
+  c.strokeStyle = "rgba(34,48,66,1)";
+  c.lineWidth = 2;
+  c.stroke();
+  const pts = s.curve.length >= 2 ? s.curve : [0, 0];
+  const lo = Math.min(0, ...pts), hi = Math.max(0, ...pts), span = hi - lo || 1;
+  const ix = px + 30, iw = pw - 60, iy = py + 30, ih = ph - 60;
+  const X = (i: number) => ix + (i / (pts.length - 1)) * iw;
+  const Y = (v: number) => iy + (1 - (v - lo) / span) * ih;
+  c.setLineDash([10, 12]);
+  c.strokeStyle = "rgba(147,165,186,0.35)";
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(ix, Y(0));
+  c.lineTo(ix + iw, Y(0));
+  c.stroke();
+  c.setLineDash([]);
+  const area = c.createLinearGradient(0, iy, 0, iy + ih);
+  area.addColorStop(0, good ? "rgba(22,217,138,0.40)" : "rgba(255,77,103,0.40)");
+  area.addColorStop(1, "rgba(0,0,0,0)");
+  c.beginPath();
+  pts.forEach((v, i) => (i ? c.lineTo(X(i), Y(v)) : c.moveTo(X(i), Y(v))));
+  c.lineTo(X(pts.length - 1), iy + ih);
+  c.lineTo(X(0), iy + ih);
+  c.closePath();
+  c.fillStyle = area;
+  c.fill();
+  c.beginPath();
+  pts.forEach((v, i) => (i ? c.lineTo(X(i), Y(v)) : c.moveTo(X(i), Y(v))));
+  c.strokeStyle = accent;
+  c.lineWidth = 7;
+  c.lineJoin = "round";
+  c.lineCap = "round";
+  c.stroke();
+  c.beginPath();
+  c.arc(X(pts.length - 1), Y(pts[pts.length - 1]), 12, 0, Math.PI * 2);
+  c.fillStyle = accent;
+  c.fill();
+
+  // Estadísticas
+  const boxes: Array<[string, string]> = [
+    ["ACIERTO", s.closed ? `${Math.round(s.winRate)}%` : "—"],
+    ["PROFIT FACTOR", s.closed ? (s.pf == null ? "∞" : s.pf.toFixed(2)) : "—"],
+    ["MEJOR OPERACIÓN", s.closed ? `${fmtR(s.bestR)}R` : "—"],
+  ];
+  const bw = (pw - 40) / 3;
+  boxes.forEach(([label, value], i) => {
+    const bx = px + i * (bw + 20), by = 930;
+    c.fillStyle = "rgba(16,23,32,0.85)";
+    rr(c, bx, by, bw, 170, 24);
+    c.fill();
+    c.strokeStyle = "rgba(34,48,66,1)";
+    c.lineWidth = 2;
+    c.stroke();
+    c.textAlign = "center";
+    c.fillStyle = "#93a5ba";
+    c.font = font(700, 22);
+    c.fillText(label, bx + bw / 2, by + 56);
+    c.fillStyle = "#e8eef6";
+    c.font = font(700, 64);
+    c.fillText(value, bx + bw / 2, by + 132);
+  });
+
+  // Pie
+  c.fillStyle = "#e8eef6";
+  c.font = font(700, 34);
+  c.fillText("Registrá tus señales y mejorá tus resultados", W / 2, 1200);
+  c.fillStyle = "#2ec4f1";
+  c.font = font(600, 30);
+  c.fillText(SITE, W / 2, 1250);
+  c.fillStyle = "#5f7389";
+  c.font = font(500, 20);
+  c.fillText("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.", W / 2, 1305);
+}
+
+export default function ShareCard({
+  trades,
+  onClose,
+  notify,
+}: {
+  trades: Trade[];
+  onClose: () => void;
+  notify: (msg: string, kind?: "ok" | "err" | "info") => void;
+}) {
+  const [period, setPeriod] = useState<SharePeriod>("month");
+  const [logo, setLogo] = useState<HTMLImageElement | null>(null);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const summary = useMemo(() => summarize(trades, period), [trades, period]);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setLogo(img);
+    img.src = "/logo.png";
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        await Promise.all([document.fonts.load('700 64px "Space Grotesk"'), document.fonts.load('500 26px "Space Grotesk"')]);
+      } catch {
+        /* se usa la fuente del sistema */
+      }
+      if (!cancelled && ref.current) draw(ref.current, summary, logo);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [summary, logo]);
+
+  const blob = () => new Promise<Blob | null>((resolve) => ref.current?.toBlob(resolve, "image/png") ?? resolve(null));
+
+  const download = async () => {
+    const b = await blob();
+    if (!b) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "veltrix-resultado.png";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    notify("Imagen descargada.");
+  };
+
+  const share = async () => {
+    const b = await blob();
+    if (!b) return;
+    const file = new File([b], "veltrix-resultado.png", { type: "image/png" });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "Mi resultado en VELTRIX" });
+      } catch {
+        /* el usuario canceló */
+      }
+    } else {
+      download();
+    }
+  };
+
+  return (
+    <div
+      className="fade-in fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-ink/85 p-4 backdrop-blur-[3px]"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="pop-in my-4 w-full max-w-md rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.6)]">
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <h3 className="font-display text-xl font-bold tracking-wide text-snow">Compartir mi resultado</h3>
+          <button onClick={onClose} className="rounded p-1.5 text-fog hover:bg-raise hover:text-snow" aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="flex gap-1 rounded-lg border border-line bg-ink p-1">
+            {PERIODS.map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setPeriod(key)}
+                className={cx(
+                  "flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors",
+                  period === key ? "bg-gold text-ink" : "text-fog hover:text-snow",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <canvas ref={ref} className="w-full rounded-lg border border-line" style={{ aspectRatio: `${W} / ${H}` }} />
+          <div className="flex gap-2">
+            <button
+              onClick={download}
+              className="flex-1 rounded-md border border-line px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+            >
+              Descargar
+            </button>
+            <button
+              onClick={share}
+              className="flex-1 rounded-md bg-gold px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
+            >
+              Compartir
+            </button>
+          </div>
+          <p className="text-[10.5px] leading-relaxed text-dim">
+            La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
