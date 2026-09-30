@@ -22,3 +22,6 @@ enable_confirmations = false
 
 [functions.tradingview-webhook]
 verify_jwt = false
+
+[functions.exchanges]
+verify_jwt = false

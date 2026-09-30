@@ -2,7 +2,8 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { DailyLimits, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { DailyLimits, ExchangeConnection, ExchangeId, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import { t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
 interface TradeRow {
@@ -19,6 +20,7 @@ interface TradeRow {
   notes: string | null;
   auto_closed?: boolean | null;
   tags?: string[] | null;
+  source?: string | null;
 }
 
 export function rowToTrade(row: TradeRow): Trade {
@@ -36,6 +38,7 @@ export function rowToTrade(row: TradeRow): Trade {
     notes: row.notes ?? undefined,
     autoClosed: row.auto_closed ?? undefined,
     tags: row.tags ?? undefined,
+    source: row.source ?? undefined,
   };
 }
 
@@ -202,4 +205,67 @@ export async function saveMoney(userId: string, m: MoneySettings) {
 /** Guarda el idioma elegido para que las notificaciones push lleguen en ese idioma (si la columna no existe, se ignora). */
 export async function saveLang(userId: string, lang: string) {
   await supabase.from("profiles").update({ lang }).eq("id", userId);
+}
+
+// ─── Exchanges (Binance, Bybit): conexión de solo lectura ───────────────────
+
+interface ConnRow {
+  id: string;
+  exchange: ExchangeId;
+  key_hint: string | null;
+  status: "active" | "error";
+  last_error: string | null;
+  last_sync_at: string | null;
+  last_import_count: number | null;
+}
+
+export async function fetchConnections(): Promise<ExchangeConnection[]> {
+  const { data, error } = await supabase.from("exchange_connections").select("*").order("created_at");
+  if (error) throw error;
+  return (data as ConnRow[]).map((r) => ({
+    id: r.id,
+    exchange: r.exchange,
+    keyHint: r.key_hint,
+    status: r.status,
+    lastError: r.last_error,
+    lastSyncAt: r.last_sync_at,
+    lastImportCount: r.last_import_count ?? 0,
+  }));
+}
+
+export interface ExchangeResult {
+  ok: boolean;
+  error?: string;
+  code?: string;
+  warning?: string;
+  imported?: number;
+  results?: Array<{ exchange: ExchangeId; imported: number; error?: string; skipped?: boolean }>;
+}
+
+async function callExchanges(body: Record<string, unknown>): Promise<ExchangeResult> {
+  const { data, error } = await supabase.functions.invoke("exchanges", { body });
+  if (error) {
+    // Los errores con mensaje propio de la función vienen en el cuerpo de la respuesta.
+    const res = (error as { context?: Response }).context;
+    if (res && typeof res.json === "function") {
+      try {
+        return (await res.json()) as ExchangeResult;
+      } catch {
+        /* sin cuerpo */
+      }
+    }
+    return { ok: false, error: t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") };
+  }
+  return data as ExchangeResult;
+}
+
+export const connectExchange = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
+  callExchanges({ action: "connect", exchange, apiKey, apiSecret });
+
+export const syncExchanges = () => callExchanges({ action: "sync" });
+
+/** Desconectar borra la conexión y la clave guardada. Las operaciones ya importadas quedan en tu diario. */
+export async function disconnectExchange(id: string) {
+  const { error } = await supabase.from("exchange_connections").delete().eq("id", id);
+  if (error) throw error;
 }

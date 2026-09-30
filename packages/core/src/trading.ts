@@ -22,10 +22,11 @@ export interface Trade {
   closedAt?: string;
   notes?: string;
   autoClosed?: boolean;
+  source?: string; // exchange de origen si se importó (binance | bybit)
   tags?: string[];
 }
 
-export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed">;
+export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed" | "source">;
 
 export const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");
@@ -903,3 +904,23 @@ export const fmtQty = (n: number) =>
 
 export const fmtMoney = (n: number) =>
   (n < 0 ? "−" : "") + "$" + Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+
+// ─── Exchanges conectados (solo lectura) ────────────────────────────────────
+
+export type ExchangeId = "binance" | "bybit";
+export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string }> = [
+  { id: "binance", name: "Binance" },
+  { id: "bybit", name: "Bybit" },
+];
+export const exchangeName = (id: string) => EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id;
+
+export interface ExchangeConnection {
+  id: string;
+  exchange: ExchangeId;
+  keyHint: string | null; // últimos 4 caracteres de la API key
+  status: "active" | "error";
+  lastError: string | null;
+  lastSyncAt: string | null;
+  lastImportCount: number;
+}
