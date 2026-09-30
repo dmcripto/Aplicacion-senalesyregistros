@@ -151,13 +151,45 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   // Pie
   c.fillStyle = "#e8eef6";
   c.font = font(700, 34);
-  c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1200);
-  c.fillStyle = "#2ec4f1";
-  c.font = font(600, 30);
-  c.fillText(t("Próximamente en Google Play"), W / 2, 1250);
+  c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1150);
+  playBadge(c, W / 2, 1180);
+  c.textAlign = "center";
   c.fillStyle = "#5f7389";
   c.font = font(500, 20);
-  c.fillText(t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero."), W / 2, 1305);
+  c.fillText(t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero."), W / 2, 1310);
+}
+
+/** Insignia "Próximamente en Google Play" (mientras no exista el link a la ficha de la tienda). */
+function playBadge(c: CanvasRenderingContext2D, cx: number, top: number) {
+  const w = 440, h = 88, x = cx - w / 2;
+  c.fillStyle = "#000";
+  rr(c, x, top, w, h, 18);
+  c.fill();
+  c.strokeStyle = "#a6a6a6";
+  c.lineWidth = 2;
+  c.stroke();
+
+  // Triángulo de Google Play en sus cuatro colores.
+  const ix = x + 30, iy = top + 20, iw = 42, ih = 48;
+  const P = (u: number, v: number): [number, number] => [ix + u * iw, iy + v * ih];
+  const poly = (color: string, pts: Array<[number, number]>) => {
+    c.beginPath();
+    pts.forEach(([u, v], i) => (i ? c.lineTo(...P(u, v)) : c.moveTo(...P(u, v))));
+    c.closePath();
+    c.fillStyle = color;
+    c.fill();
+  };
+  poly("#00a0ff", [[0, 0], [0.55, 0.5], [0, 1]]);
+  poly("#00e676", [[0, 0], [0.74, 0.37], [0.55, 0.5]]);
+  poly("#ffd500", [[0.74, 0.37], [1, 0.5], [0.74, 0.63], [0.55, 0.5]]);
+  poly("#ff3d57", [[0, 1], [0.55, 0.5], [0.74, 0.63]]);
+
+  c.textAlign = "left";
+  c.fillStyle = "#fff";
+  c.font = `700 15px "Space Grotesk", system-ui, sans-serif`;
+  c.fillText(t("PRÓXIMAMENTE EN"), x + 96, top + 30);
+  c.font = `700 40px "Space Grotesk", system-ui, sans-serif`;
+  c.fillText("Google Play", x + 94, top + 70);
 }
 
 export default function ShareCard({

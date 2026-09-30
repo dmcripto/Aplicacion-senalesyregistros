@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Path } from "react-native-svg";
 import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 import { fmtR, summarize } from "@dmcripto/core";
@@ -81,7 +82,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             <Text style={[st.big, { color: accent, textShadowColor: accent }]}>{s.closed === 0 ? "0R" : `${fmtR(s.netR)}R`}</Text>
 
             <View style={st.chart}>
-              <AreaChart values={s.curve} color={accent === colors.fog ? colors.cyan : accent} height={96} />
+              <AreaChart values={s.curve} color={accent === colors.fog ? colors.cyan : accent} height={82} />
             </View>
 
             <View style={st.stats}>
@@ -91,7 +92,18 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             </View>
 
             <Text style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
-            <Text style={st.site}>{t("Próximamente en Google Play")}</Text>
+            <View style={st.badge}>
+              <Svg width={16} height={18} viewBox="0 0 42 48">
+                <Path d="M0 0 L23 24 L0 48 Z" fill="#00a0ff" />
+                <Path d="M0 0 L31 17.8 L23 24 Z" fill="#00e676" />
+                <Path d="M31 17.8 L42 24 L31 30.2 L23 24 Z" fill="#ffd500" />
+                <Path d="M0 48 L23 24 L31 30.2 Z" fill="#ff3d57" />
+              </Svg>
+              <View>
+                <Text style={st.badgeTop}>{t("PRÓXIMAMENTE EN")}</Text>
+                <Text style={st.badgeMain}>Google Play</Text>
+              </View>
+            </View>
             <Text style={st.legal}>{t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.")}</Text>
           </View>
 
@@ -138,7 +150,9 @@ const st = StyleSheet.create({
   statLabel: { color: colors.fog, fontSize: 7.5, fontWeight: "800", letterSpacing: 0.8 },
   statValue: { color: colors.snow, fontSize: 17, fontWeight: "900", marginTop: 1 },
   cta: { color: colors.snow, fontSize: 10.5, fontWeight: "800", textAlign: "center", marginTop: 10 },
-  site: { color: colors.gold, fontSize: 9.5, fontWeight: "700", textAlign: "center", marginTop: 2 },
+  badge: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#000", borderWidth: 1, borderColor: "#a6a6a6", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, marginTop: 6 },
+  badgeTop: { color: "#fff", fontSize: 5.5, fontWeight: "700", letterSpacing: 0.4 },
+  badgeMain: { color: "#fff", fontSize: 13, fontWeight: "700", marginTop: -1 },
   legal: { color: colors.dim, fontSize: 6.5, textAlign: "center", marginTop: 4 },
   shareBtn: { backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 14 },
   shareText: { color: colors.ink, fontWeight: "900", fontSize: 14 },

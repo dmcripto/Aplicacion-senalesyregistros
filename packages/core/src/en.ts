@@ -457,6 +457,7 @@ export const EN: Record<string, string> = {
   "operación cerrada": "closed trade",
   "operaciones cerradas": "closed trades",
   "Próximamente en Google Play": "Coming soon on Google Play",
+  "PRÓXIMAMENTE EN": "COMING SOON ON",
   "CURVA DE CAPITAL": "EQUITY CURVE",
   "R acumulado por operación cerrada": "Cumulative R per closed trade",
   "Todavía no hay operaciones cerradas. Cuando marques un TP, un SL o un cierre manual,": "No closed trades yet. When you mark a TP, an SL or a manual close,",
