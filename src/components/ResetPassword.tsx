@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { IconAlert, ShieldLogo } from "../ui";
+import { t } from "../lib";
 
 export default function ResetPassword({ onDone }: { onDone: (notice: string) => void }) {
   const [password, setPassword] = useState("");
@@ -17,9 +18,9 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
       const { error: err } = await supabase.auth.updateUser({ password });
       if (err) throw err;
       await supabase.auth.signOut();
-      onDone("Contraseña actualizada — ingresá con tu nueva contraseña.");
+      onDone(t("Contraseña actualizada — ingresá con tu nueva contraseña."));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la contraseña.");
+      setError(err instanceof Error ? err.message : t("No se pudo actualizar la contraseña."));
       setBusy(false);
     }
   };
@@ -31,10 +32,10 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
           <ShieldLogo className="h-12 w-12 drop-shadow-[0_0_18px_rgba(46,196,241,.25)]" />
           <div className="text-center">
             <h1 className="font-display text-2xl font-extrabold tracking-[0.04em] text-snow">
-              Nueva contraseña
+              {t("Nueva contraseña")}
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              Elegí una contraseña nueva
+              {t("Elegí una contraseña nueva")}
             </p>
           </div>
         </div>
@@ -42,7 +43,7 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
           <div>
             <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">
-              Contraseña nueva
+              {t("Contraseña nueva")}
             </label>
             <div className="relative">
               <input
@@ -60,7 +61,7 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gold hover:brightness-110"
               >
-                {showPassword ? "Ocultar" : "Ver"}
+                {showPassword ? t("Ocultar") : t("Ver")}
               </button>
             </div>
           </div>
@@ -77,7 +78,7 @@ export default function ResetPassword({ onDone }: { onDone: (notice: string) => 
             disabled={busy}
             className="w-full rounded-md bg-gold px-4 py-2.5 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Un momento…" : "Guardar contraseña"}
+            {busy ? t("Un momento…") : t("Guardar contraseña")}
           </button>
         </form>
       </div>

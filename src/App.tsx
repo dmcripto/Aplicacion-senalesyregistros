@@ -7,6 +7,7 @@ import {
   downloadCsv,
   fmtPct,
   fmtR,
+  locale,
   resultR,
   rrOf,
   sampleTrades,
@@ -49,6 +50,7 @@ import {
   reopenTradeById,
 } from "./tradesApi";
 import type { NewTrade } from "./lib";
+import { LangSwitch, legalUrl } from "./lang";
 import Auth from "./components/Auth";
 import ResetPassword from "./components/ResetPassword";
 import EquityChart from "./components/EquityChart";
@@ -63,6 +65,7 @@ import MoneyCard from "./components/MoneyCard";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
+import { t } from "./lib";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -108,7 +111,7 @@ function Ticker({ trades }: { trades: Trade[] }) {
         </div>
       ) : (
         <p className="num py-1.5 text-center text-[11px] text-dim">
-          VELTRIX · cuando cierres operaciones, el ticker de resultados corre acá
+          {t("VELTRIX · cuando cierres operaciones, el ticker de resultados corre acá")}
         </p>
       )}
       <span className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-ink to-transparent" />
@@ -131,7 +134,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
   return (
     <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-4 xl:grid-cols-[1.5fr_1fr_1fr_1fr_1.15fr]">
       <div className="col-span-2 bg-panel px-5 py-4 md:col-span-4 md:py-5 xl:col-span-1">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">R neto acumulado</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("R neto acumulado")}</p>
         <p
           className={cx(
             "font-display text-[52px] font-extrabold leading-none tracking-wide md:text-6xl",
@@ -142,12 +145,12 @@ function StatsBand({ trades }: { trades: Trade[] }) {
           <span className="ml-1 text-2xl text-fog">R</span>
         </p>
         <p className="num mt-1.5 text-[11px] text-dim">
-          mejor {fmtR(stats.bestR)}R · peor {fmtR(stats.worstR)}R
+          {t("mejor")} {fmtR(stats.bestR)}R · {t("peor")} {fmtR(stats.worstR)}R
         </p>
         {bal && (
           <p className="num mt-1 text-[12px] font-semibold text-fog">
             <span className={bal.pnl >= 0 ? "text-bull" : "text-bear"}>{fmtCurrency(bal.pnl, money.currency)}</span>
-            {" · balance "}
+            {" · " + t("balance") + " "}
             <span className="text-snow">{fmtCurrency(bal.balance, money.currency, false)}</span>
             {" ("}
             <span className={bal.returnPct >= 0 ? "text-bull" : "text-bear"}>
@@ -160,7 +163,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
       </div>
 
       <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">Acierto</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Acierto")}</p>
         <p className={cx("num mt-1 text-3xl font-bold leading-none", winPos ? "text-bull" : "text-bear")}>
           {fmtPct(winRate)}
         </p>
@@ -170,15 +173,15 @@ function StatsBand({ trades }: { trades: Trade[] }) {
       </div>
 
       <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">Profit factor</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Profit factor")}</p>
         <p className="num mt-1 text-3xl font-bold leading-none text-snow">
           {stats.pf === null ? "∞" : stats.cerradas ? stats.pf.toFixed(2) : "—"}
         </p>
-        <p className="num mt-1.5 text-[11px] text-dim">ganancia / pérdida</p>
+        <p className="num mt-1.5 text-[11px] text-dim">{t("ganancia / pérdida")}</p>
       </div>
 
       <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">R promedio</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("R promedio")}</p>
         <p
           className={cx(
             "num mt-1 text-3xl font-bold leading-none",
@@ -187,15 +190,15 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         >
           {stats.cerradas ? fmtR(avgR) : "—"}
         </p>
-        <p className="num mt-1.5 text-[11px] text-dim">por operación cerrada</p>
+        <p className="num mt-1.5 text-[11px] text-dim">{t("por operación cerrada")}</p>
       </div>
 
       <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">Operaciones</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Operaciones")}</p>
         <p className="num mt-1 text-3xl font-bold leading-none text-snow">{stats.total}</p>
         <p className="num mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
           <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-gold" />
-          {stats.abiertas} abiertas · {stats.cerradas} cerradas
+          {stats.abiertas} {t("abiertas")} · {stats.cerradas} {t("cerradas")}
         </p>
       </div>
     </div>
@@ -220,10 +223,10 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
     setAutoCloseState(next);
     try {
       await setAutoClose(userId, next);
-      notify(next ? "Cierre automático activado." : "Cierre automático desactivado.");
+      notify(next ? t("Cierre automático activado.") : t("Cierre automático desactivado."));
     } catch (err) {
       setAutoCloseState(!next);
-      notify(err instanceof Error ? err.message : "No se pudo guardar el cambio.", "err");
+      notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
     }
   };
 
@@ -237,9 +240,9 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
     setRegenArmed(false);
     try {
       setUrl(await regenerateWebhookUrl());
-      notify("URL regenerada. Actualizala en tus alertas de TradingView: la anterior dejó de funcionar.");
+      notify(t("URL regenerada. Actualizala en tus alertas de TradingView: la anterior dejó de funcionar."));
     } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudo regenerar la URL.", "err");
+      notify(err instanceof Error ? err.message : t("No se pudo regenerar la URL."), "err");
     }
   };
 
@@ -247,7 +250,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
     let cancelled = false;
     fetchWebhookUrl(userId)
       .then((u) => !cancelled && setUrl(u))
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "No se pudo obtener la URL."));
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : t("No se pudo obtener la URL.")));
     return () => {
       cancelled = true;
     };
@@ -257,9 +260,9 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
-      notify("URL de webhook copiada al portapapeles.");
+      notify(t("URL de webhook copiada al portapapeles."));
     } catch {
-      notify("No se pudo copiar automáticamente — seleccioná el texto a mano.", "err");
+      notify(t("No se pudo copiar automáticamente — seleccioná el texto a mano."), "err");
     }
   };
 
@@ -272,9 +275,9 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
         className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
       >
         <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">CONECTÁ TU FUENTE DE SEÑALES</span>
+          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CONECTÁ TU FUENTE DE SEÑALES")}</span>
           <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">
-            Enviá tus señales a esta URL, vengan de donde vengan
+            {t("Enviá tus señales a esta URL, vengan de donde vengan")}
           </span>
         </span>
         <span className="shrink-0 text-lg text-gold" aria-hidden>
@@ -303,20 +306,20 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-gold)]"
           />
           <span>
-            <b className="text-snow">Cierre automático:</b> VELTRIX sigue el precio (criptomonedas) y marca TP o SL
-            solo cuando el precio los toca. Si una misma vela toca ambos, se toma SL.
+            <b className="text-snow">{t("Cierre automático:")}</b>{" "}
+            {t("VELTRIX sigue el precio (criptomonedas) y marca TP o SL solo cuando el precio los toca. Si una misma vela toca ambos, se toma SL.")}
           </span>
         </label>
         <details className="group rounded-md border border-line bg-ink/40 text-[11.5px] leading-relaxed text-fog">
           <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">
-            ¿Desde dónde puedo enviar señales?
+            {t("¿Desde dónde puedo enviar señales?")}
           </summary>
           <ul className="space-y-2 border-t border-line px-3 py-3">
-            <li><b className="text-snow">TradingView</b> (plan con webhooks): pegá la URL en "Webhook URL" de la alerta.</li>
-            <li><b className="text-snow">Telegram, WhatsApp o Discord:</b> copiá el mensaje de la señal y pegalo en "Registrar → Pegar señal". Lo interpreta solo.</li>
-            <li><b className="text-snow">Zapier, Make o n8n:</b> usá la acción "Webhooks → POST" hacia esta URL con el texto de la señal como cuerpo.</li>
-            <li><b className="text-snow">Bots y plataformas propias:</b> un POST con JSON, por ejemplo <span className="num text-gold">{"{"}"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500{"}"}</span>.</li>
-            <li><b className="text-snow">A mano:</b> "Registrar → Manual".</li>
+            <li><b className="text-snow">TradingView</b> {t("(plan con webhooks): pegá la URL en \"Webhook URL\" de la alerta.")}</li>
+            <li><b className="text-snow">{t("Telegram, WhatsApp o Discord:")}</b> {t("copiá el mensaje de la señal y pegalo en \"Registrar → Pegar señal\". Lo interpreta solo.")}</li>
+            <li><b className="text-snow">{t("Zapier, Make o n8n:")}</b> {t("usá la acción \"Webhooks → POST\" hacia esta URL con el texto de la señal como cuerpo.")}</li>
+            <li><b className="text-snow">{t("Bots y plataformas propias:")}</b> {t("un POST con JSON, por ejemplo")} <span className="num text-gold">{"{"}"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500{"}"}</span>.</li>
+            <li><b className="text-snow">{t("A mano:")}</b> {t("\"Registrar → Manual\".")}</li>
           </ul>
         </details>
         <AlertBuilder notify={notify} />
@@ -326,14 +329,14 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
               onClick={regenerate}
               className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
             >
-              Confirmar: la URL actual dejará de funcionar
+              {t("Confirmar: la URL actual dejará de funcionar")}
             </button>
           ) : (
             <button
               onClick={() => setRegenArmed(true)}
               className="w-full rounded-md border border-line px-3 py-2 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
             >
-              Regenerar URL del webhook
+              {t("Regenerar URL del webhook")}
             </button>
           ))}
       </div>
@@ -364,22 +367,22 @@ function WelcomeCard() {
     }
   };
   const steps = [
-    ["1", "Cargá tu primera señal", 'Pegá un mensaje de Telegram o WhatsApp en "Registrar operación", o cargala a mano.'],
-    ["2", "Conectá tu fuente", 'Abajo, en "Conectá tu fuente de señales", copiá tu URL personal para TradingView u otras herramientas.'],
-    ["3", "Mirá tus resultados", "VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático."],
+    ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram o WhatsApp en \"Registrar operación\", o cargala a mano.")],
+    ["2", t("Conectá tu fuente"), t("Abajo, en \"Conectá tu fuente de señales\", copiá tu URL personal para TradingView u otras herramientas.")],
+    ["3", t("Mirá tus resultados"), t("VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático.")],
   ];
   return (
     <section className="rounded-lg border border-gold/40 bg-golddeep/30 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">BIENVENIDO A VELTRIX</h2>
-          <p className="text-[12px] text-fog">Empezá en tres pasos.</p>
+          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("BIENVENIDO A VELTRIX")}</h2>
+          <p className="text-[12px] text-fog">{t("Empezá en tres pasos.")}</p>
         </div>
         <button
           onClick={close}
           className="shrink-0 rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
         >
-          Entendido
+          {t("Entendido")}
         </button>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
@@ -438,7 +441,7 @@ function Dashboard({ userId }: { userId: string }) {
       await deleteMyAccount();
     } catch (err) {
       setDeleteArmed(false);
-      notify(err instanceof Error ? err.message : "No se pudo eliminar la cuenta.", "err");
+      notify(err instanceof Error ? err.message : t("No se pudo eliminar la cuenta."), "err");
     }
   };
 
@@ -459,9 +462,9 @@ function Dashboard({ userId }: { userId: string }) {
       try {
         await saveLimits(userId, l);
         setLimits(l);
-        notify("Límites guardados.");
+        notify(t("Límites guardados."));
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudieron guardar los límites.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudieron guardar los límites."), "err");
       }
     },
     [userId, notify],
@@ -472,9 +475,9 @@ function Dashboard({ userId }: { userId: string }) {
       try {
         await saveMoney(userId, m);
         setMoney(m);
-        notify("Capital guardado.");
+        notify(t("Capital guardado."));
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo guardar el capital.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo guardar el capital."), "err");
       }
     },
     [userId, notify],
@@ -482,17 +485,17 @@ function Dashboard({ userId }: { userId: string }) {
 
   const addTrades = useCallback(
     async (list: NewTrade[]) => {
-      if (limitStatus.level === "stop" && !window.confirm(`${limitStatus.messages.join("\n")}\n\n¿Querés registrar la operación igual?`)) return;
+      if (limitStatus.level === "stop" && !window.confirm(`${limitStatus.messages.join("\n")}\n\n${t("¿Querés registrar la operación igual?")}`)) return;
       try {
         const ids = await insertTrades(userId, list);
         if (ids[0]) flash(ids[0]);
         notify(
           list.length === 1
-            ? `Operación registrada: ${list[0].symbol} ${list[0].direction} @ ${list[0].entry}`
-            : `${list.length} operaciones registradas en el diario.`,
+            ? t("Operación registrada: {sym} {dir} @ {entry}", { sym: list[0].symbol, dir: list[0].direction, entry: list[0].entry })
+            : t("{n} operaciones registradas en el diario.", { n: list.length }),
         );
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo registrar la operación.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo registrar la operación."), "err");
       }
     },
     [userId, flash, notify, limitStatus],
@@ -500,15 +503,15 @@ function Dashboard({ userId }: { userId: string }) {
 
   const markOutcome = useCallback(
     async (id: string, outcome: "TP" | "SL") => {
-      const t = trades.find((x) => x.id === id);
+      const tr = trades.find((x) => x.id === id);
       try {
         await markTradeOutcome(id, outcome);
-        if (t) {
-          const r = outcome === "TP" ? rrOf(t) : -1;
-          notify(`${t.symbol} cerrada en ${outcome} · ${fmtR(r)}R`, outcome === "TP" ? "ok" : "err");
+        if (tr) {
+          const r = outcome === "TP" ? rrOf(tr) : -1;
+          notify(t("{sym} cerrada en {out} · {r}R", { sym: tr.symbol, out: outcome, r: fmtR(r) }), outcome === "TP" ? "ok" : "err");
         }
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo cerrar la operación.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo cerrar la operación."), "err");
       }
     },
     [trades, notify],
@@ -518,9 +521,9 @@ function Dashboard({ userId }: { userId: string }) {
     async (id: string) => {
       try {
         await reopenTradeById(id);
-        notify("Operación reabierta.", "info");
+        notify(t("Operación reabierta."), "info");
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo reabrir la operación.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo reabrir la operación."), "err");
       }
     },
     [notify],
@@ -530,9 +533,9 @@ function Dashboard({ userId }: { userId: string }) {
     async (id: string) => {
       try {
         await deleteTradeById(id);
-        notify("Operación eliminada del diario.", "info");
+        notify(t("Operación eliminada del diario."), "info");
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo eliminar la operación.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo eliminar la operación."), "err");
       }
     },
     [notify],
@@ -543,9 +546,9 @@ function Dashboard({ userId }: { userId: string }) {
       if (!notesTrade) return;
       try {
         await updateTradeNotes(notesTrade.id, notes, tags);
-        notify("Notas guardadas.");
+        notify(t("Notas guardadas."));
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudieron guardar las notas.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudieron guardar las notas."), "err");
       } finally {
         setNotesTrade(null);
       }
@@ -563,12 +566,12 @@ function Dashboard({ userId }: { userId: string }) {
         await closeTradeManually(manualTrade.id, exit);
         notify(
           r === 0
-            ? `${manualTrade.symbol} cerrada en Break Even · 0R`
-            : `${manualTrade.symbol} cerrada manualmente · ${fmtR(r)}R`,
+            ? t("{sym} cerrada en Break Even · 0R", { sym: manualTrade.symbol })
+            : t("{sym} cerrada manualmente · {r}R", { sym: manualTrade.symbol, r: fmtR(r) }),
           r >= 0 ? "ok" : "err",
         );
       } catch (err) {
-        notify(err instanceof Error ? err.message : "No se pudo cerrar la operación.", "err");
+        notify(err instanceof Error ? err.message : t("No se pudo cerrar la operación."), "err");
       } finally {
         setManualTrade(null);
       }
@@ -579,24 +582,24 @@ function Dashboard({ userId }: { userId: string }) {
   const loadSample = useCallback(async () => {
     try {
       await insertFullTrades(userId, sampleTrades());
-      notify("17 operaciones de ejemplo cargadas — explorá el diario.", "info");
+      notify(t("17 operaciones de ejemplo cargadas — explorá el diario."), "info");
     } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudieron cargar los datos de ejemplo.", "err");
+      notify(err instanceof Error ? err.message : t("No se pudieron cargar los datos de ejemplo."), "err");
     }
   }, [userId, notify]);
 
   const exportCsv = useCallback(() => {
     if (!trades.length) return;
     downloadCsv(trades);
-    notify("CSV exportado — compatible con Excel y Google Sheets.");
+    notify(t("CSV exportado — compatible con Excel y Google Sheets."));
   }, [trades, notify]);
 
   const clearAll = useCallback(async () => {
     try {
       await deleteAllTrades(userId);
-      notify("Diario borrado por completo.", "info");
+      notify(t("Diario borrado por completo."), "info");
     } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudo borrar el diario.", "err");
+      notify(err instanceof Error ? err.message : t("No se pudo borrar el diario."), "err");
     } finally {
       setClearArmed(false);
     }
@@ -616,7 +619,7 @@ function Dashboard({ userId }: { userId: string }) {
               VELTRIX
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              Diario de trading · En vivo
+              {t("Diario de trading · En vivo")}
             </p>
           </div>
         </div>
@@ -626,10 +629,10 @@ function Dashboard({ userId }: { userId: string }) {
             <span className="live-dot h-2 w-2 rounded-full bg-bull" />
             <div>
               <p className="num text-[13px] font-bold leading-none text-snow">
-                {now.toLocaleTimeString("es-ES")}
+                {now.toLocaleTimeString(locale())}
               </p>
               <p className="num mt-0.5 text-[10px] capitalize text-dim">
-                {now.toLocaleDateString("es-ES", { weekday: "short", day: "2-digit", month: "short" })}
+                {now.toLocaleDateString(locale(), { weekday: "short", day: "2-digit", month: "short" })}
               </p>
             </div>
           </div>
@@ -639,27 +642,28 @@ function Dashboard({ userId }: { userId: string }) {
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-md border border-cyan/45 bg-cyan/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-all hover:-translate-y-px hover:bg-cyan/20 active:scale-[0.98]"
           >
-            <IconTelegram className="h-4 w-4" /> Comunidad
+            <IconTelegram className="h-4 w-4" /> {t("Comunidad")}
           </a>
           <button
             onClick={() => setSharing(true)}
             disabled={!trades.length}
             className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
-            ↗ Compartir
+            {"↗ "}{t("Compartir")}
           </button>
           <button
             onClick={exportCsv}
             disabled={!trades.length}
             className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
-            <IconDownload className="h-3.5 w-3.5" /> Exportar CSV
+            <IconDownload className="h-3.5 w-3.5" /> {t("Exportar CSV")}
           </button>
+          <LangSwitch />
           <button
             onClick={() => supabase.auth.signOut()}
             className="rounded-md border border-line px-3.5 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow"
           >
-            Salir
+            {t("Salir")}
           </button>
         </div>
       </header>
@@ -684,7 +688,7 @@ function Dashboard({ userId }: { userId: string }) {
             <Reveal delay={140} className="max-lg:order-1">
               {loading ? (
                 <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
-                  Cargando diario…
+                  {t("Cargando diario…")}
                 </div>
               ) : (
                 <TradeTable
@@ -738,8 +742,7 @@ function Dashboard({ userId }: { userId: string }) {
       <footer className="border-t border-line bg-panel/60">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
-            <span className="font-bold text-fog">VELTRIX</span> — tu diario se sincroniza en la nube entre
-            web y móvil.
+            <span className="font-bold text-fog">VELTRIX</span> — {t("tu diario se sincroniza en la nube entre web y móvil.")}
           </p>
           <div className="flex flex-wrap items-center gap-2">
           {deleteArmed ? (
@@ -747,14 +750,14 @@ function Dashboard({ userId }: { userId: string }) {
               onClick={deleteAccount}
               className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
             >
-              Confirmar: eliminar cuenta y todos mis datos
+              {t("Confirmar: eliminar cuenta y todos mis datos")}
             </button>
           ) : (
             <button
               onClick={() => setDeleteArmed(true)}
               className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
             >
-              Eliminar mi cuenta
+              {t("Eliminar mi cuenta")}
             </button>
           )}
           {trades.length > 0 &&
@@ -763,34 +766,32 @@ function Dashboard({ userId }: { userId: string }) {
                 onClick={clearAll}
                 className="rounded-md border border-bear bg-bear/15 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-bear transition-colors hover:bg-bear/30"
               >
-                Confirmar borrado total
+                {t("Confirmar borrado total")}
               </button>
             ) : (
               <button
                 onClick={() => setClearArmed(true)}
                 className="rounded-md border border-line px-3.5 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-bear/50 hover:text-bear"
               >
-                Borrar diario
+                {t("Borrar diario")}
               </button>
             ))}
           </div>
         </div>
         <div className="mx-auto max-w-[1440px] border-t border-line/60 px-4 py-4 lg:px-8">
           <p className="text-[10.5px] leading-relaxed text-dim">
-            VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de
-            inversión. Operar en mercados financieros implica riesgo de pérdida. Los resultados pasados no garantizan
-            resultados futuros. No está afiliado a TradingView.{" "}
+            {t("VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de inversión. Operar en mercados financieros implica riesgo de pérdida. Los resultados pasados no garantizan resultados futuros. No está afiliado a TradingView.")}{" "}
             <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="text-cyan underline hover:text-snow">
-              Comunidad
+              {t("Comunidad")}
             </a>{" · "}
-            <a href="/terms.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
-              Términos
+            <a href={legalUrl("terms")} target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              {t("Términos")}
             </a>{" · "}
-            <a href="/privacy.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
-              Privacidad
+            <a href={legalUrl("privacy")} target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              {t("Privacidad")}
             </a>{" · "}
-            <a href="/delete-account.html" target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
-              Eliminar datos
+            <a href={legalUrl("delete-account")} target="_blank" rel="noopener" className="text-fog underline hover:text-snow">
+              {t("Eliminar datos")}
             </a>
           </p>
         </div>

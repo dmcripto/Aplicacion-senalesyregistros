@@ -3,6 +3,8 @@ import type { FormEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { COMMUNITY_URL, cx } from "../lib";
 import { IconAlert, ShieldLogo } from "../ui";
+import { LangSwitch, legalUrl } from "../lang";
+import { t } from "../lib";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -26,10 +28,10 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
       } else {
         const { error: err } = await supabase.auth.signUp({ email, password });
         if (err) throw err;
-        setNotice("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada.");
+        setNotice(t("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada."));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo completar la operación.");
+      setError(err instanceof Error ? err.message : t("No se pudo completar la operación."));
     } finally {
       setBusy(false);
     }
@@ -37,7 +39,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
 
   const forgotPassword = async () => {
     if (!email.trim()) {
-      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      setError(t("Ingresá tu email arriba y volvé a tocar el link."));
       return;
     }
     setError(null);
@@ -48,9 +50,9 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         redirectTo: window.location.origin,
       });
       if (err) throw err;
-      setNotice("Te enviamos un email para restablecer tu contraseña.");
+      setNotice(t("Te enviamos un email para restablecer tu contraseña."));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo enviar el email.");
+      setError(err instanceof Error ? err.message : t("No se pudo enviar el email."));
     } finally {
       setBusy(false);
     }
@@ -58,7 +60,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
 
   const resendConfirmation = async () => {
     if (!email.trim()) {
-      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      setError(t("Ingresá tu email arriba y volvé a tocar el link."));
       return;
     }
     setError(null);
@@ -67,9 +69,9 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
     try {
       const { error: err } = await supabase.auth.resend({ type: "signup", email });
       if (err) throw err;
-      setNotice("Te reenviamos el email de confirmación.");
+      setNotice(t("Te reenviamos el email de confirmación."));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo reenviar el email.");
+      setError(err instanceof Error ? err.message : t("No se pudo reenviar el email."));
     } finally {
       setBusy(false);
     }
@@ -77,6 +79,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="fixed right-3 top-3 z-10"><LangSwitch /></div>
       <div className="w-full max-w-sm rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)]">
         <div className="flex flex-col items-center gap-3 border-b border-line px-6 py-7">
           <ShieldLogo className="h-20 w-20 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
@@ -85,7 +88,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               VELTRIX
             </h1>
             <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              Diario de trading · En vivo
+              {t("Diario de trading · En vivo")}
             </p>
           </div>
         </div>
@@ -100,7 +103,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
                 mode === "login" ? "bg-gold text-ink" : "text-fog hover:text-snow",
               )}
             >
-              Ingresar
+              {t("Ingresar")}
             </button>
             <button
               type="button"
@@ -110,7 +113,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
                 mode === "signup" ? "bg-gold text-ink" : "text-fog hover:text-snow",
               )}
             >
-              Crear cuenta
+              {t("Crear cuenta")}
             </button>
           </div>
 
@@ -122,12 +125,12 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="vos@ejemplo.com"
+              placeholder={t("vos@ejemplo.com")}
               className="field"
             />
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">Contraseña</label>
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">{t("Contraseña")}</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -144,7 +147,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold text-gold hover:brightness-110"
               >
-                {showPassword ? "Ocultar" : "Ver"}
+                {showPassword ? t("Ocultar") : t("Ver")}
               </button>
             </div>
           </div>
@@ -156,7 +159,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               disabled={busy}
               className="font-semibold text-fog underline-offset-2 hover:text-gold hover:underline disabled:opacity-50"
             >
-              ¿Olvidaste tu contraseña?
+              {t("¿Olvidaste tu contraseña?")}
             </button>
             <button
               type="button"
@@ -164,7 +167,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               disabled={busy}
               className="font-semibold text-fog underline-offset-2 hover:text-gold hover:underline disabled:opacity-50"
             >
-              Reenviar confirmación
+              {t("Reenviar confirmación")}
             </button>
           </div>
 
@@ -188,13 +191,13 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-gold)]"
               />
               <span>
-                Acepto los{" "}
-                <a href="/terms.html" target="_blank" rel="noopener" className="font-semibold text-gold underline">
-                  términos de uso
+                {t("Acepto los")}{" "}
+                <a href={legalUrl("terms")} target="_blank" rel="noopener" className="font-semibold text-gold underline">
+                  {t("términos de uso")}
                 </a>{" "}
-                y la{" "}
-                <a href="/privacy.html" target="_blank" rel="noopener" className="font-semibold text-gold underline">
-                  política de privacidad
+                {t("y la")}{" "}
+                <a href={legalUrl("privacy")} target="_blank" rel="noopener" className="font-semibold text-gold underline">
+                  {t("política de privacidad")}
                 </a>
                 .
               </span>
@@ -206,7 +209,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
             disabled={busy}
             className="w-full rounded-md bg-gold px-4 py-2.5 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Un momento…" : mode === "login" ? "Ingresar" : "Crear cuenta"}
+            {busy ? t("Un momento…") : mode === "login" ? t("Ingresar") : t("Crear cuenta")}
           </button>
         </form>
         <a
@@ -215,11 +218,10 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           rel="noopener noreferrer"
           className="block border-t border-line px-6 py-3 text-center text-[12px] font-semibold text-cyan transition-colors hover:bg-cyan/10"
         >
-          ✈ Unite a la comunidad de VELTRIX en Telegram
+          {t("✈ Unite a la comunidad de VELTRIX en Telegram")}
         </a>
         <p className="border-t border-line px-6 py-4 text-[10.5px] leading-relaxed text-dim">
-          VELTRIX es una herramienta de registro, no brinda asesoramiento financiero. Operar implica riesgo de
-          pérdida. No está afiliado a TradingView.
+          {t("VELTRIX es una herramienta de registro, no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}
         </p>
       </div>
     </div>

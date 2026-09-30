@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "../lib";
+import { t } from "../lib";
 
 const STORE_KEY = "veltrix_risk_settings_v1";
 
@@ -54,9 +55,9 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
     if (!res) return;
     try {
       await navigator.clipboard.writeText(String(Number(res.units.toPrecision(6))));
-      notify("Cantidad copiada.");
+      notify(t("Cantidad copiada."));
     } catch {
-      notify("No se pudo copiar automáticamente.", "err");
+      notify(t("No se pudo copiar automáticamente."), "err");
     }
   };
 
@@ -89,9 +90,9 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
         className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
       >
         <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">CALCULADORA DE RIESGO</span>
+          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CALCULADORA DE RIESGO")}</span>
           <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">
-            Cuánto operar para no perder más de lo que decidiste
+            {t("Cuánto operar para no perder más de lo que decidiste")}
           </span>
         </span>
         <span className="shrink-0 text-lg text-gold" aria-hidden>
@@ -102,23 +103,23 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
       {open && (
         <div className="space-y-3 p-5">
           <div className="flex gap-2.5">
-            {input("Capital ($)", capital, setCapital, "1000")}
-            {input("Riesgo (%)", riskPct, setRiskPct, "1")}
+            {input(t("Capital ($)"), capital, setCapital, "1000")}
+            {input(t("Riesgo (%)"), riskPct, setRiskPct, "1")}
           </div>
           <div className="flex gap-2.5">
-            {input("Apalancamiento (x)", leverage, setLeverage, "opcional")}
-            {input("Comisión (%)", fee, setFee, "opcional")}
+            {input(t("Apalancamiento (x)"), leverage, setLeverage, t("opcional"))}
+            {input(t("Comisión (%)"), fee, setFee, t("opcional"))}
           </div>
           <div className="flex gap-2.5">
-            {input("Entrada", entry, setEntry, "65000")}
-            {input("Stop loss", sl, setSl, "64350")}
-            {input("Take profit", tp, setTp, "opcional")}
+            {input(t("Entrada"), entry, setEntry, "65000")}
+            {input(t("Stop loss"), sl, setSl, "64350")}
+            {input(t("Take profit"), tp, setTp, t("opcional"))}
           </div>
 
           {res ? (
             <div className="space-y-2.5 rounded-md border border-gold/40 bg-ink/50 p-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-dim">
-                Cantidad a operar · {res.direction === "LONG" ? "compra" : "venta"}
+                {t("Cantidad a operar")} · {res.direction === "LONG" ? t("compra") : t("venta")}
               </p>
               <div className="flex items-center justify-between gap-3">
                 <p className="num text-3xl font-bold text-gold">{fmtQty(res.units)}</p>
@@ -126,16 +127,16 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
                   onClick={copy}
                   className="rounded border border-line px-3 py-1.5 text-[11px] font-semibold text-fog transition-colors hover:border-line2 hover:text-snow"
                 >
-                  Copiar
+                  {t("Copiar")}
                 </button>
               </div>
-              {row("Arriesgás", fmtMoney(res.riskAmount), "text-bear")}
-              {row("Valor de la posición", fmtMoney(res.notional))}
-              {res.margin != null && row("Margen necesario", fmtMoney(res.margin))}
-              {row("Distancia al stop", `${res.stopPct.toFixed(2)} % (${fmtPrice(res.stopDistance)})`)}
-              {res.fees > 0 && row("Comisiones estimadas", fmtMoney(res.fees))}
-              {res.profitAtTp != null && row("Ganás si toca el TP", fmtMoney(res.profitAtTp), "text-bull")}
-              {res.rr != null && row("Riesgo : beneficio", `1 : ${res.rr.toFixed(2)}`, "text-gold")}
+              {row(t("Arriesgás"), fmtMoney(res.riskAmount), "text-bear")}
+              {row(t("Valor de la posición"), fmtMoney(res.notional))}
+              {res.margin != null && row(t("Margen necesario"), fmtMoney(res.margin))}
+              {row(t("Distancia al stop"), `${res.stopPct.toFixed(2)} % (${fmtPrice(res.stopDistance)})`)}
+              {res.fees > 0 && row(t("Comisiones estimadas"), fmtMoney(res.fees))}
+              {res.profitAtTp != null && row(t("Ganás si toca el TP"), fmtMoney(res.profitAtTp), "text-bull")}
+              {res.rr != null && row(t("Riesgo : beneficio"), `1 : ${res.rr.toFixed(2)}`, "text-gold")}
               {res.warnings.map((w) => (
                 <p key={w} className="rounded-md border border-bear/30 bg-beardeep/30 px-3 py-2 text-[11.5px] leading-relaxed text-bear">
                   ⚠ {w}
@@ -144,11 +145,11 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
             </div>
           ) : (
             <p className="text-center text-[11.5px] text-dim">
-              Completá capital, riesgo, entrada y stop loss para ver cuánto operar.
+              {t("Completá capital, riesgo, entrada y stop loss para ver cuánto operar.")}
             </p>
           )}
           <p className="text-center text-[10.5px] text-dim">
-            Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.
+            {t("Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.")}
           </p>
         </div>
       )}
