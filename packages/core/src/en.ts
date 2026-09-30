@@ -456,6 +456,7 @@ export const EN: Record<string, string> = {
   "La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.": "The image shows results in R only: it includes no money amounts or account data.",
   "operación cerrada": "closed trade",
   "operaciones cerradas": "closed trades",
+  "Próximamente en Google Play": "Coming soon on Google Play",
   "CURVA DE CAPITAL": "EQUITY CURVE",
   "R acumulado por operación cerrada": "Cumulative R per closed trade",
   "Todavía no hay operaciones cerradas. Cuando marques un TP, un SL o un cierre manual,": "No closed trades yet. When you mark a TP, an SL or a manual close,",

@@ -10,7 +10,6 @@ const PERIODS: Array<[SharePeriod, string]> = [
   ["month", "Este mes"],
   ["all", "Todo"],
 ];
-const SITE = "aplicacion-senalesyregistros.vercel.app";
 
 const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
   c.beginPath();
@@ -155,7 +154,7 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1200);
   c.fillStyle = "#2ec4f1";
   c.font = font(600, 30);
-  c.fillText(SITE, W / 2, 1250);
+  c.fillText(t("Próximamente en Google Play"), W / 2, 1250);
   c.fillStyle = "#5f7389";
   c.font = font(500, 20);
   c.fillText(t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero."), W / 2, 1305);
