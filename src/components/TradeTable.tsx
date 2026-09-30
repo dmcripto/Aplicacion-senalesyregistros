@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cx, fmtDateTime, fmtPrice, locale, resultR, rrOf } from "../lib";
+import { cx, exchangeName, fmtDateTime, fmtPrice, locale, resultR, rrOf } from "../lib";
 import type { Trade } from "../lib";
 import {
   DirBadge,
@@ -211,6 +211,11 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     <td className="num whitespace-nowrap px-5 py-3 text-[11px] text-fog">{fmtDateTime(tr.date)}</td>
                     <td className="px-3 py-3">
                       <span className="num font-bold tracking-wide text-snow">{tr.symbol}</span>
+                      {tr.source && (
+                        <span className="num ml-2 rounded border border-line px-1.5 py-px text-[9.5px] font-semibold text-dim" title={t("Importada de {name}", { name: exchangeName(tr.source) })}>
+                          ⇄ {exchangeName(tr.source)}
+                        </span>
+                      )}
                       {tr.notes && <p className="mt-0.5 max-w-[220px] truncate text-[10.5px] italic text-dim" title={tr.notes}>{tr.notes}</p>}
                       {!!tr.tags?.length && (
                         <div className="mt-1 flex max-w-[240px] flex-wrap gap-1">

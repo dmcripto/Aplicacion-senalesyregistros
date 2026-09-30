@@ -1,0 +1,182 @@
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { EXCHANGE_LIST, exchangeName, fmtDateTime, t } from "@dmcripto/core";
+import type { ExchangeConnection, ExchangeId } from "@dmcripto/core";
+import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "./tradesApi";
+import { useMoney } from "./money";
+import { colors } from "./theme";
+
+function steps(exchange: ExchangeId): string[] {
+  return exchange === "binance"
+    ? [
+        t("En Binance: Perfil → Gestión de API → Crear API → \"Generada por el sistema\"."),
+        t("Ponele un nombre (por ejemplo VELTRIX) y confirmá."),
+        t("Dejá tildado SOLO \"Habilitar lectura\". No actives retiros, trading spot/margen ni transferencias."),
+        t("En restricciones de IP elegí \"Sin restricciones\" (con solo lectura es seguro)."),
+        t("Copiá la API Key y la Secret Key y pegalas acá. La Secret se muestra una sola vez."),
+      ]
+    : [
+        t("En Bybit: Perfil → API → Crear nueva clave → \"Claves generadas por el sistema\"."),
+        t("Ponele un nombre (por ejemplo VELTRIX) y elegí permisos \"Solo lectura\"."),
+        t("Activá la lectura de \"Contratos → Órdenes y posiciones\". No actives billetera ni retiros."),
+        t("Dejá la restricción de IP en \"Sin restricción de IP\" (con solo lectura es seguro)."),
+        t("Copiá la API Key y la Secret y pegalas acá. La Secret se muestra una sola vez."),
+      ];
+}
+
+/** Conexión de solo lectura con Binance / Bybit (dentro de Ajustes). */
+export default function ExchangeSection() {
+  const { unit } = useMoney();
+  const [conns, setConns] = useState<ExchangeConnection[]>([]);
+  const [exchange, setExchange] = useState<ExchangeId>("binance");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [guide, setGuide] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      setConns(await fetchConnections());
+    } catch {
+      setConns([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim());
+      if (!r.ok) return Alert.alert("Error", r.error ?? t("No se pudo conectar."));
+      setApiKey("");
+      setApiSecret("");
+      Alert.alert(t("Listo"), t("{name} conectado. Operaciones importadas: {n}.", { name: exchangeName(exchange), n: r.imported ?? 0 }) + (r.warning ? `\n\n${r.warning}` : ""));
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncNow = async () => {
+    setBusy(true);
+    try {
+      const r = await syncExchanges();
+      if (!r.ok) return Alert.alert("Error", r.error ?? t("No se pudo sincronizar."));
+      const total = (r.results ?? []).reduce((a, x) => a + x.imported, 0);
+      const failed = (r.results ?? []).find((x) => x.error);
+      if (failed?.error) Alert.alert("Error", failed.error);
+      else Alert.alert(t("Listo"), total ? t("Sincronizado: {n} operaciones nuevas.", { n: total }) : t("Todo al día: no hay operaciones nuevas."));
+      await reload();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = (c: ExchangeConnection) =>
+    Alert.alert(t("Desconectar"), t("Se borra la clave guardada de {name}. Las operaciones ya importadas quedan en tu diario.", { name: exchangeName(c.exchange) }), [
+      { text: t("Cancelar"), style: "cancel" },
+      {
+        text: t("Desconectar"),
+        style: "destructive",
+        onPress: () => disconnectExchange(c.id).then(reload).catch((e) => Alert.alert("Error", e instanceof Error ? e.message : t("No se pudo desconectar."))),
+      },
+    ]);
+
+  const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && !busy;
+
+  return (
+    <View style={s.card}>
+      {conns.length ? (
+        conns.map((c) => (
+          <View key={c.id} style={s.conn}>
+            <View style={s.row}>
+              <Text style={s.name}>
+                {exchangeName(c.exchange)} <Text style={s.hintKey}>••••{c.keyHint}</Text>
+              </Text>
+              <Text style={[s.status, { color: c.status === "active" ? colors.bull : colors.bear }]}>
+                {c.status === "active" ? t("Conectado") : t("Con error")}
+              </Text>
+            </View>
+            <Text style={s.hint}>
+              {c.lastSyncAt ? t("Última sincronización: {when} · {n} nuevas", { when: fmtDateTime(c.lastSyncAt), n: c.lastImportCount }) : t("Todavía sin sincronizar")}
+            </Text>
+            {c.status === "error" && c.lastError ? <Text style={s.error}>{c.lastError}</Text> : null}
+            <TouchableOpacity onPress={() => disconnect(c)} style={{ alignSelf: "flex-end" }}>
+              <Text style={s.link}>{t("Desconectar")}</Text>
+            </TouchableOpacity>
+          </View>
+        ))
+      ) : (
+        <Text style={s.hint}>
+          {t("Conectá Binance o Bybit con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+        </Text>
+      )}
+
+      {conns.length > 0 && (
+        <TouchableOpacity style={s.outline} onPress={syncNow} disabled={busy || unit == null}>
+          {busy ? <ActivityIndicator color={colors.gold} /> : <Text style={s.outlineText}>{t("Sincronizar ahora")}</Text>}
+        </TouchableOpacity>
+      )}
+
+      {unit == null && (
+        <Text style={s.notice}>{t("Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R.")}</Text>
+      )}
+
+      <View style={s.row}>
+        {EXCHANGE_LIST.map((e) => (
+          <TouchableOpacity key={e.id} style={[s.chip, exchange === e.id && s.chipOn]} onPress={() => setExchange(e.id)}>
+            <Text style={[s.chipText, exchange === e.id && { color: colors.ink }]}>{e.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <TouchableOpacity onPress={() => setGuide((g) => !g)}>
+        <Text style={s.link}>{guide ? "▾ " : "▸ "}{t("Cómo crear la clave (solo lectura)")}</Text>
+      </TouchableOpacity>
+      {guide && (
+        <View style={{ gap: 4 }}>
+          {steps(exchange).map((x, i) => (
+            <Text key={x} style={s.hint}>{i + 1}. {x}</Text>
+          ))}
+        </View>
+      )}
+
+      <Text style={s.label}>API KEY</Text>
+      <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.dim} style={s.input} />
+      <Text style={s.label}>{t("Clave secreta (Secret)")}</Text>
+      <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
+
+      <TouchableOpacity style={[s.btn, !canConnect && { opacity: 0.4 }]} onPress={connect} disabled={!canConnect}>
+        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={s.btnText}>{t("Conectar {name}", { name: exchangeName(exchange) })}</Text>}
+      </TouchableOpacity>
+      <Text style={s.hint}>
+        {t("Tu clave secreta se guarda cifrada en el servidor y no se vuelve a mostrar. VELTRIX solo lee: rechaza claves que permitan operar o retirar. Las operaciones se importan con tu 1R (capital × riesgo %) y quedan marcadas con el exchange de origen.")}
+      </Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  card: { backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 16, marginBottom: 20, gap: 10 },
+  conn: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 10, gap: 4, backgroundColor: colors.ink },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  name: { color: colors.snow, fontSize: 13.5, fontWeight: "800" },
+  hintKey: { color: colors.dim, fontSize: 11, fontWeight: "400" },
+  status: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
+  hint: { color: colors.dim, fontSize: 11.5, lineHeight: 17 },
+  error: { color: colors.bear, fontSize: 11.5, lineHeight: 16 },
+  notice: { color: colors.gold, fontSize: 11.5, lineHeight: 17, borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 10 },
+  link: { color: colors.gold, fontSize: 12, fontWeight: "700" },
+  label: { color: colors.fog, fontSize: 9.5, fontWeight: "700", letterSpacing: 1 },
+  input: { backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: colors.snow, fontSize: 14 },
+  chip: { flex: 1, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  chipText: { color: colors.fog, fontWeight: "800", fontSize: 12.5 },
+  btn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 12, alignItems: "center" },
+  btnText: { color: colors.ink, fontWeight: "800", fontSize: 12.5, letterSpacing: 0.5 },
+  outline: { borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  outlineText: { color: colors.gold, fontWeight: "800", fontSize: 12 },
+});

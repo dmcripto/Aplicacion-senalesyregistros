@@ -24,7 +24,7 @@ import RiskScreen from "./src/screens/RiskScreen";
 import { dailyStatus } from "@dmcripto/core";
 import { NO_MONEY, getLang } from "@dmcripto/core";
 import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
-import { fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney } from "./src/tradesApi";
+import { fetchConnections, fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney, syncExchanges } from "./src/tradesApi";
 import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
@@ -65,6 +65,17 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
     fetchMoney(userId).then(setMoney).catch(() => {});
     Promise.resolve(saveLang(userId, getLang())).catch(() => {});
   }, [userId]);
+
+  // Si hay un exchange conectado, se sincroniza solo al abrir la app (máximo una vez cada 5 minutos).
+  useEffect(() => {
+    if (!money.capital || !money.riskPct) return;
+    fetchConnections()
+      .then((cs) => {
+        const stale = cs.some((c) => !c.lastSyncAt || Date.now() - new Date(c.lastSyncAt).getTime() > 5 * 60_000);
+        if (stale) return syncExchanges();
+      })
+      .catch(() => {});
+  }, [userId, money.capital, money.riskPct]);
 
   const persistMoney = async (m: MoneySettings) => {
     await saveMoney(userId, m);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
 import type { DailyStatus, GroupRow, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -399,7 +399,7 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
               {trade.symbol}
             </Text>
             <Text style={s.date}>
-              {long ? t("COMPRA") : t("VENTA")} · {timeAgo(trade.date)}
+              {long ? t("COMPRA") : t("VENTA")} · {timeAgo(trade.date)}{trade.source ? ` · ⇄ ${exchangeName(trade.source)}` : ""}
             </Text>
           </View>
           <View style={[s.pill, { borderColor: abierta ? colors.gold + "88" : rColor(r ?? 0) + "88", backgroundColor: (abierta ? colors.gold : rColor(r ?? 0)) + "1a" }]}>
