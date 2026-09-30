@@ -19,6 +19,7 @@ export interface Trade {
   closedAt?: string;
   notes?: string;
   autoClosed?: boolean;
+  tags?: string[];
 }
 
 export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed">;
@@ -444,6 +445,61 @@ export function buildAlertMessage(o: AlertMessageOptions): string {
 }
 
 
+// ─── Etiquetas ──────────────────────────────────────────────────────────────
+
+export const PRESET_TAGS: Array<{ group: string; tags: string[] }> = [
+  { group: "Emoción", tags: ["Calma", "Confianza", "Miedo", "Codicia", "FOMO", "Venganza", "Ansiedad"] },
+  { group: "Ejecución", tags: ["Seguí el plan", "Sin plan", "Entré tarde", "Moví el stop", "Cerré antes", "Sin stop", "Sobreoperé"] },
+  { group: "Setup", tags: ["Señal de comunidad", "Breakout", "Reversión", "Tendencia", "Noticia"] },
+];
+
+export const MAX_TAGS = 8;
+
+/** Limpia una lista de etiquetas: sin vacías, sin repetidas (ignora mayúsculas), largo y cantidad acotados. */
+export function cleanTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const tag = raw.trim().replace(/\s+/g, " ").slice(0, 24);
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+    if (out.length >= MAX_TAGS) break;
+  }
+  return out;
+}
+
+export interface TagRow {
+  tag: string;
+  ops: number;
+  winRate: number;
+  netR: number;
+}
+
+/** Resultado de las operaciones cerradas agrupadas por etiqueta (de peor a mejor R neto). */
+export function tagStats(trades: Trade[]): TagRow[] {
+  const map = new Map<string, { tag: string; rs: number[] }>();
+  for (const t of trades) {
+    if (t.outcome === "ABIERTA" || !t.tags?.length) continue;
+    const r = resultR(t) ?? 0;
+    for (const tag of t.tags) {
+      const key = tag.toLowerCase();
+      const row = map.get(key) ?? { tag, rs: [] };
+      row.rs.push(r);
+      map.set(key, row);
+    }
+  }
+  return [...map.values()]
+    .map(({ tag, rs }) => ({
+      tag,
+      ops: rs.length,
+      winRate: (rs.filter((r) => r > 0).length / rs.length) * 100,
+      netR: rs.reduce((a, b) => a + b, 0),
+    }))
+    .sort((a, b) => a.netR - b.netR);
+}
+
 // ─── Calculadora de riesgo ──────────────────────────────────────────────────
 
 export interface PositionInput {
@@ -540,7 +596,7 @@ export function tradesToCsv(trades: Trade[]): string {
     const s = String(v);
     return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ["Fecha", "Activo", "Direccion", "Entrada", "TP", "SL", "Estado", "Salida", "R", "Notas"];
+  const head = ["Fecha", "Activo", "Direccion", "Entrada", "TP", "SL", "Estado", "Salida", "R", "Notas", "Etiquetas"];
   const rows = trades.map((t) => [
     new Date(t.date).toLocaleString("es-ES"),
     t.symbol,
@@ -552,6 +608,7 @@ export function tradesToCsv(trades: Trade[]): string {
     t.exit ?? "",
     resultR(t)?.toFixed(2) ?? "",
     t.notes ?? "",
+    (t.tags ?? []).join(" | "),
   ]);
   return "﻿" + [head, ...rows].map((r) => r.map(esc).join(";")).join("\n");
 }

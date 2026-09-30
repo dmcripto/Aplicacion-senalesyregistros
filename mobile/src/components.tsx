@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react";
-import { Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { computeStats, equitySeries, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
-import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById } from "./tradesApi";
+import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
@@ -112,6 +112,26 @@ export function MonthlyList({ trades }: { trades: Trade[] }) {
   );
 }
 
+export function TagList({ trades }: { trades: Trade[] }) {
+  const rows = useMemo(() => tagStats(trades), [trades]);
+  if (!rows.length) return null;
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>RESULTADO POR ETIQUETA</Text>
+      {rows.map((r) => (
+        <View key={r.tag} style={s.monthRow}>
+          <Text style={[s.monthLabel, { flex: 1.6 }]} numberOfLines={1}>
+            {r.tag}
+          </Text>
+          <Text style={s.monthCell}>{r.ops} ops</Text>
+          <Text style={s.monthCell}>{Math.round(r.winRate)}%</Text>
+          <Text style={[s.monthR, { color: rColor(r.netR) }]}>{fmtR(r.netR)}R</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function CloseModal({ trade, onClose }: { trade: Trade | null; onClose: () => void }) {
   const [value, setValue] = useState("");
   const submit = async () => {
@@ -155,8 +175,111 @@ function CloseModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   );
 }
 
+function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => void }) {
+  const [notes, setNotes] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [custom, setCustom] = useState("");
+
+  useEffect(() => {
+    if (trade) {
+      setNotes(trade.notes ?? "");
+      setTags(trade.tags ?? []);
+      setCustom("");
+    }
+  }, [trade]);
+
+  const has = (tag: string) => tags.some((x) => x.toLowerCase() === tag.toLowerCase());
+  const toggle = (tag: string) =>
+    setTags((cur) => (has(tag) ? cur.filter((x) => x.toLowerCase() !== tag.toLowerCase()) : cleanTags([...cur, tag])));
+  const addCustom = () => {
+    if (custom.trim()) setTags((cur) => cleanTags([...cur, custom]));
+    setCustom("");
+  };
+  const customTags = tags.filter((x) => !PRESET_TAGS.some((g) => g.tags.includes(x)));
+
+  const save = async () => {
+    if (!trade) return;
+    try {
+      await updateTradeNotes(trade.id, notes, tags);
+      onClose();
+    } catch (err) {
+      fail(err, "No se pudieron guardar las notas.");
+    }
+  };
+
+  return (
+    <Modal visible={!!trade} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={[s.modalBg, { justifyContent: "flex-end", padding: 0 }]}>
+        <View style={[s.modal, { maxHeight: "92%", borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Text style={s.modalTitle}>Notas y etiquetas · {trade?.symbol}</Text>
+            <Text style={s.tileSub}>¿Qué pasó en esta operación?</Text>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              maxLength={600}
+              placeholder="Por qué entraste, cómo te sentiste, qué aprendiste…"
+              placeholderTextColor={colors.dim}
+              style={[s.input, { minHeight: 90, textAlignVertical: "top" }]}
+            />
+            {PRESET_TAGS.map((g) => (
+              <View key={g.group} style={{ marginTop: 12 }}>
+                <Text style={s.tagGroup}>{g.group.toUpperCase()}</Text>
+                <View style={s.tagWrap}>
+                  {g.tags.map((tag) => (
+                    <TouchableOpacity key={tag} style={[s.tagChip, has(tag) && s.tagChipOn]} onPress={() => toggle(tag)}>
+                      <Text style={[s.tagChipText, has(tag) && { color: colors.ink }]}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ))}
+            <Text style={[s.tagGroup, { marginTop: 12 }]}>ETIQUETA PROPIA</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TextInput
+                value={custom}
+                onChangeText={setCustom}
+                onSubmitEditing={addCustom}
+                maxLength={24}
+                placeholder="Ej: Apertura de Nueva York"
+                placeholderTextColor={colors.dim}
+                style={[s.input, { flex: 1 }]}
+              />
+              <TouchableOpacity style={s.btn} onPress={addCustom}>
+                <Text style={s.btnText}>Agregar</Text>
+              </TouchableOpacity>
+            </View>
+            {customTags.length > 0 && (
+              <View style={[s.tagWrap, { marginTop: 8 }]}>
+                {customTags.map((tag) => (
+                  <TouchableOpacity key={tag} style={[s.tagChip, s.tagChipOn]} onPress={() => toggle(tag)}>
+                    <Text style={[s.tagChipText, { color: colors.ink }]}>{tag} ✕</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            <Text style={[s.tileSub, { marginTop: 8 }]}>
+              {tags.length}/{MAX_TAGS} etiquetas
+            </Text>
+          </ScrollView>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={onClose}>
+              <Text style={s.btnText}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={save}>
+              <Text style={[s.btnText, { color: colors.ink }]}>Guardar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean; onCalculate?: (t: Trade) => void }) {
   const [closing, setClosing] = useState<Trade | null>(null);
+  const [editingNotes, setEditingNotes] = useState<Trade | null>(null);
   const abierta = trade.outcome === "ABIERTA";
   const r = resultR(trade);
   const long = trade.direction === "LONG";
@@ -208,6 +331,20 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
         </View>
         {trade.exit != null && <Text style={s.date}>Salida {fmtPrice(trade.exit)}</Text>}
         {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>⚡ Cerrada automáticamente</Text>}
+        {!!trade.tags?.length && (
+          <View style={[s.tagWrap, { marginTop: 8 }]}>
+            {trade.tags.map((tag) => (
+              <View key={tag} style={s.tagMini}>
+                <Text style={s.tagMiniText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        {!!trade.notes && (
+          <Text style={s.noteText} numberOfLines={3}>
+            “{trade.notes}”
+          </Text>
+        )}
 
         <View style={s.actions}>
           {abierta ? (
@@ -232,12 +369,16 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
               <Text style={s.btnText}>Reabrir</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity style={s.btn} onPress={() => setEditingNotes(trade)}>
+            <Text style={s.btnText}>✎ Notas</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={s.btn} onPress={confirmDelete}>
             <Text style={[s.btnText, { color: colors.bear }]}>Borrar</Text>
           </TouchableOpacity>
         </View>
       </View>
       <CloseModal trade={closing} onClose={() => setClosing(null)} />
+      <NotesModal trade={editingNotes} onClose={() => setEditingNotes(null)} />
     </View>
   );
 }
@@ -306,6 +447,14 @@ const s = StyleSheet.create({
   communityTitle: { color: colors.snow, fontWeight: "800", fontSize: 13.5 },
   communityText: { color: colors.fog, fontSize: 11.5, marginTop: 2 },
   communityGo: { color: colors.cyan, fontWeight: "800", fontSize: 12 },
+  tagGroup: { color: colors.dim, fontSize: 9.5, fontWeight: "800", letterSpacing: 1.2, marginBottom: 6 },
+  tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  tagChip: { borderWidth: 1, borderColor: colors.line2, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 },
+  tagChipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  tagChipText: { color: colors.fog, fontSize: 12, fontWeight: "700" },
+  tagMini: { borderWidth: 1, borderColor: colors.gold + "66", backgroundColor: colors.gold + "14", borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 },
+  tagMiniText: { color: colors.gold, fontSize: 10.5, fontWeight: "700" },
+  noteText: { color: colors.fog, fontSize: 12, fontStyle: "italic", marginTop: 8, lineHeight: 17 },
   tileRow: { flexDirection: "row", gap: 8 },
   tile: { flex: 1, backgroundColor: "rgba(16,23,32,0.85)", borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 10, minHeight: 68 },
   tileLabel: { color: colors.fog, fontSize: 9, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase" },
