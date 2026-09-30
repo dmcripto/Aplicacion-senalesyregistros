@@ -11,3 +11,5 @@ export const DISCLAIMER =
   "VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de inversión. Operar implica riesgo de pérdida y los resultados pasados no garantizan resultados futuros. No está afiliado a TradingView.";
 
 export const openLink = (url: string) => Linking.openURL(url).catch(() => {});
+
+export const COMMUNITY_URL = "https://t.me/DMCRIPTOCOMU";

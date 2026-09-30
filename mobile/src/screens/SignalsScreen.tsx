@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type { Trade } from "@dmcripto/core";
-import { Empty, StatsGrid, TradeCard } from "../components";
+import { CommunityCard, Empty, StatsGrid, TradeCard } from "../components";
 import { colors } from "../theme";
 
 export default function SignalsScreen({
@@ -28,6 +28,7 @@ export default function SignalsScreen({
       ListHeaderComponent={
         <>
           <StatsGrid trades={trades} />
+          <CommunityCard />
           <View style={s.chips}>
             {(["open", "all"] as const).map((f) => (
               <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipOn]} onPress={() => setFilter(f)}>

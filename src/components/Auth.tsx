@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "../supabaseClient";
-import { cx } from "../lib";
+import { COMMUNITY_URL, cx } from "../lib";
 import { IconAlert, ShieldLogo } from "../ui";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
@@ -209,6 +209,14 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
             {busy ? "Un momento…" : mode === "login" ? "Ingresar" : "Crear cuenta"}
           </button>
         </form>
+        <a
+          href={COMMUNITY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block border-t border-line px-6 py-3 text-center text-[12px] font-semibold text-cyan transition-colors hover:bg-cyan/10"
+        >
+          ✈ Unite a la comunidad de VELTRIX en Telegram
+        </a>
         <p className="border-t border-line px-6 py-4 text-[10.5px] leading-relaxed text-dim">
           VELTRIX es una herramienta de registro, no brinda asesoramiento financiero. Operar implica riesgo de
           pérdida. No está afiliado a TradingView.
