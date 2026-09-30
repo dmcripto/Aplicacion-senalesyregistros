@@ -99,11 +99,14 @@ Deno.serve(async () => {
     const r = rOfHit(trade, hit.outcome);
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {
+      // Idioma del usuario (columna opcional: si todavía no existe, se usa español).
+      const { data: langRow } = await supabase.from("profiles").select("lang").eq("id", trade.user_id).maybeSingle();
+      const en = (langRow as { lang?: string } | null)?.lang === "en";
       await sendExpoPush(
         tokens.map((t) => ({
           to: t.expo_push_token,
-          title: `${hit.outcome === "TP" ? "✅ TP alcanzado" : "❌ SL alcanzado"} · ${trade.symbol}`,
-          body: `Cierre automático ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`,
+          title: `${hit.outcome === "TP" ? (en ? "✅ TP hit" : "✅ TP alcanzado") : en ? "❌ SL hit" : "❌ SL alcanzado"} · ${trade.symbol}`,
+          body: `${en ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`,
           data: { tradeId: trade.id },
         })),
       );

@@ -7,6 +7,7 @@ import {
   downloadCsv,
   fmtPct,
   fmtR,
+  getLang,
   locale,
   resultR,
   rrOf,
@@ -44,6 +45,7 @@ import {
   saveLimits,
   fetchMoney,
   saveMoney,
+  saveLang,
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
@@ -417,6 +419,7 @@ function Dashboard({ userId }: { userId: string }) {
 
   useEffect(() => {
     fetchMoney(userId).then(setMoney).catch(() => {});
+    saveLang(userId, getLang()).catch(() => {});
   }, [userId]);
   const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
   const limitStatus = useMemo(() => dailyStatus(trades, limits), [trades, limits]);

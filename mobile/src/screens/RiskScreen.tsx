@@ -6,6 +6,7 @@ import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
 import { useMoney } from "../money";
+import { t } from "@dmcripto/core";
 
 const STORE_KEY = "veltrix_risk_settings_v1";
 
@@ -98,49 +99,49 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        <Text style={s.title}>CALCULADORA DE RIESGO</Text>
-        <Text style={s.sub}>Cuánto operar para no perder más de lo que decidiste.</Text>
+        <Text style={s.title}>{t("CALCULADORA DE RIESGO")}</Text>
+        <Text style={s.sub}>{t("Cuánto operar para no perder más de lo que decidiste.")}</Text>
 
         <View style={s.card}>
-          <Text style={s.section}>TU CUENTA</Text>
+          <Text style={s.section}>{t("TU CUENTA")}</Text>
           <View style={s.row}>
-            {field("CAPITAL ($)", capital, setCapital, "1000")}
-            {field("RIESGO (%)", riskPct, setRiskPct, "1")}
+            {field(t("CAPITAL ($)"), capital, setCapital, "1000")}
+            {field(t("RIESGO (%)"), riskPct, setRiskPct, "1")}
           </View>
           <View style={s.row}>
-            {field("APALANCAMIENTO (x)", leverage, setLeverage, "opcional")}
-            {field("COMISIÓN (%)", fee, setFee, "opcional")}
+            {field(t("APALANCAMIENTO (x)"), leverage, setLeverage, t("opcional"))}
+            {field(t("COMISIÓN (%)"), fee, setFee, t("opcional"))}
           </View>
         </View>
 
         <View style={s.card}>
-          <Text style={s.section}>LA OPERACIÓN{symbol ? ` · ${symbol}` : ""}</Text>
+          <Text style={s.section}>{t("LA OPERACIÓN")}{symbol ? ` · ${symbol}` : ""}</Text>
           <View style={s.row}>
-            {field("ENTRADA", entry, setEntry, "65000")}
-            {field("STOP LOSS", sl, setSl, "64350")}
-            {field("TAKE PROFIT", tp, setTp, "opcional")}
+            {field(t("ENTRADA"), entry, setEntry, "65000")}
+            {field(t("STOP LOSS"), sl, setSl, "64350")}
+            {field(t("TAKE PROFIT"), tp, setTp, t("opcional"))}
           </View>
         </View>
 
         {res ? (
           <View style={[s.card, s.result]}>
-            <Text style={s.section}>RESULTADO · {res.direction === "LONG" ? "COMPRA" : "VENTA"}</Text>
-            <Text style={s.bigLabel}>CANTIDAD A OPERAR</Text>
+            <Text style={s.section}>{t("RESULTADO")} · {res.direction === "LONG" ? t("COMPRA") : t("VENTA")}</Text>
+            <Text style={s.bigLabel}>{t("CANTIDAD A OPERAR")}</Text>
             <Text style={s.big}>
               {fmtQty(res.units)} <Text style={s.bigUnit}>{unit}</Text>
             </Text>
             <TouchableOpacity style={s.copyBtn} onPress={copy}>
-              <Text style={s.copyText}>{copied ? "¡Copiado!" : "Copiar cantidad"}</Text>
+              <Text style={s.copyText}>{copied ? t("¡Copiado!") : t("Copiar cantidad")}</Text>
             </TouchableOpacity>
 
             <View style={s.grid}>
-              <Item label="Arriesgás" value={fmtMoney(res.riskAmount)} color={colors.bear} />
-              <Item label="Valor de la posición" value={fmtMoney(res.notional)} />
-              {res.margin != null && <Item label="Margen necesario" value={fmtMoney(res.margin)} />}
-              <Item label="Distancia al stop" value={`${res.stopPct.toFixed(2)} % (${fmtPrice(res.stopDistance)})`} />
-              {res.fees > 0 && <Item label="Comisiones estimadas" value={fmtMoney(res.fees)} />}
-              {res.profitAtTp != null && <Item label="Ganás si toca el TP" value={fmtMoney(res.profitAtTp)} color={colors.bull} />}
-              {res.rr != null && <Item label="Riesgo : beneficio" value={`1 : ${res.rr.toFixed(2)}`} color={colors.gold} />}
+              <Item label={t("Arriesgás")} value={fmtMoney(res.riskAmount)} color={colors.bear} />
+              <Item label={t("Valor de la posición")} value={fmtMoney(res.notional)} />
+              {res.margin != null && <Item label={t("Margen necesario")} value={fmtMoney(res.margin)} />}
+              <Item label={t("Distancia al stop")} value={`${res.stopPct.toFixed(2)} % (${fmtPrice(res.stopDistance)})`} />
+              {res.fees > 0 && <Item label={t("Comisiones estimadas")} value={fmtMoney(res.fees)} />}
+              {res.profitAtTp != null && <Item label={t("Ganás si toca el TP")} value={fmtMoney(res.profitAtTp)} color={colors.bull} />}
+              {res.rr != null && <Item label={t("Riesgo : beneficio")} value={`1 : ${res.rr.toFixed(2)}`} color={colors.gold} />}
             </View>
 
             {res.warnings.map((w) => (
@@ -150,10 +151,10 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
             ))}
           </View>
         ) : (
-          <Text style={s.hint}>Completá capital, riesgo, entrada y stop loss para ver cuánto operar.</Text>
+          <Text style={s.hint}>{t("Completá capital, riesgo, entrada y stop loss para ver cuánto operar.")}</Text>
         )}
 
-        <Text style={s.disclaimer}>Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.</Text>
+        <Text style={s.disclaimer}>{t("Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.")}</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

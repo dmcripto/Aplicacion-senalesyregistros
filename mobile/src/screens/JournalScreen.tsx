@@ -5,6 +5,7 @@ import type { Trade } from "@dmcripto/core";
 import { AnalysisBlock, Empty, EquityBars, MonthlyList, StatsGrid, TagList, TradeCard } from "../components";
 import ShareCardModal from "../ShareCardModal";
 import { colors } from "../theme";
+import { t } from "@dmcripto/core";
 
 type Filter = "all" | "won" | "lost";
 const LABELS: Record<Filter, string> = { all: "Todas", won: "Ganadas", lost: "Perdidas" };
@@ -41,24 +42,24 @@ export default function JournalScreen({
         <>
           <StatsGrid trades={trades} />
           <TouchableOpacity style={s.shareBtn} onPress={() => setSharing(true)} disabled={!closed.length}>
-            <Text style={s.shareText}>↗ Compartir mi resultado</Text>
+            <Text style={s.shareText}>{t("↗ Compartir mi resultado")}</Text>
           </TouchableOpacity>
           <EquityBars trades={trades} />
           <MonthlyList trades={trades} />
           <AnalysisBlock trades={trades} />
           <TagList trades={trades} />
-          <Text style={s.title}>HISTORIAL</Text>
+          <Text style={s.title}>{t("HISTORIAL")}</Text>
           <View style={s.chips}>
             {(Object.keys(LABELS) as Filter[]).map((f) => (
               <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipOn]} onPress={() => setFilter(f)}>
-                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{LABELS[f]}</Text>
+                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{t(LABELS[f])}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </>
       }
       ListEmptyComponent={
-        !loading ? <Empty title="SIN OPERACIONES CERRADAS" text="Cuando marques TP, SL o un cierre manual en una señal, queda registrada acá." /> : null
+        !loading ? <Empty title={t("SIN OPERACIONES CERRADAS")} text={t("Cuando marques TP, SL o un cierre manual en una señal, queda registrada acá.")} /> : null
       }
       renderItem={({ item }) => <TradeCard trade={item} />}
     />

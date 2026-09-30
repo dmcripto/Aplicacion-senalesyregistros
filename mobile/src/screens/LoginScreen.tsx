@@ -11,8 +11,10 @@ import {
 } from "react-native";
 import { supabase } from "../supabaseClient";
 import { Logo } from "../ui";
-import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
+import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
+import { LangSwitch } from "../lang";
+import { t } from "@dmcripto/core";
 
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -33,13 +35,13 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
       } else {
-        if (!accepted) throw new Error("Tenés que aceptar los términos de uso y la política de privacidad.");
+        if (!accepted) throw new Error(t("Tenés que aceptar los términos de uso y la política de privacidad."));
         const { error: err } = await supabase.auth.signUp({ email, password });
         if (err) throw err;
-        setNotice("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada.");
+        setNotice(t("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada."));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo completar la operación.");
+      setError(err instanceof Error ? err.message : t("No se pudo completar la operación."));
     } finally {
       setBusy(false);
     }
@@ -47,7 +49,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
 
   const forgotPassword = async () => {
     if (!email.trim()) {
-      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      setError(t("Ingresá tu email arriba y volvé a tocar el link."));
       return;
     }
     setError(null);
@@ -59,10 +61,10 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       });
       if (err) throw err;
       setNotice(
-        "Te enviamos un email. Abrí el link desde el navegador (no desde Gmail directamente) para crear tu nueva contraseña en la web.",
+        t("Te enviamos un email. Abrí el link desde el navegador (no desde Gmail directamente) para crear tu nueva contraseña en la web."),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo enviar el email.");
+      setError(err instanceof Error ? err.message : t("No se pudo enviar el email."));
     } finally {
       setBusy(false);
     }
@@ -70,7 +72,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
 
   const resendConfirmation = async () => {
     if (!email.trim()) {
-      setError("Ingresá tu email arriba y volvé a tocar el link.");
+      setError(t("Ingresá tu email arriba y volvé a tocar el link."));
       return;
     }
     setError(null);
@@ -79,9 +81,9 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
     try {
       const { error: err } = await supabase.auth.resend({ type: "signup", email });
       if (err) throw err;
-      setNotice("Te reenviamos el email de confirmación.");
+      setNotice(t("Te reenviamos el email de confirmación."));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo reenviar el email.");
+      setError(err instanceof Error ? err.message : t("No se pudo reenviar el email."));
     } finally {
       setBusy(false);
     }
@@ -92,6 +94,9 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       style={styles.screen}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <View style={{ alignItems: "center", marginBottom: 12 }}>
+        <LangSwitch />
+      </View>
       <View style={styles.card}>
         <View style={{ alignItems: "center", marginBottom: 10 }}>
           <Logo size={96} />
@@ -99,20 +104,20 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         <Text style={styles.title}>
           VELTRIX
         </Text>
-        <Text style={styles.subtitle}>DIARIO DE TRADING · EN VIVO</Text>
+        <Text style={styles.subtitle}>{t("DIARIO DE TRADING · EN VIVO")}</Text>
 
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, mode === "login" && styles.tabActive]}
             onPress={() => setMode("login")}
           >
-            <Text style={[styles.tabText, mode === "login" && styles.tabTextActive]}>Ingresar</Text>
+            <Text style={[styles.tabText, mode === "login" && styles.tabTextActive]}>{t("Ingresar")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, mode === "signup" && styles.tabActive]}
             onPress={() => setMode("signup")}
           >
-            <Text style={[styles.tabText, mode === "signup" && styles.tabTextActive]}>Crear cuenta</Text>
+            <Text style={[styles.tabText, mode === "signup" && styles.tabTextActive]}>{t("Crear cuenta")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -120,7 +125,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         <TextInput
           value={email}
           onChangeText={setEmail}
-          placeholder="vos@ejemplo.com"
+          placeholder={t("vos@ejemplo.com")}
           placeholderTextColor={colors.dim}
           autoCapitalize="none"
           autoCorrect={false}
@@ -128,7 +133,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
           style={styles.input}
         />
 
-        <Text style={styles.label}>Contraseña</Text>
+        <Text style={styles.label}>{t("Contraseña")}</Text>
         <View style={styles.passwordRow}>
           <TextInput
             value={password}
@@ -143,16 +148,16 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
             onPress={() => setShowPassword((v) => !v)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.showBtnText}>{showPassword ? "Ocultar" : "Ver"}</Text>
+            <Text style={styles.showBtnText}>{showPassword ? t("Ocultar") : t("Ver")}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.linksRow}>
           <TouchableOpacity onPress={forgotPassword} disabled={busy}>
-            <Text style={styles.link}>¿Olvidaste tu contraseña?</Text>
+            <Text style={styles.link}>{t("¿Olvidaste tu contraseña?")}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={resendConfirmation} disabled={busy}>
-            <Text style={styles.link}>Reenviar confirmación</Text>
+            <Text style={styles.link}>{t("Reenviar confirmación")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -162,13 +167,13 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
               {accepted && <Text style={styles.checkMark}>✓</Text>}
             </View>
             <Text style={styles.acceptText}>
-              Acepto los{" "}
+              {t("Acepto los")}{" "}
               <Text style={styles.acceptLink} onPress={() => openLink(LEGAL_LINKS.terms)}>
-                términos de uso
+                {t("términos de uso")}
               </Text>{" "}
-              y la{" "}
+              {t("y la")}{" "}
               <Text style={styles.acceptLink} onPress={() => openLink(LEGAL_LINKS.privacy)}>
-                política de privacidad
+                {t("política de privacidad")}
               </Text>
               .
             </Text>
@@ -182,10 +187,10 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
           {busy ? (
             <ActivityIndicator color={colors.ink} />
           ) : (
-            <Text style={styles.submitText}>{mode === "login" ? "Ingresar" : "Crear cuenta"}</Text>
+            <Text style={styles.submitText}>{mode === "login" ? t("Ingresar") : t("Crear cuenta")}</Text>
           )}
         </TouchableOpacity>
-        <Text style={styles.disclaimer}>{DISCLAIMER}</Text>
+        <Text style={styles.disclaimer}>{disclaimer()}</Text>
       </View>
     </KeyboardAvoidingView>
   );

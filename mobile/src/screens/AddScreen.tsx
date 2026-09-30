@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { EXAMPLE_ALERT, fmtPrice, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
+import { exampleAlert, fmtPrice, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
 import type { DailyStatus, Direction, NewTrade, ParseResult, Trade } from "@dmcripto/core";
 import { insertFullTrades, insertTrades } from "../tradesApi";
 import { colors } from "../theme";
+import { t } from "@dmcripto/core";
 
 export default function AddScreen({ userId, onAdded, limitStatus }: { userId: string; onAdded: () => void; limitStatus?: DailyStatus }) {
   const [mode, setMode] = useState<"paste" | "manual">("paste");
@@ -33,7 +34,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
       await insertTrades(userId, list);
       onAdded();
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "No se pudo guardar.");
+      Alert.alert(t("Error"), err instanceof Error ? err.message : t("No se pudo guardar."));
     } finally {
       setBusy(false);
     }
@@ -42,9 +43,9 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
   const save = (list: NewTrade[]) =>
     new Promise<void>((resolve) => {
       if (limitStatus?.level === "stop") {
-        Alert.alert("Frená por hoy", `${limitStatus.messages.join("\n")}\n\n¿Querés registrar la operación igual?`, [
-          { text: "No", style: "cancel", onPress: () => resolve() },
-          { text: "Registrar igual", style: "destructive", onPress: () => doSave(list).then(resolve) },
+        Alert.alert(t("Frená por hoy"), `${limitStatus.messages.join("\n")}\n\n${t("¿Querés registrar la operación igual?")}`, [
+          { text: t("No"), style: "cancel", onPress: () => resolve() },
+          { text: t("Registrar igual"), style: "destructive", onPress: () => doSave(list).then(resolve) },
         ]);
       } else {
         doSave(list).then(resolve);
@@ -77,7 +78,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
     const n = (v: string) => Number(v.replace(",", "."));
     const list = [{ symbol: symbol.trim().toUpperCase(), direction, entry: n(entry), tp: n(tp), sl: n(sl), date: new Date().toISOString() }];
     if (!list[0].symbol || ![list[0].entry, list[0].tp, list[0].sl].every((x) => Number.isFinite(x) && x > 0)) {
-      return Alert.alert("Faltan datos", "Completá símbolo, entrada, TP y SL con números válidos.");
+      return Alert.alert(t("Faltan datos"), t("Completá símbolo, entrada, TP y SL con números válidos."));
     }
     await save(list);
     setSymbol("");
@@ -92,7 +93,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
       await insertFullTrades(userId, sampleTrades());
       onAdded();
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "No se pudo cargar el ejemplo.");
+      Alert.alert(t("Error"), err instanceof Error ? err.message : t("No se pudo cargar el ejemplo."));
     } finally {
       setBusy(false);
     }
@@ -119,7 +120,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
         <View style={s.tabs}>
           {(["paste", "manual"] as const).map((m) => (
             <TouchableOpacity key={m} style={[s.tab, mode === m && s.tabOn]} onPress={() => setMode(m)}>
-              <Text style={[s.tabText, mode === m && { color: colors.ink }]}>{m === "paste" ? "Pegar señal" : "Manual"}</Text>
+              <Text style={[s.tabText, mode === m && { color: colors.ink }]}>{m === "paste" ? t("Pegar señal") : t("Manual")}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -128,11 +129,11 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
           <View style={s.card}>
             {clip && !text && (
               <TouchableOpacity style={s.clipBanner} onPress={useClip} activeOpacity={0.8}>
-                <Text style={s.clipTitle}>Detectamos una señal en tu portapapeles</Text>
+                <Text style={s.clipTitle}>{t("Detectamos una señal en tu portapapeles")}</Text>
                 <Text style={s.clipText} numberOfLines={2}>
                   {clip}
                 </Text>
-                <Text style={s.clipAction}>Tocá para usarla</Text>
+                <Text style={s.clipAction}>{t("Tocá para usarla")}</Text>
               </TouchableOpacity>
             )}
             <TextInput
@@ -142,17 +143,17 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
                 setParsed(null);
               }}
               multiline
-              placeholder={`Pegá una señal de cualquier fuente, por ejemplo:\n#BTC/USDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500\n\nO en formato simple:\n${EXAMPLE_ALERT}`}
+              placeholder={t("Pegá una señal de cualquier fuente, por ejemplo:\n#BTC/USDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500\n\nO en formato simple:\n") + exampleAlert()}
               placeholderTextColor={colors.dim}
               style={[s.input, { minHeight: 150, textAlignVertical: "top" }]}
               autoCapitalize="none"
             />
             <View style={s.row}>
               <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={() => interpret()} disabled={busy || !text.trim()}>
-                <Text style={[s.btnText, { color: colors.ink }]}>Interpretar</Text>
+                <Text style={[s.btnText, { color: colors.ink }]}>{t("Interpretar")}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.btn} onPress={paste}>
-                <Text style={s.btnText}>Pegar</Text>
+                <Text style={s.btnText}>{t("Pegar")}</Text>
               </TouchableOpacity>
             </View>
 
@@ -164,7 +165,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
                 <View style={{ flex: 1 }}>
                   <Text style={s.previewSymbol}>{v.symbol}</Text>
                   <Text style={s.previewLevels}>
-                    Entrada {fmtPrice(v.entry)} · TP {fmtPrice(v.tp)} · SL {fmtPrice(v.sl)}
+                    {t("Entrada")} {fmtPrice(v.entry)} · TP {fmtPrice(v.tp)} · SL {fmtPrice(v.sl)}
                   </Text>
                 </View>
                 <Text style={s.previewRR}>1:{rrOf({ ...v, id: "", outcome: "ABIERTA" } as Trade).toFixed(2)}</Text>
@@ -178,18 +179,17 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
             {parsed && parsed.valid.length > 0 && (
               <TouchableOpacity style={[s.btn, s.btnBull]} onPress={confirm} disabled={busy}>
                 <Text style={[s.btnText, { color: colors.ink }]}>
-                  Confirmar {parsed.valid.length} {parsed.valid.length === 1 ? "operación" : "operaciones"}
+                  {t("Confirmar")} {parsed.valid.length} {parsed.valid.length === 1 ? t("operación") : t("operaciones")}
                 </Text>
               </TouchableOpacity>
             )}
             <Text style={s.hint}>
-              Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio formato.
-              Revisá lo que entendió antes de confirmar.
+              {t("Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio formato. Revisá lo que entendió antes de confirmar.")}
             </Text>
           </View>
         ) : (
           <View style={s.card}>
-            {field("SÍMBOLO", symbol, setSymbol, { placeholder: "BTCUSDT" })}
+            {field(t("SÍMBOLO"), symbol, setSymbol, { placeholder: "BTCUSDT" })}
             <View style={s.row}>
               {(["LONG", "SHORT"] as const).map((d) => (
                 <TouchableOpacity
@@ -197,23 +197,23 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
                   style={[s.btn, { flex: 1 }, direction === d && { backgroundColor: d === "LONG" ? colors.bulldeep : colors.beardeep, borderColor: d === "LONG" ? colors.bull : colors.bear }]}
                   onPress={() => setDirection(d)}
                 >
-                  <Text style={[s.btnText, direction === d && { color: d === "LONG" ? colors.bull : colors.bear }]}>{d === "LONG" ? "COMPRA" : "VENTA"}</Text>
+                  <Text style={[s.btnText, direction === d && { color: d === "LONG" ? colors.bull : colors.bear }]}>{d === "LONG" ? t("COMPRA") : t("VENTA")}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             <View style={s.row}>
-              {field("ENTRADA", entry, setEntry, { numeric: true })}
-              {field("TAKE PROFIT", tp, setTp, { numeric: true })}
-              {field("STOP LOSS", sl, setSl, { numeric: true })}
+              {field(t("ENTRADA"), entry, setEntry, { numeric: true })}
+              {field(t("TAKE PROFIT"), tp, setTp, { numeric: true })}
+              {field(t("STOP LOSS"), sl, setSl, { numeric: true })}
             </View>
             <TouchableOpacity style={[s.btn, s.btnGold]} onPress={saveManual} disabled={busy}>
-              <Text style={[s.btnText, { color: colors.ink }]}>Guardar operación</Text>
+              <Text style={[s.btnText, { color: colors.ink }]}>{t("Guardar operación")}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         <TouchableOpacity style={s.btn} onPress={loadSamples} disabled={busy}>
-          <Text style={s.btnText}>Cargar operaciones de ejemplo</Text>
+          <Text style={s.btnText}>{t("Cargar operaciones de ejemplo")}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

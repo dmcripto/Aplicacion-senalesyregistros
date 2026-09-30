@@ -4,6 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { buildAlertMessage } from "@dmcripto/core";
 import type { AlertFormat, Direction } from "@dmcripto/core";
 import { colors } from "./theme";
+import { t } from "@dmcripto/core";
 
 export default function AlertBuilder() {
   const [format, setFormat] = useState<AlertFormat>("pipe");
@@ -45,19 +46,18 @@ export default function AlertBuilder() {
   return (
     <View style={{ gap: 10 }}>
       <Text style={s.hint}>
-        Funciona con cualquier indicador. Elegí la dirección y escribí en TP y SL lo que tu indicador entrega (un{" "}
-        {'{{plot("nombre")}}'} de TradingView o un número fijo). Copiá el mensaje en el campo "Mensaje" de la alerta.
+        {t("Funciona con cualquier indicador. Elegí la dirección y escribí en TP y SL lo que tu indicador entrega (un {plot} de TradingView o un número fijo). Copiá el mensaje en el campo \"Mensaje\" de la alerta.", { plot: '{{plot("name")}}' })}
       </Text>
       <View style={s.row}>
-        {chip("COMPRA", direction === "LONG", () => setDirection("LONG"))}
-        {chip("VENTA", direction === "SHORT", () => setDirection("SHORT"))}
+        {chip(t("COMPRA"), direction === "LONG", () => setDirection("LONG"))}
+        {chip(t("VENTA"), direction === "SHORT", () => setDirection("SHORT"))}
       </View>
-      {field("ENTRADA", entry, setEntry, "{{close}}")}
-      {field("TAKE PROFIT", tp, setTp, '{{plot("TP")}}')}
-      {field("STOP LOSS", sl, setSl, '{{plot("SL")}}')}
+      {field(t("ENTRADA"), entry, setEntry, "{{close}}")}
+      {field(t("TAKE PROFIT"), tp, setTp, '{{plot("TP")}}')}
+      {field(t("STOP LOSS"), sl, setSl, '{{plot("SL")}}')}
       <View style={s.row}>
-        {chip("Formato simple", format === "pipe", () => setFormat("pipe"))}
-        {chip("Formato JSON", format === "json", () => setFormat("json"))}
+        {chip(t("Formato simple"), format === "pipe", () => setFormat("pipe"))}
+        {chip(t("Formato JSON"), format === "json", () => setFormat("json"))}
       </View>
       <View style={s.output}>
         <Text selectable style={s.outputText}>
@@ -65,7 +65,7 @@ export default function AlertBuilder() {
         </Text>
       </View>
       <TouchableOpacity style={s.copyBtn} onPress={copy}>
-        <Text style={s.copyText}>{copied ? "¡Copiado!" : "Copiar mensaje"}</Text>
+        <Text style={s.copyText}>{copied ? t("¡Copiado!") : t("Copiar mensaje")}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -9,9 +9,11 @@ import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
 import type { PushStatus } from "../push";
-import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
+import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
+import { LangSwitch } from "../lang";
 import { useMoney } from "../money";
+import { t } from "@dmcripto/core";
 
 export default function SettingsScreen({
   userId,
@@ -48,8 +50,8 @@ export default function SettingsScreen({
   };
   const saveLimitsNow = () =>
     onSaveLimits({ maxLossR: positive(lossStr), maxTrades: positive(tradesStr) ? Math.round(positive(tradesStr)!) : null })
-      .then(() => Alert.alert("Listo", "Límites guardados."))
-      .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudieron guardar los límites."));
+      .then(() => Alert.alert(t("Listo"), t("Límites guardados.")))
+      .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudieron guardar los límites.")));
 
   const { money, unit } = useMoney();
   const [capStr, setCapStr] = useState("");
@@ -63,14 +65,14 @@ export default function SettingsScreen({
   const bal = balanceInfo(trades, money);
   const saveMoneyNow = () => {
     const risk = positive(riskStr);
-    if (risk != null && risk > 100) return Alert.alert("Revisá el riesgo", "El riesgo por operación no puede pasar de 100 %.");
+    if (risk != null && risk > 100) return Alert.alert(t("Revisá el riesgo"), t("El riesgo por operación no puede pasar de 100 %."));
     return onSaveMoney({
       capital: positive(capStr),
       riskPct: risk,
       currency: curStr.trim().toUpperCase().slice(0, 5) || "USD",
     })
-      .then(() => Alert.alert("Listo", "Capital guardado. Ahora ves tus resultados también en dinero."))
-      .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo guardar."));
+      .then(() => Alert.alert(t("Listo"), t("Capital guardado. Ahora ves tus resultados también en dinero.")))
+      .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar.")));
   };
 
   const [push, setPush] = useState<PushStatus | null>(null);
@@ -110,7 +112,7 @@ export default function SettingsScreen({
     setAutoCloseState(value);
     setAutoClose(userId, value).catch((e) => {
       setAutoCloseState(!value);
-      Alert.alert("Error", e instanceof Error ? e.message : "No se pudo guardar el cambio.");
+      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
     });
   };
 
@@ -118,7 +120,7 @@ export default function SettingsScreen({
     let cancelled = false;
     fetchWebhookUrl(userId)
       .then((u) => !cancelled && setUrl(u))
-      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : "No se pudo obtener la URL."));
+      .catch((err) => !cancelled && setError(err instanceof Error ? err.message : t("No se pudo obtener la URL.")));
     return () => {
       cancelled = true;
     };
@@ -133,42 +135,42 @@ export default function SettingsScreen({
 
   const regenerate = () =>
     Alert.alert(
-      "Regenerar URL del webhook",
-      "La URL actual dejará de funcionar. Vas a tener que actualizarla en tus alertas de TradingView.",
+      t("Regenerar URL del webhook"),
+      t("La URL actual dejará de funcionar. Vas a tener que actualizarla en tus alertas de TradingView."),
       [
-        { text: "Cancelar", style: "cancel" },
+        { text: t("Cancelar"), style: "cancel" },
         {
-          text: "Regenerar",
+          text: t("Regenerar"),
           style: "destructive",
           onPress: () =>
             regenerateWebhookUrl()
               .then(setUrl)
-              .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo regenerar la URL.")),
+              .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo regenerar la URL."))),
         },
       ],
     );
   const deleteAccount = () =>
     Alert.alert(
-      "Eliminar mi cuenta",
-      "Se borran tu cuenta y todos tus datos (operaciones, webhook y dispositivos) de forma permanente. No se puede deshacer.",
+      t("Eliminar mi cuenta"),
+      t("Se borran tu cuenta y todos tus datos (operaciones, webhook y dispositivos) de forma permanente. No se puede deshacer."),
       [
-        { text: "Cancelar", style: "cancel" },
+        { text: t("Cancelar"), style: "cancel" },
         {
-          text: "Eliminar todo",
+          text: t("Eliminar todo"),
           style: "destructive",
           onPress: () =>
-            deleteMyAccount().catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo eliminar la cuenta.")),
+            deleteMyAccount().catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo eliminar la cuenta."))),
         },
       ],
     );
-  const exportCsv = () => Share.share({ title: "VELTRIX diario.csv", message: tradesToCsv(trades) });
+  const exportCsv = () => Share.share({ title: t("VELTRIX diario.csv"), message: tradesToCsv(trades) });
   const clearAll = () =>
-    Alert.alert("Borrar todo el diario", "Se eliminan todas tus operaciones (también en la web). No se puede deshacer.", [
-      { text: "Cancelar", style: "cancel" },
+    Alert.alert(t("Borrar todo el diario"), t("Se eliminan todas tus operaciones (también en la web). No se puede deshacer."), [
+      { text: t("Cancelar"), style: "cancel" },
       {
-        text: "Borrar todo",
+        text: t("Borrar todo"),
         style: "destructive",
-        onPress: () => deleteAllTrades(userId).catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudo borrar.")),
+        onPress: () => deleteAllTrades(userId).catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo borrar."))),
       },
     ]);
 
@@ -176,96 +178,100 @@ export default function SettingsScreen({
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
       <CommunityCard />
 
-      <Text style={styles.sectionTitle}>CAPITAL Y DINERO</Text>
+      <Text style={styles.sectionTitle}>{t("IDIOMA")} / LANGUAGE</Text>
+      <View style={styles.card}>
+        <LangSwitch wide />
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("CAPITAL Y DINERO")}</Text>
       <View style={styles.card}>
         {bal ? (
           <Text style={[styles.hint, { color: colors.snow, fontWeight: "800" }]}>
-            Balance {fmtCurrency(bal.balance, money.currency, false)} · resultado {fmtCurrency(bal.pnl, money.currency)}
+            {t("Balance")} {fmtCurrency(bal.balance, money.currency, false)} · {t("resultado")} {fmtCurrency(bal.pnl, money.currency)}
           </Text>
         ) : (
-          <Text style={styles.hint}>Cargá tu capital y el % que arriesgás por operación para ver tus resultados en dinero, no solo en R.</Text>
+          <Text style={styles.hint}>{t("Cargá tu capital y el % que arriesgás por operación para ver tus resultados en dinero, no solo en R.")}</Text>
         )}
         <View style={{ flexDirection: "row", gap: 8 }}>
           <View style={{ flex: 2, gap: 4 }}>
-            <Text style={styles.fieldLabel}>CAPITAL</Text>
+            <Text style={styles.fieldLabel}>{t("CAPITAL")}</Text>
             <TextInput value={capStr} onChangeText={setCapStr} keyboardType="decimal-pad" placeholder="ej: 1000" placeholderTextColor={colors.dim} style={styles.fieldInput} />
           </View>
           <View style={{ flex: 1.3, gap: 4 }}>
-            <Text style={styles.fieldLabel}>RIESGO (%)</Text>
+            <Text style={styles.fieldLabel}>{t("RIESGO (%)")}</Text>
             <TextInput value={riskStr} onChangeText={setRiskStr} keyboardType="decimal-pad" placeholder="ej: 1" placeholderTextColor={colors.dim} style={styles.fieldInput} />
           </View>
           <View style={{ flex: 1.2, gap: 4 }}>
-            <Text style={styles.fieldLabel}>MONEDA</Text>
+            <Text style={styles.fieldLabel}>{t("MONEDA")}</Text>
             <TextInput value={curStr} onChangeText={setCurStr} autoCapitalize="characters" maxLength={5} placeholder="USD" placeholderTextColor={colors.dim} style={styles.fieldInput} />
           </View>
         </View>
-        {unit ? <Text style={styles.hint}>1R equivale a {fmtCurrency(unit, curStr.trim().toUpperCase() || money.currency, false)}.</Text> : null}
+        {unit ? <Text style={styles.hint}>{t("1R equivale a")} {fmtCurrency(unit, curStr.trim().toUpperCase() || money.currency, false)}.</Text> : null}
         <TouchableOpacity style={styles.copyBtn} onPress={saveMoneyNow}>
-          <Text style={styles.copyText}>Guardar capital</Text>
+          <Text style={styles.copyText}>{t("Guardar capital")}</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>Es una estimación: multiplica tus R por lo que arriesgás. Las tarjetas para compartir siguen mostrando solo R.</Text>
+        <Text style={styles.hint}>{t("Es una estimación: multiplica tus R por lo que arriesgás. Las tarjetas para compartir siguen mostrando solo R.")}</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>LÍMITES DIARIOS</Text>
+      <Text style={styles.sectionTitle}>{t("LÍMITES DIARIOS")}</Text>
       <View style={styles.card}>
         <Text style={styles.hint}>
-          Hoy: {limitStatus.lossR.toFixed(1).replace(/\.0$/, "")}R · {limitStatus.trades} operaciones
+          {t("Hoy")}: {limitStatus.lossR.toFixed(1).replace(/\.0$/, "")}R · {limitStatus.trades} {t("operaciones")}
         </Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.fieldLabel}>PÉRDIDA MÁX. (R)</Text>
-            <TextInput value={lossStr} onChangeText={setLossStr} keyboardType="decimal-pad" placeholder="ej: 3" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+            <Text style={styles.fieldLabel}>{t("PÉRDIDA MÁX. (R)")}</Text>
+            <TextInput value={lossStr} onChangeText={setLossStr} keyboardType="decimal-pad" placeholder={t("ej: 3")} placeholderTextColor={colors.dim} style={styles.fieldInput} />
           </View>
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.fieldLabel}>OPERACIONES MÁX.</Text>
-            <TextInput value={tradesStr} onChangeText={setTradesStr} keyboardType="number-pad" placeholder="ej: 5" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+            <Text style={styles.fieldLabel}>{t("OPERACIONES MÁX.")}</Text>
+            <TextInput value={tradesStr} onChangeText={setTradesStr} keyboardType="number-pad" placeholder={t("ej: 5")} placeholderTextColor={colors.dim} style={styles.fieldInput} />
           </View>
         </View>
         <TouchableOpacity style={styles.copyBtn} onPress={saveLimitsNow}>
-          <Text style={styles.copyText}>Guardar límites</Text>
+          <Text style={styles.copyText}>{t("Guardar límites")}</Text>
         </TouchableOpacity>
         <Text style={styles.hint}>
-          Dejá un campo vacío para no usar ese límite. Te avisamos al llegar al 80 % y cuando lo alcanzás.
+          {t("Dejá un campo vacío para no usar ese límite. Te avisamos al llegar al 80 % y cuando lo alcanzás.")}
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>NOTIFICACIONES</Text>
+      <Text style={styles.sectionTitle}>{t("NOTIFICACIONES")}</Text>
       <View style={styles.card}>
         <Text style={[styles.hint, { color: push ? (push.ok ? colors.bull : colors.bear) : colors.dim }]}>
-          {push ? push.message : "Revisando…"}
+          {push ? push.message : t("Revisando…")}
         </Text>
         {pushNote && <Text style={styles.hint}>{pushNote}</Text>}
         <View style={{ flexDirection: "row", gap: 8 }}>
           <TouchableOpacity style={[styles.signOut, { flex: 1 }]} onPress={checkPush} disabled={pushBusy}>
-            <Text style={[styles.signOutText, { color: colors.fog }]}>Revisar</Text>
+            <Text style={[styles.signOutText, { color: colors.fog }]}>{t("Revisar")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.signOut, { flex: 1, opacity: push?.token ? 1 : 0.4 }]}
             onPress={testPush}
             disabled={pushBusy || !push?.token}
           >
-            <Text style={[styles.signOutText, { color: colors.gold }]}>Enviar prueba</Text>
+            <Text style={[styles.signOutText, { color: colors.gold }]}>{t("Enviar prueba")}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>CUENTA</Text>
+      <Text style={styles.sectionTitle}>{t("CUENTA")}</Text>
       <View style={styles.card}>
         {email && <Text style={styles.email}>{email}</Text>}
         <TouchableOpacity style={styles.signOut} onPress={() => supabase.auth.signOut()}>
-          <Text style={styles.signOutText}>Cerrar sesión</Text>
+          <Text style={styles.signOutText}>{t("Cerrar sesión")}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.dangerLink} onPress={deleteAccount}>
-          <Text style={styles.dangerLinkText}>Eliminar mi cuenta y mis datos</Text>
+          <Text style={styles.dangerLinkText}>{t("Eliminar mi cuenta y mis datos")}</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>CIERRE AUTOMÁTICO</Text>
+      <Text style={styles.sectionTitle}>{t("CIERRE AUTOMÁTICO")}</Text>
       <View style={styles.card}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Text style={[styles.hint, { flex: 1 }]}>
-            VELTRIX sigue el precio y marca TP o SL solo cuando el precio los toca (criptomonedas). Si una misma vela
-            toca ambos, se toma SL. Podés apagarlo si preferís cerrar a mano.
+            {t("VELTRIX sigue el precio y marca TP o SL solo cuando el precio los toca (criptomonedas). Si una misma vela toca ambos, se toma SL. Podés apagarlo si preferís cerrar a mano.")}
           </Text>
           <Switch
             value={autoClose}
@@ -276,19 +282,19 @@ export default function SettingsScreen({
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>DATOS</Text>
+      <Text style={styles.sectionTitle}>{t("DATOS")}</Text>
       <View style={styles.card}>
         <TouchableOpacity style={styles.signOut} onPress={exportCsv} disabled={!trades.length}>
-          <Text style={[styles.signOutText, { color: colors.gold }]}>Exportar diario (CSV)</Text>
+          <Text style={[styles.signOutText, { color: colors.gold }]}>{t("Exportar diario (CSV)")}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.signOut} onPress={clearAll} disabled={!trades.length}>
-          <Text style={styles.signOutText}>Borrar todo el diario</Text>
+          <Text style={styles.signOutText}>{t("Borrar todo el diario")}</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>CONECTÁ TU FUENTE DE SEÑALES</Text>
+      <Text style={styles.sectionTitle}>{t("CONECTÁ TU FUENTE DE SEÑALES")}</Text>
       <View style={styles.card}>
-        <Text style={styles.hint}>Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram o WhatsApp, pegá el mensaje en Registrar → Pegar señal.</Text>
+        <Text style={styles.hint}>{t("Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram o WhatsApp, pegá el mensaje en Registrar → Pegar señal.")}</Text>
         {error && <Text style={styles.error}>{error}</Text>}
         {url && (
           <>
@@ -298,7 +304,7 @@ export default function SettingsScreen({
               </Text>
             </View>
             <TouchableOpacity style={styles.copyBtn} onPress={copy}>
-              <Text style={styles.copyText}>{copied ? "¡Copiado!" : "Copiar URL"}</Text>
+              <Text style={styles.copyText}>{copied ? t("¡Copiado!") : t("Copiar URL")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.signOut} onPress={regenerate}>
               <Text style={[styles.signOutText, { color: colors.fog }]}>Regenerar URL</Text>
@@ -307,23 +313,23 @@ export default function SettingsScreen({
         )}
       </View>
 
-      <Text style={styles.sectionTitle}>ARMADOR DE ALERTAS</Text>
+      <Text style={styles.sectionTitle}>{t("ARMADOR DE ALERTAS")}</Text>
       <View style={styles.card}>
         <AlertBuilder />
       </View>
 
-      <Text style={styles.sectionTitle}>LEGAL</Text>
+      <Text style={styles.sectionTitle}>{t("LEGAL")}</Text>
       <View style={styles.card}>
         <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.terms)}>
-          <Text style={styles.legalLink}>Términos de uso</Text>
+          <Text style={styles.legalLink}>{t("Términos de uso")}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.privacy)}>
-          <Text style={styles.legalLink}>Política de privacidad</Text>
+          <Text style={styles.legalLink}>{t("Política de privacidad")}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => openLink(LEGAL_LINKS.deleteData)}>
-          <Text style={styles.legalLink}>Eliminación de datos</Text>
+          <Text style={styles.legalLink}>{t("Eliminación de datos")}</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>{DISCLAIMER}</Text>
+        <Text style={styles.hint}>{disclaimer()}</Text>
       </View>
     </ScrollView>
   );

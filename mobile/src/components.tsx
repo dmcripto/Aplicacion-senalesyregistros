@@ -9,11 +9,12 @@ import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
 import { useMoney } from "./money";
+import { t } from "@dmcripto/core";
 
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
 
 const fail = (err: unknown, fallback: string) =>
-  Alert.alert("Error", err instanceof Error ? err.message : fallback);
+  Alert.alert(t("Error"), err instanceof Error ? err.message : fallback);
 
 export function StatTile({ label, value, color, sub }: { label: string; value: string; color?: string; sub?: string }) {
   return (
@@ -42,10 +43,10 @@ export function StatsGrid({ trades }: { trades: Trade[] }) {
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <Text style={s.heroLabel}>RESULTADO NETO</Text>
+        <Text style={s.heroLabel}>{t("RESULTADO NETO")}</Text>
         <Text style={[s.heroValue, { color: accent, textShadowColor: accent + "aa" }]}>{fmtR(st.netR)}R</Text>
         <Text style={s.tileSub}>
-          {st.cerradas} cerradas · {st.abiertas} abiertas · {st.ganadas}G / {st.perdidas}P
+          {st.cerradas} {t("cerradas")} · {st.abiertas} {t("abiertas")} · {st.ganadas}G / {st.perdidas}P
         </Text>
         {bal && (
           <Text style={[s.heroMoney, { color: accent }]}>
@@ -58,9 +59,9 @@ export function StatsGrid({ trades }: { trades: Trade[] }) {
         </View>
       </View>
       <View style={s.tileRow}>
-        <StatTile label="Acierto" value={st.cerradas ? fmtPct(st.winRate) : "—"} color={st.cerradas ? (st.winRate >= 50 ? colors.bull : colors.bear) : colors.fog} />
-        <StatTile label="Profit factor" value={!st.cerradas ? "—" : st.pf == null ? "∞" : st.pf.toFixed(2)} color={st.pf == null || (st.pf ?? 0) >= 1 ? colors.gold : colors.bear} />
-        <StatTile label="R promedio" value={st.cerradas ? `${fmtR(st.avgR)}R` : "—"} color={rColor(st.avgR)} />
+        <StatTile label={t("Acierto")} value={st.cerradas ? fmtPct(st.winRate) : "—"} color={st.cerradas ? (st.winRate >= 50 ? colors.bull : colors.bear) : colors.fog} />
+        <StatTile label={t("Profit factor")} value={!st.cerradas ? "—" : st.pf == null ? "∞" : st.pf.toFixed(2)} color={st.pf == null || (st.pf ?? 0) >= 1 ? colors.gold : colors.bear} />
+        <StatTile label={t("R promedio")} value={st.cerradas ? `${fmtR(st.avgR)}R` : "—"} color={rColor(st.avgR)} />
       </View>
     </View>
   );
@@ -76,7 +77,7 @@ export function EquityBars({ trades }: { trades: Trade[] }) {
   const zeroY = (max / span) * H;
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>CURVA DE CAPITAL (R)</Text>
+      <Text style={s.sectionTitle}>{t("CURVA DE CAPITAL (R)")}</Text>
       <View style={{ height: H, flexDirection: "row", alignItems: "stretch", gap: 2 }}>
         {pts.map((p, i) => {
           const h = Math.max(2, (Math.abs(p.cum) / span) * H);
@@ -98,7 +99,7 @@ export function EquityBars({ trades }: { trades: Trade[] }) {
         })}
         <View style={{ position: "absolute", left: 0, right: 0, top: zeroY, height: 1, backgroundColor: colors.line2 }} />
       </View>
-      <Text style={s.tileSub}>Acumulado: {fmtR(pts[pts.length - 1].cum)}R en {pts.length} operaciones</Text>
+      <Text style={s.tileSub}>{t("Acumulado")}: {fmtR(pts[pts.length - 1].cum)}R {t("en")} {pts.length} {t("operaciones")}</Text>
     </View>
   );
 }
@@ -109,11 +110,11 @@ export function MonthlyList({ trades }: { trades: Trade[] }) {
   if (!rows.length) return null;
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>RESUMEN MENSUAL</Text>
+      <Text style={s.sectionTitle}>{t("RESUMEN MENSUAL")}</Text>
       {rows.map((r) => (
         <View key={r.key} style={s.monthRow}>
           <Text style={[s.monthLabel, { textTransform: "capitalize" }]}>{r.label}</Text>
-          <Text style={s.monthCell}>{r.ops} ops</Text>
+          <Text style={s.monthCell}>{r.ops} {t("ops")}</Text>
           <Text style={s.monthCell}>{r.cerradas ? `${Math.round(r.winRate)}%` : "—"}</Text>
           <View style={{ alignItems: "flex-end", minWidth: 74 }}>
             <Text style={[s.monthR, { color: rColor(r.netR), flex: 0 }]}>{r.cerradas ? `${fmtR(r.netR)}R` : "—"}</Text>
@@ -133,7 +134,7 @@ export function LimitBanner({ status }: { status: DailyStatus }) {
   const color = stop ? colors.bear : colors.gold;
   return (
     <View style={[s.limit, { borderColor: color + "88", backgroundColor: color + "18" }]}>
-      <Text style={[s.limitTitle, { color }]}>{stop ? "⛔ FRENÁ POR HOY" : "⚠ CUIDADO CON TU LÍMITE DIARIO"}</Text>
+      <Text style={[s.limitTitle, { color }]}>{stop ? t("⛔ FRENÁ POR HOY") : t("⚠ CUIDADO CON TU LÍMITE DIARIO")}</Text>
       {status.messages.map((m) => (
         <Text key={m} style={s.limitText}>
           {m}
@@ -160,11 +161,11 @@ export function AnalysisBlock({ trades }: { trades: Trade[] }) {
   const cur = a.streaks.current;
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>ANÁLISIS</Text>
+      <Text style={s.sectionTitle}>{t("ANÁLISIS")}</Text>
       <View style={s.tileRow}>
-        <StatTile label="Mejor racha" value={String(a.streaks.maxWin)} color={colors.bull} />
-        <StatTile label="Peor racha" value={String(a.streaks.maxLoss)} color={colors.bear} />
-        <StatTile label="Racha actual" value={String(cur.count)} color={cur.type === "win" ? colors.bull : cur.type === "loss" ? colors.bear : colors.fog} sub={cur.type === "win" ? "ganadas" : cur.type === "loss" ? "perdidas" : ""} />
+        <StatTile label={t("Mejor racha")} value={String(a.streaks.maxWin)} color={colors.bull} />
+        <StatTile label={t("Peor racha")} value={String(a.streaks.maxLoss)} color={colors.bear} />
+        <StatTile label={t("Racha actual")} value={String(cur.count)} color={cur.type === "win" ? colors.bull : cur.type === "loss" ? colors.bear : colors.fog} sub={cur.type === "win" ? t("ganadas") : cur.type === "loss" ? t("perdidas") : ""} />
       </View>
       {a.insights.length > 0 && (
         <View style={s.insights}>
@@ -178,7 +179,7 @@ export function AnalysisBlock({ trades }: { trades: Trade[] }) {
       <View style={s.segment}>
         {AVIEWS.map(([key, label]) => (
           <TouchableOpacity key={key} style={[s.segBtn, view === key && s.segBtnOn]} onPress={() => setView(key)}>
-            <Text style={[s.segText, view === key && { color: colors.ink }]}>{label}</Text>
+            <Text style={[s.segText, view === key && { color: colors.ink }]}>{t(label)}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -204,13 +205,13 @@ export function TagList({ trades }: { trades: Trade[] }) {
   if (!rows.length) return null;
   return (
     <View style={s.section}>
-      <Text style={s.sectionTitle}>RESULTADO POR ETIQUETA</Text>
+      <Text style={s.sectionTitle}>{t("RESULTADO POR ETIQUETA")}</Text>
       {rows.map((r) => (
         <View key={r.tag} style={s.monthRow}>
           <Text style={[s.monthLabel, { flex: 1.6 }]} numberOfLines={1}>
-            {r.tag}
+            {t(r.tag)}
           </Text>
-          <Text style={s.monthCell}>{r.ops} ops</Text>
+          <Text style={s.monthCell}>{r.ops} {t("ops")}</Text>
           <Text style={s.monthCell}>{Math.round(r.winRate)}%</Text>
           <Text style={[s.monthR, { color: rColor(r.netR) }]}>{fmtR(r.netR)}R</Text>
         </View>
@@ -224,21 +225,21 @@ function CloseModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   const submit = async () => {
     if (!trade) return;
     const exit = Number(value.replace(",", "."));
-    if (!Number.isFinite(exit) || exit <= 0) return Alert.alert("Precio inválido", "Ingresá un precio de salida válido.");
+    if (!Number.isFinite(exit) || exit <= 0) return Alert.alert(t("Precio inválido"), t("Ingresá un precio de salida válido."));
     try {
       await closeTradeManually(trade.id, exit);
       setValue("");
       onClose();
     } catch (err) {
-      fail(err, "No se pudo cerrar la operación.");
+      fail(err, t("No se pudo cerrar la operación."));
     }
   };
   return (
     <Modal visible={!!trade} transparent animationType="fade" onRequestClose={onClose}>
       <View style={s.modalBg}>
         <View style={s.modal}>
-          <Text style={s.modalTitle}>Cerrar {trade?.symbol} a mercado</Text>
-          <Text style={s.tileSub}>Precio de salida</Text>
+          <Text style={s.modalTitle}>{t("Cerrar")} {trade?.symbol} {t("a mercado")}</Text>
+          <Text style={s.tileSub}>{t("Precio de salida")}</Text>
           <TextInput
             value={value}
             onChangeText={setValue}
@@ -250,10 +251,10 @@ function CloseModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
           />
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
             <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={onClose}>
-              <Text style={s.btnText}>Cancelar</Text>
+              <Text style={s.btnText}>{t("Cancelar")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={submit}>
-              <Text style={[s.btnText, { color: colors.ink }]}>Cerrar</Text>
+              <Text style={[s.btnText, { color: colors.ink }]}>{t("Cerrar")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -290,7 +291,7 @@ function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
       await updateTradeNotes(trade.id, notes, tags);
       onClose();
     } catch (err) {
-      fail(err, "No se pudieron guardar las notas.");
+      fail(err, t("No se pudieron guardar las notas."));
     }
   };
 
@@ -299,42 +300,42 @@ function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
       <View style={[s.modalBg, { justifyContent: "flex-end", padding: 0 }]}>
         <View style={[s.modal, { maxHeight: "92%", borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }]}>
           <ScrollView keyboardShouldPersistTaps="handled">
-            <Text style={s.modalTitle}>Notas y etiquetas · {trade?.symbol}</Text>
-            <Text style={s.tileSub}>¿Qué pasó en esta operación?</Text>
+            <Text style={s.modalTitle}>{t("Notas y etiquetas")} · {trade?.symbol}</Text>
+            <Text style={s.tileSub}>{t("¿Qué pasó en esta operación?")}</Text>
             <TextInput
               value={notes}
               onChangeText={setNotes}
               multiline
               maxLength={600}
-              placeholder="Por qué entraste, cómo te sentiste, qué aprendiste…"
+              placeholder={t("Por qué entraste, cómo te sentiste, qué aprendiste…")}
               placeholderTextColor={colors.dim}
               style={[s.input, { minHeight: 90, textAlignVertical: "top" }]}
             />
             {PRESET_TAGS.map((g) => (
               <View key={g.group} style={{ marginTop: 12 }}>
-                <Text style={s.tagGroup}>{g.group.toUpperCase()}</Text>
+                <Text style={s.tagGroup}>{t(g.group).toUpperCase()}</Text>
                 <View style={s.tagWrap}>
                   {g.tags.map((tag) => (
                     <TouchableOpacity key={tag} style={[s.tagChip, has(tag) && s.tagChipOn]} onPress={() => toggle(tag)}>
-                      <Text style={[s.tagChipText, has(tag) && { color: colors.ink }]}>{tag}</Text>
+                      <Text style={[s.tagChipText, has(tag) && { color: colors.ink }]}>{t(tag)}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               </View>
             ))}
-            <Text style={[s.tagGroup, { marginTop: 12 }]}>ETIQUETA PROPIA</Text>
+            <Text style={[s.tagGroup, { marginTop: 12 }]}>{t("ETIQUETA PROPIA")}</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
               <TextInput
                 value={custom}
                 onChangeText={setCustom}
                 onSubmitEditing={addCustom}
                 maxLength={24}
-                placeholder="Ej: Apertura de Nueva York"
+                placeholder={t("Ej: Apertura de Nueva York")}
                 placeholderTextColor={colors.dim}
                 style={[s.input, { flex: 1 }]}
               />
               <TouchableOpacity style={s.btn} onPress={addCustom}>
-                <Text style={s.btnText}>Agregar</Text>
+                <Text style={s.btnText}>{t("Agregar")}</Text>
               </TouchableOpacity>
             </View>
             {customTags.length > 0 && (
@@ -347,15 +348,15 @@ function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
               </View>
             )}
             <Text style={[s.tileSub, { marginTop: 8 }]}>
-              {tags.length}/{MAX_TAGS} etiquetas
+              {tags.length}/{MAX_TAGS} {t("etiquetas")}
             </Text>
           </ScrollView>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
             <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={onClose}>
-              <Text style={s.btnText}>Cancelar</Text>
+              <Text style={s.btnText}>{t("Cancelar")}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.btn, s.btnGold, { flex: 1 }]} onPress={save}>
-              <Text style={[s.btnText, { color: colors.ink }]}>Guardar</Text>
+              <Text style={[s.btnText, { color: colors.ink }]}>{t("Guardar")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -367,16 +368,16 @@ function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
 export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean; onCalculate?: (t: Trade) => void }) {
   const [closing, setClosing] = useState<Trade | null>(null);
   const [editingNotes, setEditingNotes] = useState<Trade | null>(null);
-  const abierta = trade.outcome === "ABIERTA";
+  const abierta = trade.outcome === t("ABIERTA");
   const r = resultR(trade);
   const long = trade.direction === "LONG";
   const { money, unit } = useMoney();
 
   const run = (fn: () => Promise<void>, msg: string) => fn().catch((e) => fail(e, msg));
   const confirmDelete = () =>
-    Alert.alert("Eliminar operación", `¿Borrar ${trade.symbol} del diario?`, [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Borrar", style: "destructive", onPress: () => run(() => deleteTradeById(trade.id), "No se pudo eliminar.") },
+    Alert.alert(t("Eliminar operación"), t("¿Borrar {sym} del diario?", { sym: trade.symbol }), [
+      { text: t("Cancelar"), style: "cancel" },
+      { text: t("Borrar"), style: "destructive", onPress: () => run(() => deleteTradeById(trade.id), t("No se pudo eliminar.")) },
     ]);
 
   const accent = long ? colors.bull : colors.bear;
@@ -398,15 +399,15 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
               {trade.symbol}
             </Text>
             <Text style={s.date}>
-              {long ? "COMPRA" : "VENTA"} · {timeAgo(trade.date)}
+              {long ? t("COMPRA") : t("VENTA")} · {timeAgo(trade.date)}
             </Text>
           </View>
           <View style={[s.pill, { borderColor: abierta ? colors.gold + "88" : rColor(r ?? 0) + "88", backgroundColor: (abierta ? colors.gold : rColor(r ?? 0)) + "1a" }]}>
             {abierta && <View style={s.pillDot} />}
             <Text style={[s.pillText, { color: abierta ? colors.gold : rColor(r ?? 0) }]}>
               {abierta
-                ? "ABIERTA"
-                : `${trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} ${fmtR(r ?? 0)}R${unit ? ` · ${fmtCurrency((r ?? 0) * unit, money.currency)}` : ""}`}
+                ? t("ABIERTA")
+                : `${trade.outcome === "MANUAL" ? t("CIERRE") : trade.outcome} ${fmtR(r ?? 0)}R${unit ? ` · ${fmtCurrency((r ?? 0) * unit, money.currency)}` : ""}`}
             </Text>
           </View>
         </View>
@@ -414,18 +415,18 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
         <RangeBar trade={trade} style={{ marginTop: 14 }} />
 
         <View style={s.levels}>
-          <Level label="ENTRADA" value={fmtPrice(trade.entry)} />
-          <Level label="TAKE PROFIT" value={fmtPrice(trade.tp)} color={colors.bull} />
-          <Level label="STOP LOSS" value={fmtPrice(trade.sl)} color={colors.bear} />
+          <Level label={t("ENTRADA")} value={fmtPrice(trade.entry)} />
+          <Level label={t("TAKE PROFIT")} value={fmtPrice(trade.tp)} color={colors.bull} />
+          <Level label={t("STOP LOSS")} value={fmtPrice(trade.sl)} color={colors.bear} />
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
-        {trade.exit != null && <Text style={s.date}>Salida {fmtPrice(trade.exit)}</Text>}
-        {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>⚡ Cerrada automáticamente</Text>}
+        {trade.exit != null && <Text style={s.date}>{t("Salida")} {fmtPrice(trade.exit)}</Text>}
+        {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>{t("⚡ Cerrada automáticamente")}</Text>}
         {!!trade.tags?.length && (
           <View style={[s.tagWrap, { marginTop: 8 }]}>
             {trade.tags.map((tag) => (
               <View key={tag} style={s.tagMini}>
-                <Text style={s.tagMiniText}>{tag}</Text>
+                <Text style={s.tagMiniText}>{t(tag)}</Text>
               </View>
             ))}
           </View>
@@ -439,31 +440,31 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
         <View style={s.actions}>
           {abierta ? (
             <>
-              <TouchableOpacity style={[s.btn, s.btnBull]} onPress={tap(() => run(() => markTradeOutcome(trade.id, "TP"), "No se pudo marcar TP."))}>
-                <Text style={[s.btnText, { color: colors.bull }]}>Tocó TP</Text>
+              <TouchableOpacity style={[s.btn, s.btnBull]} onPress={tap(() => run(() => markTradeOutcome(trade.id, "TP"), t("No se pudo marcar TP.")))}>
+                <Text style={[s.btnText, { color: colors.bull }]}>{t("Tocó TP")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.btn, s.btnBear]} onPress={tap(() => run(() => markTradeOutcome(trade.id, "SL"), "No se pudo marcar SL."))}>
-                <Text style={[s.btnText, { color: colors.bear }]}>Tocó SL</Text>
+              <TouchableOpacity style={[s.btn, s.btnBear]} onPress={tap(() => run(() => markTradeOutcome(trade.id, "SL"), t("No se pudo marcar SL.")))}>
+                <Text style={[s.btnText, { color: colors.bear }]}>{t("Tocó SL")}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.btn} onPress={() => setClosing(trade)}>
-                <Text style={s.btnText}>Cerrar</Text>
+                <Text style={s.btnText}>{t("Cerrar")}</Text>
               </TouchableOpacity>
               {onCalculate && (
                 <TouchableOpacity style={s.btn} onPress={() => onCalculate(trade)}>
-                  <Text style={[s.btnText, { color: colors.gold }]}>Calcular</Text>
+                  <Text style={[s.btnText, { color: colors.gold }]}>{t("Calcular")}</Text>
                 </TouchableOpacity>
               )}
             </>
           ) : (
-            <TouchableOpacity style={s.btn} onPress={() => run(() => reopenTradeById(trade.id), "No se pudo reabrir.")}>
-              <Text style={s.btnText}>Reabrir</Text>
+            <TouchableOpacity style={s.btn} onPress={() => run(() => reopenTradeById(trade.id), t("No se pudo reabrir."))}>
+              <Text style={s.btnText}>{t("Reabrir")}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.btn} onPress={() => setEditingNotes(trade)}>
-            <Text style={s.btnText}>✎ Notas</Text>
+            <Text style={s.btnText}>{"✎ "}{t("Notas")}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.btn} onPress={confirmDelete}>
-            <Text style={[s.btnText, { color: colors.bear }]}>Borrar</Text>
+            <Text style={[s.btnText, { color: colors.bear }]}>{t("Borrar")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -493,10 +494,10 @@ export function CommunityCard() {
         <Text style={s.communityIconText}>✈</Text>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.communityTitle}>Comunidad de VELTRIX</Text>
-        <Text style={s.communityText}>Sumate en Telegram: señales, ideas y otros traders.</Text>
+        <Text style={s.communityTitle}>{t("Comunidad de VELTRIX")}</Text>
+        <Text style={s.communityText}>{t("Sumate en Telegram: señales, ideas y otros traders.")}</Text>
       </View>
-      <Text style={s.communityGo}>Unirme ›</Text>
+      <Text style={s.communityGo}>{t("Unirme ›")}</Text>
     </TouchableOpacity>
   );
 }
