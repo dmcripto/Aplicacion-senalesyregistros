@@ -23,11 +23,13 @@ create table if not exists public.exchange_connections (
 
 alter table public.exchange_connections enable row level security;
 
+drop policy if exists "exchange_connections: select own" on public.exchange_connections;
 create policy "exchange_connections: select own"
   on public.exchange_connections for select
   using (auth.uid() = user_id);
 
 -- Desconectar = borrar la fila (los secretos se borran en cascada).
+drop policy if exists "exchange_connections: delete own" on public.exchange_connections;
 create policy "exchange_connections: delete own"
   on public.exchange_connections for delete
   using (auth.uid() = user_id);
