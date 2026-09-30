@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
   Platform,
@@ -18,8 +19,11 @@ import JournalScreen from "./src/screens/JournalScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import SignalsScreen from "./src/screens/SignalsScreen";
 import AddScreen from "./src/screens/AddScreen";
+import OnboardingScreen from "./src/screens/OnboardingScreen";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
+
+const ONBOARDING_KEY = "veltrix_onboarding_v1";
 
 type Tab = "signals" | "journal" | "add" | "settings";
 const TABS: Array<{ key: Tab; label: string }> = [
@@ -33,10 +37,23 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const [tab, setTab] = useState<Tab>("signals");
   const { trades, loading, refreshing, refresh } = useTrades(userId);
   const open = trades.filter((t) => t.outcome === "ABIERTA").length;
+  const [onboarding, setOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_KEY)
+      .then((v) => setOnboarding(v !== "done"))
+      .catch(() => setOnboarding(false));
+  }, []);
+
+  const finishOnboarding = () => {
+    setOnboarding(false);
+    AsyncStorage.setItem(ONBOARDING_KEY, "done").catch(() => {});
+  };
+
+  useEffect(() => {
+    if (onboarding !== false) return;
     registerForPushNotifications(userId).catch((err) => console.warn("Push registration failed:", err));
-  }, [userId]);
+  }, [userId, onboarding]);
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(() => {
@@ -45,6 +62,9 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
     });
     return () => sub.remove();
   }, [refresh]);
+
+  if (onboarding === null) return <View style={{ flex: 1 }} />;
+  if (onboarding) return <OnboardingScreen userId={userId} onDone={finishOnboarding} />;
 
   return (
     <View style={{ flex: 1 }}>
