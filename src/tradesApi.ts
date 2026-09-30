@@ -203,3 +203,8 @@ export async function saveMoney(userId: string, m: MoneySettings) {
     .eq("id", userId);
   if (error) throw error;
 }
+
+/** Guarda el idioma elegido para que las notificaciones push lleguen en ese idioma (si la columna no existe, se ignora). */
+export async function saveLang(userId: string, lang: string) {
+  await supabase.from("profiles").update({ lang }).eq("id", userId);
+}

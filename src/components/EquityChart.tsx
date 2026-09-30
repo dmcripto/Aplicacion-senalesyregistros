@@ -3,6 +3,7 @@ import { equitySeries, fmtDateTime, fmtR } from "../lib";
 import type { Trade } from "../lib";
 import { useInView } from "../hooks";
 import { IconCandles, TriDown, TriUp } from "../ui";
+import { t } from "../lib";
 
 const W = 820;
 const H = 252;
@@ -42,8 +43,8 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
       <div className="flex flex-col items-center justify-center gap-4 px-6 py-14 text-center">
         <IconCandles className="h-16 w-32 opacity-70" />
         <p className="max-w-sm text-sm leading-relaxed text-fog">
-          Todavía no hay operaciones cerradas. Cuando marques un TP, un SL o un cierre manual,
-          la <span className="font-semibold text-snow">curva de capital en R</span> se dibuja acá.
+          {t("Todavía no hay operaciones cerradas. Cuando marques un TP, un SL o un cierre manual,")}{" "}
+          {t("la")} <span className="font-semibold text-snow">{t("curva de capital en R")}</span> {t("se dibuja acá.")}
         </p>
       </div>
     );
@@ -67,8 +68,8 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
       {/* cabecera */}
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
         <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">CURVA DE CAPITAL</h2>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">R acumulado por operación cerrada</p>
+          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("CURVA DE CAPITAL")}</h2>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("R acumulado por operación cerrada")}</p>
         </div>
         <div
           className={`num rounded-md px-3.5 py-1.5 text-lg font-bold ${pos ? "bg-bull/12 text-bull" : "bg-bear/12 text-bear"}`}
@@ -173,7 +174,7 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
             {lastDate}
           </text>
           <text x={(PL + W - PR) / 2} y={H - 9} textAnchor="middle" fontSize="10" fill="var(--color-dim)" className="num">
-            {pts.length} operaciones
+            {pts.length} {t("operaciones")}
           </text>
         </svg>
 
@@ -193,7 +194,7 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
               ) : (
                 <TriDown className="h-2 w-2 text-bear" />
               )}
-              {hp.trade.symbol} · {hp.trade.outcome === "MANUAL" ? "CIERRE" : hp.trade.outcome}
+              {hp.trade.symbol} · {hp.trade.outcome === "MANUAL" ? t("CIERRE") : hp.trade.outcome}
             </div>
             <div className="num mt-0.5 text-[10px] text-fog">
               {fmtDateTime(hp.trade.closedAt ?? hp.trade.date)}

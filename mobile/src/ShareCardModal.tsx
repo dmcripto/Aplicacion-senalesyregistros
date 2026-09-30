@@ -7,6 +7,7 @@ import { fmtR, summarize } from "@dmcripto/core";
 import type { SharePeriod, Trade } from "@dmcripto/core";
 import { AreaChart, Logo } from "./ui";
 import { colors } from "./theme";
+import { t } from "@dmcripto/core";
 
 const PERIODS: Array<[SharePeriod, string]> = [
   ["week", "7 días"],
@@ -27,13 +28,13 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
     setBusy(true);
     try {
       if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert("No disponible", "Este dispositivo no permite compartir imágenes desde la app.");
+        Alert.alert(t("No disponible"), t("Este dispositivo no permite compartir imágenes desde la app."));
         return;
       }
       const uri = await captureRef(cardRef, { format: "png", quality: 1, width: 1080, height: 1350, result: "tmpfile" });
-      await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Compartir mi resultado" });
+      await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: t("Compartir mi resultado") });
     } catch (err) {
-      Alert.alert("Error", err instanceof Error ? err.message : "No se pudo compartir la imagen.");
+      Alert.alert(t("Error"), err instanceof Error ? err.message : t("No se pudo compartir la imagen."));
     } finally {
       setBusy(false);
     }
@@ -44,7 +45,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
       <View style={st.bg}>
         <View style={st.sheet}>
           <View style={st.head}>
-            <Text style={st.title}>Compartir mi resultado</Text>
+            <Text style={st.title}>{t("Compartir mi resultado")}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={st.close}>✕</Text>
             </TouchableOpacity>
@@ -67,17 +68,17 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
               <Logo size={40} />
               <View style={{ flex: 1 }}>
                 <Text style={st.brand}>VELTRIX</Text>
-                <Text style={st.brandSub}>Diario de trading</Text>
+                <Text style={st.brandSub}>{t("Diario de trading")}</Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={st.period}>{s.label}</Text>
                 <Text style={st.periodSub}>
-                  {s.closed} {s.closed === 1 ? "operación" : "operaciones"}
+                  {s.closed} {s.closed === 1 ? t("operación") : t("operaciones")}
                 </Text>
               </View>
             </View>
 
-            <Text style={st.kicker}>RESULTADO NETO</Text>
+            <Text style={st.kicker}>{t("RESULTADO NETO")}</Text>
             <Text style={[st.big, { color: accent, textShadowColor: accent }]}>{s.closed === 0 ? "0R" : `${fmtR(s.netR)}R`}</Text>
 
             <View style={st.chart}>
@@ -85,20 +86,20 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             </View>
 
             <View style={st.stats}>
-              <Stat label="ACIERTO" value={s.closed ? `${Math.round(s.winRate)}%` : "—"} />
+              <Stat label={t("ACIERTO")} value={s.closed ? `${Math.round(s.winRate)}%` : "—"} />
               <Stat label="PROFIT FACTOR" value={s.closed ? (s.pf == null ? "∞" : s.pf.toFixed(2)) : "—"} />
-              <Stat label="MEJOR" value={s.closed ? `${fmtR(s.bestR)}R` : "—"} />
+              <Stat label={t("MEJOR")} value={s.closed ? `${fmtR(s.bestR)}R` : "—"} />
             </View>
 
-            <Text style={st.cta}>Llevá tu diario de trading con VELTRIX</Text>
+            <Text style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
             <Text style={st.site}>{SITE}</Text>
-            <Text style={st.legal}>Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.</Text>
+            <Text style={st.legal}>{t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.")}</Text>
           </View>
 
           <TouchableOpacity style={st.shareBtn} onPress={share} disabled={busy}>
-            {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={st.shareText}>Compartir imagen</Text>}
+            {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={st.shareText}>{t("Compartir imagen")}</Text>}
           </TouchableOpacity>
-          <Text style={st.note}>Solo muestra resultados en R: sin montos de dinero ni datos de tu cuenta.</Text>
+          <Text style={st.note}>{t("Solo muestra resultados en R: sin montos de dinero ni datos de tu cuenta.")}</Text>
         </View>
       </View>
     </Modal>

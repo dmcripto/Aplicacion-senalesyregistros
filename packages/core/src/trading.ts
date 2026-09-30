@@ -3,6 +3,9 @@
 // para poder importarse tanto desde la app web (Vite) como desde la app
 // móvil (Expo/React Native).
 
+import { getLang, locale, t as tr } from "./i18n";
+export * from "./i18n";
+
 export type Direction = "LONG" | "SHORT";
 export type Outcome = "ABIERTA" | "TP" | "SL" | "MANUAL";
 
@@ -131,7 +134,7 @@ export function monthlySummary(trades: Trade[]): MonthRow[] {
       const d = new Date(key + "-01T12:00:00");
       row = {
         key,
-        label: d.toLocaleDateString("es-ES", { month: "short", year: "numeric" }),
+        label: d.toLocaleDateString(locale(), { month: "short", year: "numeric" }),
         ops: 0,
         cerradas: 0,
         winRate: 0,
@@ -205,17 +208,17 @@ function tradeFromFields(fields: Record<string, unknown>, label: string): { valu
 
   const rawSymbol = String(get("symbol") ?? "").trim();
   const symbol = rawSymbol.includes(":") ? rawSymbol.split(":").pop()! : rawSymbol;
-  if (!symbol) return { error: `«${label}» — falta el símbolo.` };
+  if (!symbol) return { error: tr("«{label}» — falta el símbolo.", { label }) };
 
   const dirRaw = String(get("direction") ?? "");
   const direction = parseDirection(dirRaw);
-  if (!direction) return { error: `«${label}» — dirección «${dirRaw}» no reconocida (usá COMPRA/VENTA, BUY/SELL o LONG/SHORT).` };
+  if (!direction) return { error: tr("«{label}» — dirección «{dir}» no reconocida (usá COMPRA/VENTA, BUY/SELL o LONG/SHORT).", { label, dir: dirRaw }) };
 
   const entry = toNum(get("entry"));
   const tp = toNum(get("tp"));
   const sl = toNum(get("sl"));
   if (![entry, tp, sl].every((n) => Number.isFinite(n) && n > 0)) {
-    return { error: `«${label}» — entrada, TP y SL deben ser números válidos.` };
+    return { error: tr("«{label}» — entrada, TP y SL deben ser números válidos.", { label }) };
   }
   return { value: { symbol: norm(symbol), direction, entry, tp, sl, date: new Date().toISOString() } };
 }
@@ -277,7 +280,7 @@ export function parseFreeText(input: string): { value?: NewTrade; error?: string
       .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, " ")
       .replace(/\s+/g, " "),
   );
-  if (!text) return { error: "El mensaje está vacío." };
+  if (!text) return { error: tr("El mensaje está vacío.") };
 
   // Símbolo
   let base: string | null = null;
@@ -310,15 +313,15 @@ export function parseFreeText(input: string): { value?: NewTrade; error?: string
     const words = text.split(" ").filter((w) => /^[A-Z][A-Z0-9]{1,9}$/.test(w) && !NOT_TICKERS.has(w) && ![...LONG_WORDS, ...SHORT_WORDS].includes(w));
     if (words.length) base = `${words[0]}USDT`;
   }
-  if (!base) return { error: "No encontré el activo (ej: BTCUSDT, BTC/USDT o #BTC)." };
+  if (!base) return { error: tr("No encontré el activo (ej: BTCUSDT, BTC/USDT o #BTC).") };
 
   // Niveles
   const rEntry = rawLevelAfter(text, ["ENTRY", "ENTRADA", "ENTRAR", "ENTER", "ZONA DE ENTRADA", "ENTRY ZONE", "PRECIO", "PRICE", "BUY AT", "SELL AT", "COMPRA EN", "VENTA EN", "@"]);
   const rTp = rawLevelAfter(text, ["TAKE PROFIT", "TAKEPROFIT", "TAKE-PROFIT", "TP1", "TP", "TARGET 1", "TARGET", "TARGETS", "OBJETIVO", "OBJETIVOS", "PROFIT"]);
   const rSl = rawLevelAfter(text, ["STOP LOSS", "STOPLOSS", "STOP-LOSS", "SL", "STOP", "PARADA", "CORTE"]);
-  if (!rEntry) return { error: "No encontré el precio de entrada (ej: «Entrada: 65000»)." };
-  if (!rTp) return { error: "No encontré el take profit (ej: «TP: 66500»)." };
-  if (!rSl) return { error: "No encontré el stop loss (ej: «SL: 64500»)." };
+  if (!rEntry) return { error: tr("No encontré el precio de entrada (ej: «Entrada: 65000»).") };
+  if (!rTp) return { error: tr("No encontré el take profit (ej: «TP: 66500»).") };
+  if (!rSl) return { error: tr("No encontré el stop loss (ej: «SL: 64500»).") };
 
   const coherent = (dir: Direction | null, e: number, tp: number, sl: number) =>
     dir === "LONG" ? tp > e && sl < e : dir === "SHORT" ? tp < e && sl > e : tp > e !== sl > e;
@@ -331,12 +334,12 @@ export function parseFreeText(input: string): { value?: NewTrade; error?: string
     }
   }
   if (!direction) direction = tp > entry && sl < entry ? "LONG" : tp < entry && sl > entry ? "SHORT" : null;
-  if (!direction) return { error: "No pude saber si es compra o venta (usá LONG/SHORT o COMPRA/VENTA)." };
+  if (!direction) return { error: tr("No pude saber si es compra o venta (usá LONG/SHORT o COMPRA/VENTA).") };
 
   const ok = direction === "LONG" ? tp > entry && sl < entry : tp < entry && sl > entry;
   if (!ok || ![entry, tp, sl].every((n) => Number.isFinite(n) && n > 0)) {
     return {
-      error: `Los niveles no coinciden con ${direction === "LONG" ? "una compra (TP arriba y SL abajo)" : "una venta (TP abajo y SL arriba)"}. Revisá el mensaje.`,
+      error: direction === "LONG" ? tr("Los niveles no coinciden con una compra (TP arriba y SL abajo). Revisá el mensaje.") : tr("Los niveles no coinciden con una venta (TP abajo y SL arriba). Revisá el mensaje."),
     };
   }
   return { value: { symbol: perp ? `${base}.P` : base, direction, entry, tp, sl, date: new Date().toISOString() } };
@@ -354,7 +357,7 @@ export function parseAlerts(text: string): ParseResult {
   const valid: NewTrade[] = [];
   const errors: string[] = [];
   const body = text.trim();
-  if (!body) return { valid, errors: ["Pegá al menos una línea de alerta."] };
+  if (!body) return { valid, errors: [tr("Pegá al menos una línea de alerta.")] };
 
   if (body.startsWith("{") || body.startsWith("[")) {
     try {
@@ -362,7 +365,7 @@ export function parseAlerts(text: string): ParseResult {
       const list = Array.isArray(parsed) ? parsed : [parsed];
       for (const item of list) {
         if (!item || typeof item !== "object") {
-          errors.push("JSON inválido: cada alerta debe ser un objeto.");
+          errors.push(tr("JSON inválido: cada alerta debe ser un objeto."));
           continue;
         }
         const r = tradeFromFields(item as Record<string, unknown>, short(JSON.stringify(item)));
@@ -370,7 +373,7 @@ export function parseAlerts(text: string): ParseResult {
         else errors.push(r.error!);
       }
     } catch {
-      errors.push("El JSON no es válido (revisá comillas y comas).");
+      errors.push(tr("El JSON no es válido (revisá comillas y comas)."));
     }
     return { valid, errors };
   }
@@ -408,7 +411,7 @@ export function parseAlerts(text: string): ParseResult {
     let parts = line.split("|").map((p) => p.trim());
     if (parts.length === 6) parts = parts.slice(1);
     if (parts.length !== 5) {
-      errors.push(`«${short(line)}» — se esperan 6 campos separados por |`);
+      errors.push(tr("«{line}» — se esperan 6 campos separados por |", { line: short(line) }));
       continue;
     }
     const [symbol, dirRaw, entry, tp, sl] = parts;
@@ -441,7 +444,7 @@ export function buildAlertMessage(o: AlertMessageOptions): string {
     const side = o.direction === "LONG" ? "buy" : "sell";
     return `{"symbol":"{{ticker}}","side":"${side}","entry":${entry},"tp":${tp},"sl":${sl}}`;
   }
-  return `VELTRIX|{{ticker}}|${o.direction === "LONG" ? "COMPRA" : "VENTA"}|${entry}|${tp}|${sl}`;
+  return `VELTRIX|{{ticker}}|${o.direction === "LONG" ? tr("COMPRA") : tr("VENTA")}|${entry}|${tp}|${sl}`;
 }
 
 
@@ -471,7 +474,7 @@ export interface Analysis {
   insights: string[];
 }
 
-const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]; // claves; se traducen al mostrarlas
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const HOUR_BLOCKS = ["00–03 h", "03–06 h", "06–09 h", "09–12 h", "12–15 h", "15–18 h", "18–21 h", "21–24 h"];
 const MIN_SAMPLE = 3;
@@ -501,13 +504,13 @@ export function analyze(trades: Trade[]): Analysis {
 
   const bySymbol = groupRows(closed.map(({ t, r }) => ({ key: t.symbol, label: t.symbol, r }))).sort((a, b) => b.netR - a.netR);
 
-  const byWeekdayMap = groupRows(closed.map(({ d, r }) => ({ key: String(d.getDay()), label: WEEKDAYS[d.getDay()], r })));
-  const byWeekday = WEEK_ORDER.map((n) => byWeekdayMap.find((x) => x.key === String(n)) ?? { key: String(n), label: WEEKDAYS[n], ops: 0, winRate: 0, netR: 0 });
+  const byWeekdayMap = groupRows(closed.map(({ d, r }) => ({ key: String(d.getDay()), label: tr(WEEKDAYS[d.getDay()]), r })));
+  const byWeekday = WEEK_ORDER.map((n) => byWeekdayMap.find((x) => x.key === String(n)) ?? { key: String(n), label: tr(WEEKDAYS[n]), ops: 0, winRate: 0, netR: 0 });
 
   const byHourMap = groupRows(closed.map(({ d, r }) => ({ key: String(Math.floor(d.getHours() / 3)), label: HOUR_BLOCKS[Math.floor(d.getHours() / 3)], r })));
   const byHour = HOUR_BLOCKS.map((label, i) => byHourMap.find((x) => x.key === String(i)) ?? { key: String(i), label, ops: 0, winRate: 0, netR: 0 });
 
-  const byDirection = groupRows(closed.map(({ t, r }) => ({ key: t.direction, label: t.direction === "LONG" ? "Compras" : "Ventas", r })));
+  const byDirection = groupRows(closed.map(({ t, r }) => ({ key: t.direction, label: t.direction === "LONG" ? tr("Compras") : tr("Ventas"), r })));
 
   // Rachas (orden cronológico de cierre); las operaciones en 0R no cortan la racha.
   const ordered = [...closed].sort((a, b) => new Date(a.t.closedAt ?? a.t.date).getTime() - new Date(b.t.closedAt ?? b.t.date).getTime());
@@ -523,29 +526,30 @@ export function analyze(trades: Trade[]): Analysis {
 
   const insights: string[] = [];
   const best = (rows: GroupRow[]) => rows.filter((x) => x.ops >= MIN_SAMPLE).sort((a, b) => b.netR - a.netR);
+  const low = (x: string) => (getLang() === "es" ? x.toLowerCase() : x);
   const fmt = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1).replace(/\.0$/, "") + "R";
   const sym = best(bySymbol);
   if (sym.length) {
-    insights.push(`Tu mejor activo es ${sym[0].label} (${fmt(sym[0].netR)} en ${sym[0].ops} operaciones).`);
+    insights.push(tr("Tu mejor activo es {sym} ({r} en {n} operaciones).", { sym: sym[0].label, r: fmt(sym[0].netR), n: sym[0].ops }));
     const worst = sym[sym.length - 1];
-    if (sym.length > 1 && worst.netR < 0) insights.push(`Tu activo más costoso es ${worst.label} (${fmt(worst.netR)}). Pensá si conviene seguir operándolo.`);
+    if (sym.length > 1 && worst.netR < 0) insights.push(tr("Tu activo más costoso es {sym} ({r}). Pensá si conviene seguir operándolo.", { sym: worst.label, r: fmt(worst.netR) }));
   }
   const day = best(byWeekday);
   if (day.length > 1) {
-    if (day[0].netR > 0) insights.push(`Tu mejor día es el ${day[0].label.toLowerCase()} (${fmt(day[0].netR)}).`);
+    if (day[0].netR > 0) insights.push(tr("Tu mejor día es el {day} ({r}).", { day: low(day[0].label), r: fmt(day[0].netR) }));
     const w = day[day.length - 1];
-    if (w.netR < 0) insights.push(`Tu peor día es el ${w.label.toLowerCase()} (${fmt(w.netR)}).`);
+    if (w.netR < 0) insights.push(tr("Tu peor día es el {day} ({r}).", { day: low(w.label), r: fmt(w.netR) }));
   }
   const hour = best(byHour);
   if (hour.length > 1) {
-    if (hour[0].netR > 0) insights.push(`Operás mejor entre ${hour[0].label} (${fmt(hour[0].netR)}).`);
+    if (hour[0].netR > 0) insights.push(tr("Operás mejor entre {h} ({r}).", { h: hour[0].label, r: fmt(hour[0].netR) }));
     const w = hour[hour.length - 1];
-    if (w.netR < 0) insights.push(`Evitá operar entre ${w.label}: ahí perdés ${fmt(w.netR)}.`);
+    if (w.netR < 0) insights.push(tr("Evitá operar entre {h}: ahí perdés {r}.", { h: w.label, r: fmt(w.netR) }));
   }
   const dir = byDirection.filter((x) => x.ops >= MIN_SAMPLE);
   if (dir.length === 2 && Math.abs(dir[0].netR - dir[1].netR) >= 1) {
     const [a, b] = dir.sort((x, y) => y.netR - x.netR);
-    insights.push(`Te va mejor en ${a.label.toLowerCase()} (${fmt(a.netR)}) que en ${b.label.toLowerCase()} (${fmt(b.netR)}).`);
+    insights.push(tr("Te va mejor en {a} ({ra}) que en {b} ({rb}).", { a: a.label.toLowerCase(), ra: fmt(a.netR), b: b.label.toLowerCase(), rb: fmt(b.netR) }));
   }
 
   return { closed: closed.length, bySymbol, byWeekday, byHour, byDirection, streaks: { maxWin, maxLoss, current: { type: cur, count } }, insights };
@@ -582,10 +586,10 @@ export function dailyStatus(trades: Trade[], limits: DailyLimits, now = new Date
   const tradesState = state(count, limits.maxTrades);
 
   const messages: string[] = [];
-  if (lossState === "reached") messages.push(`Alcanzaste tu pérdida máxima del día (${limits.maxLossR}R). Hoy no operes más.`);
-  else if (lossState === "near") messages.push(`Estás cerca de tu pérdida máxima del día: llevás ${lossR.toFixed(1).replace(/\.0$/, "")}R de −${limits.maxLossR}R.`);
-  if (tradesState === "reached") messages.push(`Llegaste al máximo de ${limits.maxTrades} operaciones de hoy.`);
-  else if (tradesState === "near") messages.push(`Llevás ${count} de ${limits.maxTrades} operaciones permitidas hoy.`);
+  if (lossState === "reached") messages.push(tr("Alcanzaste tu pérdida máxima del día ({n}R). Hoy no operes más.", { n: limits.maxLossR ?? 0 }));
+  else if (lossState === "near") messages.push(tr("Estás cerca de tu pérdida máxima del día: llevás {a}R de −{b}R.", { a: lossR.toFixed(1).replace(/\.0$/, ""), b: limits.maxLossR ?? 0 }));
+  if (tradesState === "reached") messages.push(tr("Llegaste al máximo de {n} operaciones de hoy.", { n: limits.maxTrades ?? 0 }));
+  else if (tradesState === "near") messages.push(tr("Llevás {a} de {b} operaciones permitidas hoy.", { a: count, b: limits.maxTrades ?? 0 }));
 
   const level = lossState === "reached" || tradesState === "reached" ? "stop" : lossState === "near" || tradesState === "near" ? "warning" : "ok";
   return { lossR, trades: count, lossState, tradesState, messages, level };
@@ -650,13 +654,13 @@ export interface ResultSummary {
 /** Resumen de resultados (solo en R, sin montos de dinero) de un período, listo para una tarjeta. */
 export function summarize(trades: Trade[], period: SharePeriod, now = new Date()): ResultSummary {
   let from = 0;
-  let label = "Todo el historial";
+  let label = tr("Todo el historial");
   if (period === "week") {
     from = now.getTime() - 7 * 86_400_000;
-    label = "Últimos 7 días";
+    label = tr("Últimos 7 días");
   } else if (period === "month") {
     from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    label = now.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+    label = now.toLocaleDateString(locale(), { month: "long", year: "numeric" });
     label = label.charAt(0).toUpperCase() + label.slice(1);
   }
   const inPeriod = trades.filter((t) => t.outcome !== "ABIERTA" && new Date(t.closedAt ?? t.date).getTime() >= from);
@@ -769,18 +773,18 @@ export function calcPosition(i: PositionInput): PositionResult | null {
   const rr = validTp ? Math.abs(tp! - entry) / stopDistance : null;
 
   const warnings: string[] = [];
-  if (tp != null && !validTp) warnings.push("El TP está del lado equivocado: en una " + (direction === "LONG" ? "compra debe estar arriba" : "venta debe estar abajo") + " de la entrada.");
-  if (riskPct > 5) warnings.push("Arriesgás más del 5 % por operación: es un riesgo muy alto.");
-  else if (riskPct > 2) warnings.push("Lo habitual es arriesgar entre 0,5 % y 2 % por operación.");
+  if (tp != null && !validTp) warnings.push(direction === "LONG" ? tr("El TP está del lado equivocado: en una compra debe estar arriba de la entrada.") : tr("El TP está del lado equivocado: en una venta debe estar abajo de la entrada."));
+  if (riskPct > 5) warnings.push(tr("Arriesgás más del 5 % por operación: es un riesgo muy alto."));
+  else if (riskPct > 2) warnings.push(tr("Lo habitual es arriesgar entre 0,5 % y 2 % por operación."));
   const needed = margin ?? notional;
   if (needed > capital) {
     warnings.push(
       margin
-        ? "Necesitás más margen (" + margin.toFixed(2) + ") que tu capital. Bajá el riesgo, acercá el stop o subí el apalancamiento."
-        : "La posición vale más que tu capital: solo podés hacerla con apalancamiento.",
+        ? tr("Necesitás más margen ({m}) que tu capital. Bajá el riesgo, acercá el stop o subí el apalancamiento.", { m: margin.toFixed(2) })
+        : tr("La posición vale más que tu capital: solo podés hacerla con apalancamiento."),
     );
   }
-  if (rr != null && rr < 1) warnings.push("La relación riesgo/beneficio es menor a 1:1.");
+  if (rr != null && rr < 1) warnings.push(tr("La relación riesgo/beneficio es menor a 1:1."));
 
   return { riskAmount, stopDistance, stopPct: (stopDistance / entry) * 100, units, notional, margin, fees, profitAtTp, rr, direction, warnings };
 }
@@ -798,9 +802,9 @@ export const fmtPct = (n: number, dec = 0) => `${n.toFixed(dec)}%`;
 export const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
   return (
-    d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" }) +
+    d.toLocaleDateString(locale(), { day: "2-digit", month: "short" }) +
     " · " +
-    d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+    d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })
   );
 };
 
@@ -816,9 +820,9 @@ export function tradesToCsv(trades: Trade[]): string {
     const s = String(v);
     return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ["Fecha", "Activo", "Direccion", "Entrada", "TP", "SL", "Estado", "Salida", "R", "Notas", "Etiquetas"];
+  const head = ["Fecha", "Activo", "Direccion", "Entrada", "TP", "SL", "Estado", "Salida", "R", "Notas", "Etiquetas"].map((h) => tr(h));
   const rows = trades.map((t) => [
-    new Date(t.date).toLocaleString("es-ES"),
+    new Date(t.date).toLocaleString(locale()),
     t.symbol,
     t.direction,
     t.entry,
@@ -891,6 +895,8 @@ export function sampleTrades(): Trade[] {
 }
 
 export const EXAMPLE_ALERT = "VELTRIX|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";
+/** Ejemplo de alerta en el idioma activo (COMPRA/BUY). */
+export const exampleAlert = () => `VELTRIX|BTCUSDT|${tr("COMPRA")}|65405.8|66694.4|65161.1`;
 
 export const fmtQty = (n: number) =>
   n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : n.toLocaleString("en-US", { maximumFractionDigits: 8 });

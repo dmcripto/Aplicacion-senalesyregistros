@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { analyze, cx, fmtR } from "../lib";
 import type { GroupRow, Trade } from "../lib";
+import { t } from "../lib";
 
 type View = "symbol" | "weekday" | "hour" | "direction";
 const VIEWS: Array<[View, string]> = [
@@ -51,24 +52,24 @@ export default function Analysis({ trades }: { trades: Trade[] }) {
   return (
     <section className="overflow-hidden rounded-lg border border-line bg-panel">
       <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">ANÁLISIS</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">Dónde ganás y dónde perdés</p>
+        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("ANÁLISIS")}</h2>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Dónde ganás y dónde perdés")}</p>
       </header>
       <div className="space-y-4 p-5">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-md border border-line bg-ink/50 p-3">
-            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">Mejor racha</p>
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">{t("Mejor racha")}</p>
             <p className="num text-lg font-bold text-bull">{a.streaks.maxWin}</p>
           </div>
           <div className="rounded-md border border-line bg-ink/50 p-3">
-            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">Peor racha</p>
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">{t("Peor racha")}</p>
             <p className="num text-lg font-bold text-bear">{a.streaks.maxLoss}</p>
           </div>
           <div className="rounded-md border border-line bg-ink/50 p-3">
-            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">Racha actual</p>
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-dim">{t("Racha actual")}</p>
             <p className={cx("num text-lg font-bold", a.streaks.current.type === "win" ? "text-bull" : a.streaks.current.type === "loss" ? "text-bear" : "text-fog")}>
               {a.streaks.current.count}
-              <span className="ml-1 text-[10px] font-semibold">{a.streaks.current.type === "win" ? "ganadas" : a.streaks.current.type === "loss" ? "perdidas" : ""}</span>
+              <span className="ml-1 text-[10px] font-semibold">{a.streaks.current.type === "win" ? t("ganadas") : a.streaks.current.type === "loss" ? t("perdidas") : ""}</span>
             </p>
           </div>
         </div>
@@ -91,12 +92,12 @@ export default function Analysis({ trades }: { trades: Trade[] }) {
                 view === key ? "bg-gold text-ink" : "text-fog hover:text-snow",
               )}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
         <Bars rows={rows} />
-        <p className="text-[10.5px] text-dim">R neto por grupo y cantidad de operaciones cerradas. Usá los consejos con cuidado si son pocas operaciones.</p>
+        <p className="text-[10.5px] text-dim">{t("R neto por grupo y cantidad de operaciones cerradas. Usá los consejos con cuidado si son pocas operaciones.")}</p>
       </div>
     </section>
   );

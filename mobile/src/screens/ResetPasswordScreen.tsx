@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { supabase } from "../supabaseClient";
 import { colors } from "../theme";
+import { t } from "@dmcripto/core";
 
 export default function ResetPasswordScreen({ onDone }: { onDone: (notice: string) => void }) {
   const [password, setPassword] = useState("");
@@ -25,9 +26,9 @@ export default function ResetPasswordScreen({ onDone }: { onDone: (notice: strin
       const { error: err } = await supabase.auth.updateUser({ password });
       if (err) throw err;
       await supabase.auth.signOut();
-      onDone("Contraseña actualizada — ingresá con tu nueva contraseña.");
+      onDone(t("Contraseña actualizada — ingresá con tu nueva contraseña."));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo actualizar la contraseña.");
+      setError(err instanceof Error ? err.message : t("No se pudo actualizar la contraseña."));
       setBusy(false);
     }
   };
@@ -35,10 +36,10 @@ export default function ResetPasswordScreen({ onDone }: { onDone: (notice: strin
   return (
     <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={styles.card}>
-        <Text style={styles.title}>Nueva contraseña</Text>
-        <Text style={styles.subtitle}>ELEGÍ UNA CONTRASEÑA NUEVA</Text>
+        <Text style={styles.title}>{t("Nueva contraseña")}</Text>
+        <Text style={styles.subtitle}>{t("ELEGÍ UNA CONTRASEÑA NUEVA")}</Text>
 
-        <Text style={styles.label}>Contraseña nueva</Text>
+        <Text style={styles.label}>{t("Contraseña nueva")}</Text>
         <View style={styles.passwordRow}>
           <TextInput
             value={password}
@@ -53,14 +54,14 @@ export default function ResetPasswordScreen({ onDone }: { onDone: (notice: strin
             onPress={() => setShowPassword((v) => !v)}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={styles.showBtnText}>{showPassword ? "Ocultar" : "Ver"}</Text>
+            <Text style={styles.showBtnText}>{showPassword ? t("Ocultar") : t("Ver")}</Text>
           </TouchableOpacity>
         </View>
 
         {error && <Text style={styles.error}>{error}</Text>}
 
         <TouchableOpacity style={styles.submit} onPress={submit} disabled={busy}>
-          {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.submitText}>Guardar contraseña</Text>}
+          {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={styles.submitText}>{t("Guardar contraseña")}</Text>}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

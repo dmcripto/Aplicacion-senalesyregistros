@@ -22,12 +22,14 @@ import AddScreen from "./src/screens/AddScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import RiskScreen from "./src/screens/RiskScreen";
 import { dailyStatus } from "@dmcripto/core";
-import { NO_MONEY } from "@dmcripto/core";
+import { NO_MONEY, getLang } from "@dmcripto/core";
 import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
-import { fetchLimits, fetchMoney, saveLimits, saveMoney } from "./src/tradesApi";
+import { fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney } from "./src/tradesApi";
 import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
+import { LangProvider } from "./src/lang";
+import { t } from "@dmcripto/core";
 
 const ONBOARDING_KEY = "veltrix_onboarding_v1";
 
@@ -61,6 +63,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 
   useEffect(() => {
     fetchMoney(userId).then(setMoney).catch(() => {});
+    Promise.resolve(saveLang(userId, getLang())).catch(() => {});
   }, [userId]);
 
   const persistMoney = async (m: MoneySettings) => {
@@ -108,7 +111,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         </Text>
         <View style={styles.live}>
           <LiveDot />
-          <Text style={styles.liveText}>EN VIVO{open > 0 ? ` · ${open}` : ""}</Text>
+          <Text style={styles.liveText}>{t("EN VIVO")}{open > 0 ? ` · ${open}` : ""}</Text>
         </View>
       </View>
       <View style={{ flex: 1 }}>
@@ -142,7 +145,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                   </View>
                 )}
               </View>
-              <Text style={[styles.tabLabel, on && styles.tabLabelActive]}>{tb.label}</Text>
+              <Text style={[styles.tabLabel, on && styles.tabLabelActive]}>{t(tb.label)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -161,6 +164,7 @@ export default function App() {
       <AppBackground />
       <SafeAreaView style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" backgroundColor="#070b11" />
+      <LangProvider>
       {isRecovery ? (
         <ResetPasswordScreen
           onDone={(notice) => {
@@ -177,6 +181,7 @@ export default function App() {
       ) : (
         <LoginScreen initialNotice={authNotice} />
       )}
+      </LangProvider>
       </SafeAreaView>
     </View>
   );

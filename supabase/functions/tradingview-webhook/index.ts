@@ -125,11 +125,14 @@ Deno.serve(async (req) => {
     .eq("user_id", profile.id);
 
   if (tokens?.length) {
+    // Idioma del usuario (columna opcional: si todavía no existe, se usa español).
+    const { data: langRow } = await supabase.from("profiles").select("lang").eq("id", profile.id).maybeSingle();
+    const en = (langRow as { lang?: string } | null)?.lang === "en";
     await sendExpoPush(
       tokens.map((t) => ({
         to: t.expo_push_token,
-        title: `${alert.symbol} · ${alert.direction === "LONG" ? "COMPRA" : "VENTA"}`,
-        body: `Entrada ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`,
+        title: `${alert.symbol} · ${alert.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA"}`,
+        body: `${en ? "Entry" : "Entrada"} ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`,
         data: { tradeId: trade.id },
       })),
     );

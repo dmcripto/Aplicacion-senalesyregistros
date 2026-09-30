@@ -5,6 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle, Defs, G, Line, LinearGradient as SvgGradient, Path, Polyline, Rect, Stop } from "react-native-svg";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "./theme";
+import { t } from "@dmcripto/core";
 
 export function Logo({ size = 28 }: { size?: number }) {
   return <Image source={require("../assets/logo.png")} style={{ width: size, height: size }} resizeMode="contain" />;
@@ -168,8 +169,8 @@ const rb = StyleSheet.create({ label: { fontSize: 8.5, fontWeight: "800", letter
 
 export function timeAgo(iso: string): string {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "ahora";
-  if (s < 3600) return `hace ${Math.floor(s / 60)} min`;
-  if (s < 86400) return `hace ${Math.floor(s / 3600)} h`;
-  return `hace ${Math.floor(s / 86400)} d`;
+  if (s < 60) return t("ahora");
+  if (s < 3600) return t("hace {n} min", { n: Math.floor(s / 60) });
+  if (s < 86400) return t("hace {n} h", { n: Math.floor(s / 3600) });
+  return t("hace {n} d", { n: Math.floor(s / 86400) });
 }

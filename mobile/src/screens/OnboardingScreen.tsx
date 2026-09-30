@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { setupPush } from "../push";
 import { Logo } from "../ui";
 import { colors } from "../theme";
+import { t } from "@dmcripto/core";
 
 const SLIDES = [
   {
@@ -49,13 +50,13 @@ export default function OnboardingScreen({ userId, onDone }: { userId: string; o
         <View style={{ alignItems: "center", marginBottom: 24 }}>
           <Logo size={110} />
         </View>
-        <Text style={s.title}>{slide.title}</Text>
-        <Text style={s.text}>{slide.text}</Text>
+        <Text style={s.title}>{t(slide.title)}</Text>
+        <Text style={s.text}>{t(slide.text)}</Text>
         <View style={{ gap: 10, marginTop: 20 }}>
           {slide.points.map((p) => (
             <View key={p} style={s.point}>
               <Text style={s.check}>✓</Text>
-              <Text style={s.pointText}>{p}</Text>
+              <Text style={s.pointText}>{t(p)}</Text>
             </View>
           ))}
         </View>
@@ -71,11 +72,11 @@ export default function OnboardingScreen({ userId, onDone }: { userId: string; o
           {busy ? (
             <ActivityIndicator color={colors.ink} />
           ) : (
-            <Text style={s.primaryText}>{last ? "Activar notificaciones y empezar" : "Siguiente"}</Text>
+            <Text style={s.primaryText}>{last ? t("Activar notificaciones y empezar") : t("Siguiente")}</Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity onPress={onDone} disabled={busy} style={{ paddingVertical: 10 }}>
-          <Text style={s.skip}>{last ? "Ahora no" : "Saltar"}</Text>
+          <Text style={s.skip}>{last ? t("Ahora no") : t("Saltar")}</Text>
         </TouchableOpacity>
       </View>
     </View>

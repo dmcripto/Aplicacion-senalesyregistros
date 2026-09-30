@@ -4,6 +4,7 @@ import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtCurrency, fmtPrice, fmtR, resu
 import { useMoney } from "./money";
 import type { Trade } from "./lib";
 import { useInView } from "./hooks";
+import { t } from "./lib";
 
 // ─── Iconos SVG propios ─────────────────────────────────────────────────────
 
@@ -146,7 +147,7 @@ export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
     return (
       <span className="num inline-flex items-center gap-1.5 rounded bg-gold/10 px-2 py-0.5 text-[11px] font-semibold tracking-wide text-gold" style={{ boxShadow: "inset 0 0 0 1px rgba(46,196,241,.4)" }}>
         <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-gold" />
-        ABIERTA
+        {t("ABIERTA")}
       </span>
     );
   }
@@ -161,7 +162,7 @@ export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
       style={{ boxShadow: `inset 0 0 0 1px ${pos ? "rgba(22,217,138,.35)" : "rgba(255,77,103,.35)"}` }}
       title={unit ? fmtCurrency(r * unit, money.currency) : undefined}
     >
-      {trade.outcome === "MANUAL" ? "CIERRE" : trade.outcome} · {fmtR(r)}R{unit ? " ·" : ""}
+      {trade.outcome === "MANUAL" ? t("CIERRE") : trade.outcome} · {fmtR(r)}R{unit ? " ·" : ""}
       {unit ? <span className="font-semibold opacity-80">{fmtCurrency(r * unit, money.currency)}</span> : null}
     </span>
   );
@@ -218,7 +219,7 @@ export function NotesModal({
     >
       <div className="pop-in max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.6)]">
         <div className="border-b border-line px-5 py-4">
-          <h3 className="font-display text-xl font-bold tracking-wide text-snow">Notas y etiquetas</h3>
+          <h3 className="font-display text-xl font-bold tracking-wide text-snow">{t("Notas y etiquetas")}</h3>
           <p className="num mt-0.5 text-[11px] text-fog">
             {trade.symbol} · {trade.direction} @ {fmtPrice(trade.entry)}
           </p>
@@ -226,21 +227,21 @@ export function NotesModal({
         <div className="space-y-4 p-5">
           <label className="block">
             <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">
-              ¿Qué pasó en esta operación?
+              {t("¿Qué pasó en esta operación?")}
             </span>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
               maxLength={600}
-              placeholder="Por qué entraste, cómo te sentiste, qué aprendiste…"
+              placeholder={t("Por qué entraste, cómo te sentiste, qué aprendiste…")}
               className="field resize-y text-[13px]"
             />
           </label>
 
           {PRESET_TAGS.map((g) => (
             <div key={g.group}>
-              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">{g.group}</p>
+              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">{t(g.group)}</p>
               <div className="flex flex-wrap gap-1.5">
                 {g.tags.map((tag) => (
                   <button
@@ -252,7 +253,7 @@ export function NotesModal({
                       has(tag) ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow",
                     )}
                   >
-                    {tag}
+                    {t(tag)}
                   </button>
                 ))}
               </div>
@@ -260,14 +261,14 @@ export function NotesModal({
           ))}
 
           <div>
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">Etiqueta propia</p>
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-dim">{t("Etiqueta propia")}</p>
             <div className="flex gap-2">
               <input
                 value={custom}
                 onChange={(e) => setCustom(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustom())}
                 maxLength={24}
-                placeholder="Ej: Apertura de Nueva York"
+                placeholder={t("Ej: Apertura de Nueva York")}
                 className="field"
               />
               <button
@@ -275,7 +276,7 @@ export function NotesModal({
                 onClick={addCustom}
                 className="shrink-0 rounded-md border border-line px-3 text-[12px] font-bold text-fog transition-colors hover:border-line2 hover:text-snow"
               >
-                Agregar
+                {t("Agregar")}
               </button>
             </div>
             {tags.some((x) => !PRESET_TAGS.some((g) => g.tags.includes(x))) && (
@@ -295,20 +296,20 @@ export function NotesModal({
               </div>
             )}
           </div>
-          <p className="text-[10.5px] text-dim">{tags.length}/{MAX_TAGS} etiquetas</p>
+          <p className="text-[10.5px] text-dim">{tags.length}/{MAX_TAGS} {t("etiquetas")}</p>
         </div>
         <div className="flex gap-2 border-t border-line px-5 py-4">
           <button
             onClick={onCancel}
             className="flex-1 rounded-md border border-line px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
           >
-            Cancelar
+            {t("Cancelar")}
           </button>
           <button
             onClick={() => onSave(notes, tags)}
             className="flex-1 rounded-md bg-gold px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
           >
-            Guardar
+            {t("Guardar")}
           </button>
         </div>
       </div>
@@ -388,8 +389,8 @@ export function CloseModal({
   const quick = useMemo(
     () => [
       { label: "Break Even", value: trade.entry },
-      { label: "En TP", value: trade.tp },
-      { label: "En SL", value: trade.sl },
+      { label: t("En TP"), value: trade.tp },
+      { label: t("En SL"), value: trade.sl },
     ],
     [trade],
   );
@@ -402,7 +403,7 @@ export function CloseModal({
       <div className="pop-in w-full max-w-md rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.6)]">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <div>
-            <h3 className="font-display text-xl font-bold tracking-wide text-snow">Cierre manual</h3>
+            <h3 className="font-display text-xl font-bold tracking-wide text-snow">{t("Cierre manual")}</h3>
             <p className="num mt-0.5 text-[11px] text-fog">
               {trade.symbol} · {trade.direction} @ {fmtPrice(trade.entry)}
             </p>
@@ -410,7 +411,7 @@ export function CloseModal({
           <button
             onClick={onCancel}
             className="rounded p-1.5 text-fog transition-colors hover:bg-raise hover:text-snow"
-            aria-label="Cerrar"
+            aria-label={t("Cerrar")}
           >
             <IconX className="h-4 w-4" />
           </button>
@@ -419,7 +420,7 @@ export function CloseModal({
         <div className="space-y-4 px-5 py-5">
           <div>
             <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.14em] text-fog">
-              Precio de salida
+              {t("Precio de salida")}
             </label>
             <input
               autoFocus
@@ -457,7 +458,7 @@ export function CloseModal({
                   : "border-bear/40 bg-beardeep/40",
             )}
           >
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fog">Resultado</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fog">{t("Resultado")}</span>
             <span
               className={cx(
                 "num text-2xl font-bold",
@@ -474,14 +475,14 @@ export function CloseModal({
             onClick={onCancel}
             className="flex-1 rounded-md border border-line px-4 py-2.5 text-sm font-semibold text-fog transition-colors hover:bg-raise hover:text-snow"
           >
-            Cancelar
+            {t("Cancelar")}
           </button>
           <button
             disabled={!valid}
             onClick={() => valid && onConfirm(exit)}
             className="flex-1 rounded-md bg-gold px-4 py-2.5 text-sm font-bold text-ink transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Confirmar cierre
+            {t("Confirmar cierre")}
           </button>
         </div>
       </div>

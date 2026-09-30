@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } fr
 import type { DailyStatus, Trade } from "@dmcripto/core";
 import { LimitBanner, CommunityCard, Empty, StatsGrid, TradeCard } from "../components";
 import { colors } from "../theme";
+import { t } from "@dmcripto/core";
 
 export default function SignalsScreen({
   trades,
@@ -37,7 +38,7 @@ export default function SignalsScreen({
           <View style={s.chips}>
             {(["open", "all"] as const).map((f) => (
               <TouchableOpacity key={f} style={[s.chip, filter === f && s.chipOn]} onPress={() => setFilter(f)}>
-                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{f === "open" ? "Abiertas" : "Últimas 30"}</Text>
+                <Text style={[s.chipText, filter === f && s.chipTextOn]}>{f === "open" ? t("Abiertas") : t("Últimas 30")}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -46,8 +47,8 @@ export default function SignalsScreen({
       ListEmptyComponent={
         !loading ? (
           <Empty
-            title={filter === "open" ? "SIN SEÑALES ABIERTAS" : "AÚN NO HAY SEÑALES"}
-            text="Cuando llegue una alerta de TradingView aparece acá con una notificación. También podés cargarla a mano desde la pestaña Registrar."
+            title={filter === "open" ? t("SIN SEÑALES ABIERTAS") : t("AÚN NO HAY SEÑALES")}
+            text={t("Cuando llegue una alerta de TradingView aparece acá con una notificación. También podés cargarla a mano desde la pestaña Registrar.")}
           />
         ) : null
       }

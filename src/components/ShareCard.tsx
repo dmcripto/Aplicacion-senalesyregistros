@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cx, fmtR, summarize } from "../lib";
 import type { ResultSummary, SharePeriod, Trade } from "../lib";
+import { t } from "../lib";
 
 const W = 1080;
 const H = 1350;
@@ -59,20 +60,20 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   c.fillText("VELTRIX", 200, 130);
   c.fillStyle = "#2ec4f1";
   c.font = font(600, 26);
-  c.fillText("Diario de trading", 202, 168);
+  c.fillText(t("Diario de trading"), 202, 168);
   c.textAlign = "right";
   c.fillStyle = "#e8eef6";
   c.font = font(700, 34);
   c.fillText(s.label, W - 60, 118);
   c.fillStyle = "#93a5ba";
   c.font = font(500, 26);
-  c.fillText(`${s.closed} ${s.closed === 1 ? "operación cerrada" : "operaciones cerradas"}`, W - 60, 160);
+  c.fillText(`${s.closed} ${s.closed === 1 ? t("operación cerrada") : t("operaciones cerradas")}`, W - 60, 160);
 
   // Resultado
   c.textAlign = "center";
   c.fillStyle = "#93a5ba";
   c.font = font(700, 30);
-  c.fillText("RESULTADO NETO", W / 2, 300);
+  c.fillText(t("RESULTADO NETO"), W / 2, 300);
   c.save();
   c.shadowColor = accent;
   c.shadowBlur = 50;
@@ -126,9 +127,9 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
 
   // Estadísticas
   const boxes: Array<[string, string]> = [
-    ["ACIERTO", s.closed ? `${Math.round(s.winRate)}%` : "—"],
-    ["PROFIT FACTOR", s.closed ? (s.pf == null ? "∞" : s.pf.toFixed(2)) : "—"],
-    ["MEJOR OPERACIÓN", s.closed ? `${fmtR(s.bestR)}R` : "—"],
+    [t("ACIERTO"), s.closed ? `${Math.round(s.winRate)}%` : "—"],
+    [t("PROFIT FACTOR"), s.closed ? (s.pf == null ? "∞" : s.pf.toFixed(2)) : "—"],
+    [t("MEJOR OPERACIÓN"), s.closed ? `${fmtR(s.bestR)}R` : "—"],
   ];
   const bw = (pw - 40) / 3;
   boxes.forEach(([label, value], i) => {
@@ -151,13 +152,13 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   // Pie
   c.fillStyle = "#e8eef6";
   c.font = font(700, 34);
-  c.fillText("Llevá tu diario de trading con VELTRIX", W / 2, 1200);
+  c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1200);
   c.fillStyle = "#2ec4f1";
   c.font = font(600, 30);
   c.fillText(SITE, W / 2, 1250);
   c.fillStyle = "#5f7389";
   c.font = font(500, 20);
-  c.fillText("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.", W / 2, 1305);
+  c.fillText(t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero."), W / 2, 1305);
 }
 
 export default function ShareCard({
@@ -206,7 +207,7 @@ export default function ShareCard({
     a.download = "veltrix-resultado.png";
     a.click();
     URL.revokeObjectURL(a.href);
-    notify("Imagen descargada.");
+    notify(t("Imagen descargada."));
   };
 
   const share = async () => {
@@ -215,7 +216,7 @@ export default function ShareCard({
     const file = new File([b], "veltrix-resultado.png", { type: "image/png" });
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: "Mi resultado en VELTRIX" });
+        await navigator.share({ files: [file], title: t("Mi resultado en VELTRIX") });
       } catch {
         /* el usuario canceló */
       }
@@ -231,8 +232,8 @@ export default function ShareCard({
     >
       <div className="pop-in my-4 w-full max-w-md rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.6)]">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <h3 className="font-display text-xl font-bold tracking-wide text-snow">Compartir mi resultado</h3>
-          <button onClick={onClose} className="rounded p-1.5 text-fog hover:bg-raise hover:text-snow" aria-label="Cerrar">
+          <h3 className="font-display text-xl font-bold tracking-wide text-snow">{t("Compartir mi resultado")}</h3>
+          <button onClick={onClose} className="rounded p-1.5 text-fog hover:bg-raise hover:text-snow" aria-label={t("Cerrar")}>
             ✕
           </button>
         </div>
@@ -247,7 +248,7 @@ export default function ShareCard({
                   period === key ? "bg-gold text-ink" : "text-fog hover:text-snow",
                 )}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -257,17 +258,17 @@ export default function ShareCard({
               onClick={download}
               className="flex-1 rounded-md border border-line px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
             >
-              Descargar
+              {t("Descargar")}
             </button>
             <button
               onClick={share}
               className="flex-1 rounded-md bg-gold px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
             >
-              Compartir
+              {t("Compartir")}
             </button>
           </div>
           <p className="text-[10.5px] leading-relaxed text-dim">
-            La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.
+            {t("La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.")}
           </p>
         </div>
       </div>
