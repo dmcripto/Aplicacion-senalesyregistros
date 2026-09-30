@@ -13,6 +13,7 @@ import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
+import TelegramSection from "../TelegramSection";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
 
@@ -213,6 +214,9 @@ export default function SettingsScreen({
         </TouchableOpacity>
         <Text style={styles.hint}>{t("Es una estimación: multiplica tus R por lo que arriesgás. Las tarjetas para compartir siguen mostrando solo R.")}</Text>
       </View>
+
+      <Text style={styles.sectionTitle}>{t("BOT DE TELEGRAM")}</Text>
+      <TelegramSection userId={userId} />
 
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection />

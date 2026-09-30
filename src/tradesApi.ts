@@ -5,7 +5,7 @@
 
 import { t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { DailyLimits, ExchangeConnection, ExchangeId, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { DailyLimits, ExchangeConnection, ExchangeId, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -247,22 +247,24 @@ export interface ExchangeResult {
   results?: Array<{ exchange: ExchangeId; imported: number; error?: string; skipped?: boolean }>;
 }
 
-async function callExchanges(body: Record<string, unknown>): Promise<ExchangeResult> {
-  const { data, error } = await supabase.functions.invoke("exchanges", { body });
+async function callFunction<T extends { ok: boolean; error?: string }>(name: string, body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) {
     // Los errores con mensaje propio de la función vienen en el cuerpo de la respuesta.
     const res = (error as { context?: Response }).context;
     if (res && typeof res.json === "function") {
       try {
-        return (await res.json()) as ExchangeResult;
+        return (await res.json()) as T;
       } catch {
         /* sin cuerpo */
       }
     }
-    return { ok: false, error: t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") };
+    return { ok: false, error: t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") } as T;
   }
-  return data as ExchangeResult;
+  return data as T;
 }
+
+const callExchanges = (body: Record<string, unknown>) => callFunction<ExchangeResult>("exchanges", body);
 
 export const connectExchange = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
   callExchanges({ action: "connect", exchange, apiKey, apiSecret });
@@ -272,5 +274,37 @@ export const syncExchanges = () => callExchanges({ action: "sync" });
 /** Desconectar borra la conexión y la clave guardada. Las operaciones ya importadas quedan en tu diario. */
 export async function disconnectExchange(id: string) {
   const { error } = await supabase.from("exchange_connections").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ─── Bot de Telegram ────────────────────────────────────────────────────────
+
+interface TelegramRow {
+  chat_id: number;
+  username: string | null;
+  linked_at: string;
+}
+
+/** El chat de Telegram vinculado a esta cuenta (o null). */
+export async function fetchTelegramLink(): Promise<TelegramLink | null> {
+  const { data, error } = await supabase.from("telegram_links").select("chat_id, username, linked_at").maybeSingle();
+  if (error || !data) return null;
+  const r = data as TelegramRow;
+  return { chatId: Number(r.chat_id), username: r.username, linkedAt: r.linked_at };
+}
+
+export interface TelegramStart {
+  ok: boolean;
+  error?: string;
+  code?: string;
+  botUsername?: string;
+  url?: string;
+}
+
+/** Pide un código de un solo uso y el link t.me para vincular el chat. */
+export const startTelegramLink = () => callFunction<TelegramStart>("telegram-bot", { action: "link" });
+
+export async function unlinkTelegram(userId: string) {
+  const { error } = await supabase.from("telegram_links").delete().eq("user_id", userId);
   if (error) throw error;
 }

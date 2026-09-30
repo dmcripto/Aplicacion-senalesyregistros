@@ -9,6 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
+import { esc, notifyTelegram } from "../_shared/telegram.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -137,6 +138,14 @@ Deno.serve(async (req) => {
       })),
     );
   }
+
+  // Aviso por Telegram (si el usuario vinculó su chat).
+  await notifyTelegram(supabase, profile.id, (lang) => {
+    const side = alert.direction === "LONG" ? (lang === "en" ? "BUY" : "COMPRA") : lang === "en" ? "SELL" : "VENTA";
+    return `🔔 <b>${lang === "en" ? "New signal" : "Nueva señal"}</b>\n${alert.direction === "LONG" ? "▲" : "▼"} <b>${esc(alert.symbol)}</b> ${side}\n${
+      lang === "en" ? "Entry" : "Entrada"
+    } ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`;
+  });
 
   return new Response(JSON.stringify({ ok: true, trade }), {
     status: 201,

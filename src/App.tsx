@@ -65,6 +65,7 @@ import TagStats from "./components/TagStats";
 import Analysis from "./components/Analysis";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
+import TelegramCard from "./components/TelegramCard";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
@@ -721,6 +722,9 @@ function Dashboard({ userId }: { userId: string }) {
             </Reveal>
             <Reveal delay={150} className="max-lg:order-6">
               <WebhookCard userId={userId} notify={notify} />
+            </Reveal>
+            <Reveal delay={154} className="max-lg:order-3">
+              <TelegramCard userId={userId} notify={notify} />
             </Reveal>
             <Reveal delay={158} className="max-lg:order-3">
               <ExchangeCard money={money} notify={notify} />

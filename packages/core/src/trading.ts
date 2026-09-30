@@ -924,3 +924,9 @@ export interface ExchangeConnection {
   lastSyncAt: string | null;
   lastImportCount: number;
 }
+
+export interface TelegramLink {
+  chatId: number;
+  username: string | null;
+  linkedAt: string;
+}

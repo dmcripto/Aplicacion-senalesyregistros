@@ -1,0 +1,48 @@
+// ─── VELTRIX · Telegram (API de bots) ───────────────────────────────────────
+// Funciones comunes para hablar con Telegram y avisar al usuario desde cualquier función del servidor.
+
+export type Lang = "es" | "en";
+
+const API = "https://api.telegram.org";
+
+export const botToken = (): string | undefined => Deno.env.get("TELEGRAM_BOT_TOKEN") || undefined;
+
+/** Escapa el texto para usarlo dentro de mensajes con formato HTML. */
+export const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+export async function tgApi(token: string, method: string, payload: Record<string, unknown> = {}): Promise<any> {
+  try {
+    const res = await fetch(`${API}/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
+export const sendMessage = (token: string, chatId: number, html: string, extra: Record<string, unknown> = {}) =>
+  tgApi(token, "sendMessage", { chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
+
+/**
+ * Avisa por Telegram al usuario si tiene el chat vinculado. `build` arma el texto en su idioma.
+ * Nunca lanza errores: un fallo de Telegram no debe romper el registro de la señal.
+ * Si el usuario bloqueó al bot, se borra la vinculación.
+ */
+export async function notifyTelegram(supabase: any, userId: string, build: (lang: Lang) => string): Promise<void> {
+  try {
+    const token = botToken();
+    if (!token) return;
+    const { data: link } = await supabase.from("telegram_links").select("chat_id").eq("user_id", userId).maybeSingle();
+    if (!link) return;
+    const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+    const r = await sendMessage(token, Number(link.chat_id), build(lang));
+    if (!r?.ok && r?.error_code === 403) await supabase.from("telegram_links").delete().eq("user_id", userId);
+  } catch {
+    /* sin aviso por Telegram */
+  }
+}
