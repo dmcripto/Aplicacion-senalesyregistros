@@ -20,6 +20,8 @@ En @BotFather desactiva la privacidad (`/setprivacy` → Disable), añade el bot
 - Usuarios de confianza: IDs en `trusted_users.json` (los admins ya están exentos)
 - Registro de moderación: `moderacion.log`
 
+Guía completa paso a paso: [GUIA.md](GUIA.md).
+
 ## Dejarlo activo 24/7 (VPS + systemd)
 Crea `/etc/systemd/system/dmcripto-bot.service`:
 ```ini
