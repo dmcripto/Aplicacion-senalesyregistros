@@ -4,7 +4,7 @@
 // vivían como setState directo sobre localStorage.
 
 import { supabase } from "./supabaseClient";
-import type { NewTrade, Outcome, Trade } from "./lib";
+import type { DailyLimits, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -162,5 +162,26 @@ export async function updateTradeNotes(id: string, notes: string, tags: string[]
     .from("trades")
     .update({ notes: notes.trim() || null, tags })
     .eq("id", id);
+  if (error) throw error;
+}
+
+export async function fetchLimits(userId: string): Promise<DailyLimits> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("daily_loss_limit, daily_trade_limit")
+    .eq("id", userId)
+    .single();
+  if (error) throw error;
+  return {
+    maxLossR: data.daily_loss_limit == null ? null : Number(data.daily_loss_limit),
+    maxTrades: data.daily_trade_limit == null ? null : Number(data.daily_trade_limit),
+  };
+}
+
+export async function saveLimits(userId: string, limits: DailyLimits) {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ daily_loss_limit: limits.maxLossR, daily_trade_limit: limits.maxTrades })
+    .eq("id", userId);
   if (error) throw error;
 }

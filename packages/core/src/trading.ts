@@ -445,6 +445,153 @@ export function buildAlertMessage(o: AlertMessageOptions): string {
 }
 
 
+// ─── Análisis ───────────────────────────────────────────────────────────────
+
+export interface GroupRow {
+  key: string;
+  label: string;
+  ops: number;
+  winRate: number;
+  netR: number;
+}
+
+export interface Streaks {
+  maxWin: number;
+  maxLoss: number;
+  current: { type: "win" | "loss" | null; count: number };
+}
+
+export interface Analysis {
+  closed: number;
+  bySymbol: GroupRow[];
+  byWeekday: GroupRow[];
+  byHour: GroupRow[];
+  byDirection: GroupRow[];
+  streaks: Streaks;
+  insights: string[];
+}
+
+const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const HOUR_BLOCKS = ["00–03 h", "03–06 h", "06–09 h", "09–12 h", "12–15 h", "15–18 h", "18–21 h", "21–24 h"];
+const MIN_SAMPLE = 3;
+
+function groupRows(items: Array<{ key: string; label: string; r: number }>): GroupRow[] {
+  const map = new Map<string, { label: string; rs: number[] }>();
+  for (const it of items) {
+    const row = map.get(it.key) ?? { label: it.label, rs: [] };
+    row.rs.push(it.r);
+    map.set(it.key, row);
+  }
+  return [...map.entries()].map(([key, { label, rs }]) => ({
+    key,
+    label,
+    ops: rs.length,
+    winRate: (rs.filter((r) => r > 0).length / rs.length) * 100,
+    netR: rs.reduce((a, b) => a + b, 0),
+  }));
+}
+
+/** Rendimiento de las operaciones cerradas por activo, día de la semana, franja horaria y dirección, más rachas. */
+export function analyze(trades: Trade[]): Analysis {
+  const closed = trades
+    .filter((t) => t.outcome !== "ABIERTA")
+    .map((t) => ({ t, r: resultR(t) ?? 0, d: new Date(t.date) }))
+    .filter((x) => !Number.isNaN(x.d.getTime()));
+
+  const bySymbol = groupRows(closed.map(({ t, r }) => ({ key: t.symbol, label: t.symbol, r }))).sort((a, b) => b.netR - a.netR);
+
+  const byWeekdayMap = groupRows(closed.map(({ d, r }) => ({ key: String(d.getDay()), label: WEEKDAYS[d.getDay()], r })));
+  const byWeekday = WEEK_ORDER.map((n) => byWeekdayMap.find((x) => x.key === String(n)) ?? { key: String(n), label: WEEKDAYS[n], ops: 0, winRate: 0, netR: 0 });
+
+  const byHourMap = groupRows(closed.map(({ d, r }) => ({ key: String(Math.floor(d.getHours() / 3)), label: HOUR_BLOCKS[Math.floor(d.getHours() / 3)], r })));
+  const byHour = HOUR_BLOCKS.map((label, i) => byHourMap.find((x) => x.key === String(i)) ?? { key: String(i), label, ops: 0, winRate: 0, netR: 0 });
+
+  const byDirection = groupRows(closed.map(({ t, r }) => ({ key: t.direction, label: t.direction === "LONG" ? "Compras" : "Ventas", r })));
+
+  // Rachas (orden cronológico de cierre); las operaciones en 0R no cortan la racha.
+  const ordered = [...closed].sort((a, b) => new Date(a.t.closedAt ?? a.t.date).getTime() - new Date(b.t.closedAt ?? b.t.date).getTime());
+  let maxWin = 0, maxLoss = 0, cur: "win" | "loss" | null = null, count = 0;
+  for (const { r } of ordered) {
+    if (r === 0) continue;
+    const type = r > 0 ? "win" : "loss";
+    count = type === cur ? count + 1 : 1;
+    cur = type;
+    if (type === "win") maxWin = Math.max(maxWin, count);
+    else maxLoss = Math.max(maxLoss, count);
+  }
+
+  const insights: string[] = [];
+  const best = (rows: GroupRow[]) => rows.filter((x) => x.ops >= MIN_SAMPLE).sort((a, b) => b.netR - a.netR);
+  const fmt = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1).replace(/\.0$/, "") + "R";
+  const sym = best(bySymbol);
+  if (sym.length) {
+    insights.push(`Tu mejor activo es ${sym[0].label} (${fmt(sym[0].netR)} en ${sym[0].ops} operaciones).`);
+    const worst = sym[sym.length - 1];
+    if (sym.length > 1 && worst.netR < 0) insights.push(`Tu activo más costoso es ${worst.label} (${fmt(worst.netR)}). Pensá si conviene seguir operándolo.`);
+  }
+  const day = best(byWeekday);
+  if (day.length > 1) {
+    if (day[0].netR > 0) insights.push(`Tu mejor día es el ${day[0].label.toLowerCase()} (${fmt(day[0].netR)}).`);
+    const w = day[day.length - 1];
+    if (w.netR < 0) insights.push(`Tu peor día es el ${w.label.toLowerCase()} (${fmt(w.netR)}).`);
+  }
+  const hour = best(byHour);
+  if (hour.length > 1) {
+    if (hour[0].netR > 0) insights.push(`Operás mejor entre ${hour[0].label} (${fmt(hour[0].netR)}).`);
+    const w = hour[hour.length - 1];
+    if (w.netR < 0) insights.push(`Evitá operar entre ${w.label}: ahí perdés ${fmt(w.netR)}.`);
+  }
+  const dir = byDirection.filter((x) => x.ops >= MIN_SAMPLE);
+  if (dir.length === 2 && Math.abs(dir[0].netR - dir[1].netR) >= 1) {
+    const [a, b] = dir.sort((x, y) => y.netR - x.netR);
+    insights.push(`Te va mejor en ${a.label.toLowerCase()} (${fmt(a.netR)}) que en ${b.label.toLowerCase()} (${fmt(b.netR)}).`);
+  }
+
+  return { closed: closed.length, bySymbol, byWeekday, byHour, byDirection, streaks: { maxWin, maxLoss, current: { type: cur, count } }, insights };
+}
+
+// ─── Límites diarios ────────────────────────────────────────────────────────
+
+export interface DailyLimits {
+  maxLossR: number | null; // pérdida máxima del día, en R (positivo)
+  maxTrades: number | null; // cantidad máxima de operaciones abiertas en el día
+}
+
+export interface DailyStatus {
+  lossR: number; // resultado del día en R (negativo = pérdida)
+  trades: number;
+  lossState: "off" | "ok" | "near" | "reached";
+  tradesState: "off" | "ok" | "near" | "reached";
+  messages: string[];
+  level: "ok" | "warning" | "stop";
+}
+
+const sameDay = (iso: string | undefined, start: number) => !!iso && new Date(iso).getTime() >= start;
+
+export function dailyStatus(trades: Trade[], limits: DailyLimits, now = new Date()): DailyStatus {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const s = start.getTime();
+  const lossR = trades.filter((t) => t.outcome !== "ABIERTA" && sameDay(t.closedAt ?? t.date, s)).reduce((a, t) => a + (resultR(t) ?? 0), 0);
+  const count = trades.filter((t) => sameDay(t.date, s)).length;
+
+  const state = (value: number, limit: number | null): "off" | "ok" | "near" | "reached" =>
+    limit == null || limit <= 0 ? "off" : value >= limit ? "reached" : value >= limit * 0.8 ? "near" : "ok";
+  const lossState = state(Math.max(0, -lossR), limits.maxLossR);
+  const tradesState = state(count, limits.maxTrades);
+
+  const messages: string[] = [];
+  if (lossState === "reached") messages.push(`Alcanzaste tu pérdida máxima del día (${limits.maxLossR}R). Hoy no operes más.`);
+  else if (lossState === "near") messages.push(`Estás cerca de tu pérdida máxima del día: llevás ${lossR.toFixed(1).replace(/\.0$/, "")}R de −${limits.maxLossR}R.`);
+  if (tradesState === "reached") messages.push(`Llegaste al máximo de ${limits.maxTrades} operaciones de hoy.`);
+  else if (tradesState === "near") messages.push(`Llevás ${count} de ${limits.maxTrades} operaciones permitidas hoy.`);
+
+  const level = lossState === "reached" || tradesState === "reached" ? "stop" : lossState === "near" || tradesState === "near" ? "warning" : "ok";
+  return { lossR, trades: count, lossState, tradesState, messages, level };
+}
+
+
 // ─── Etiquetas ──────────────────────────────────────────────────────────────
 
 export const PRESET_TAGS: Array<{ group: string; tags: string[] }> = [

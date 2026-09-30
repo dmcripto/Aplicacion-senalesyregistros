@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
-import type { Trade } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
+import type { DailyStatus, GroupRow, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
@@ -106,6 +106,78 @@ export function MonthlyList({ trades }: { trades: Trade[] }) {
           <Text style={s.monthCell}>{r.ops} ops</Text>
           <Text style={s.monthCell}>{r.cerradas ? `${Math.round(r.winRate)}%` : "—"}</Text>
           <Text style={[s.monthR, { color: rColor(r.netR) }]}>{r.cerradas ? `${fmtR(r.netR)}R` : "—"}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function LimitBanner({ status }: { status: DailyStatus }) {
+  if (!status.messages.length) return null;
+  const stop = status.level === "stop";
+  const color = stop ? colors.bear : colors.gold;
+  return (
+    <View style={[s.limit, { borderColor: color + "88", backgroundColor: color + "18" }]}>
+      <Text style={[s.limitTitle, { color }]}>{stop ? "⛔ FRENÁ POR HOY" : "⚠ CUIDADO CON TU LÍMITE DIARIO"}</Text>
+      {status.messages.map((m) => (
+        <Text key={m} style={s.limitText}>
+          {m}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+type AView = "symbol" | "weekday" | "hour" | "direction";
+const AVIEWS: Array<[AView, string]> = [
+  ["symbol", "Activo"],
+  ["weekday", "Día"],
+  ["hour", "Hora"],
+  ["direction", "Dirección"],
+];
+
+export function AnalysisBlock({ trades }: { trades: Trade[] }) {
+  const a = useMemo(() => analyze(trades), [trades]);
+  const [view, setView] = useState<AView>("symbol");
+  if (a.closed < 2) return null;
+  const rows: GroupRow[] = view === "symbol" ? a.bySymbol : view === "weekday" ? a.byWeekday : view === "hour" ? a.byHour : a.byDirection;
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.netR)));
+  const cur = a.streaks.current;
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>ANÁLISIS</Text>
+      <View style={s.tileRow}>
+        <StatTile label="Mejor racha" value={String(a.streaks.maxWin)} color={colors.bull} />
+        <StatTile label="Peor racha" value={String(a.streaks.maxLoss)} color={colors.bear} />
+        <StatTile label="Racha actual" value={String(cur.count)} color={cur.type === "win" ? colors.bull : cur.type === "loss" ? colors.bear : colors.fog} sub={cur.type === "win" ? "ganadas" : cur.type === "loss" ? "perdidas" : ""} />
+      </View>
+      {a.insights.length > 0 && (
+        <View style={s.insights}>
+          {a.insights.map((i) => (
+            <Text key={i} style={s.insightText}>
+              💡 {i}
+            </Text>
+          ))}
+        </View>
+      )}
+      <View style={s.segment}>
+        {AVIEWS.map(([key, label]) => (
+          <TouchableOpacity key={key} style={[s.segBtn, view === key && s.segBtnOn]} onPress={() => setView(key)}>
+            <Text style={[s.segText, view === key && { color: colors.ink }]}>{label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {rows.map((r) => (
+        <View key={r.key} style={s.barRow}>
+          <Text style={s.barLabel} numberOfLines={1}>
+            {r.label}
+          </Text>
+          <View style={s.barTrack}>
+            {r.ops > 0 && (
+              <View style={{ width: `${Math.max(4, (Math.abs(r.netR) / max) * 100)}%`, height: "100%", borderRadius: 4, backgroundColor: r.netR >= 0 ? colors.bull : colors.bear }} />
+            )}
+          </View>
+          <Text style={[s.barValue, { color: r.ops ? rColor(r.netR) : colors.dim }]}>{r.ops ? `${fmtR(r.netR)}R` : "—"}</Text>
         </View>
       ))}
     </View>
@@ -447,6 +519,19 @@ const s = StyleSheet.create({
   communityTitle: { color: colors.snow, fontWeight: "800", fontSize: 13.5 },
   communityText: { color: colors.fog, fontSize: 11.5, marginTop: 2 },
   communityGo: { color: colors.cyan, fontWeight: "800", fontSize: 12 },
+  limit: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12, gap: 4 },
+  limitTitle: { fontSize: 12, fontWeight: "900", letterSpacing: 1 },
+  limitText: { color: colors.snow, fontSize: 12.5, lineHeight: 18 },
+  insights: { backgroundColor: colors.gold + "12", borderWidth: 1, borderColor: colors.gold + "44", borderRadius: 10, padding: 10, gap: 6, marginTop: 10 },
+  insightText: { color: colors.fog, fontSize: 12, lineHeight: 17 },
+  segment: { flexDirection: "row", backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 3, marginTop: 12, marginBottom: 8 },
+  segBtn: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center" },
+  segBtnOn: { backgroundColor: colors.gold },
+  segText: { color: colors.fog, fontSize: 11, fontWeight: "800" },
+  barRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 5 },
+  barLabel: { color: colors.snow, fontSize: 12, fontWeight: "700", width: 84 },
+  barTrack: { flex: 1, height: 9, backgroundColor: colors.ink, borderRadius: 4, overflow: "hidden" },
+  barValue: { width: 52, textAlign: "right", fontWeight: "800", fontSize: 12 },
   tagGroup: { color: colors.dim, fontSize: 9.5, fontWeight: "800", letterSpacing: 1.2, marginBottom: 6 },
   tagWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tagChip: { borderWidth: 1, borderColor: colors.line2, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 },

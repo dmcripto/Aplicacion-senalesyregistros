@@ -3,6 +3,7 @@ import {
   COMMUNITY_URL,
   computeStats,
   cx,
+  dailyStatus,
   downloadCsv,
   fmtPct,
   fmtR,
@@ -10,7 +11,7 @@ import {
   rrOf,
   sampleTrades,
 } from "./lib";
-import type { Trade } from "./lib";
+import type { DailyLimits, Trade } from "./lib";
 import { useCountUp, useFlashId, useNow, useSession, useTrades } from "./hooks";
 import {
   CloseModal,
@@ -37,6 +38,8 @@ import {
   regenerateWebhookUrl,
   deleteMyAccount,
   updateTradeNotes,
+  fetchLimits,
+  saveLimits,
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
@@ -52,6 +55,8 @@ import MonthlySummary from "./components/MonthlySummary";
 import AlertBuilder from "./components/AlertBuilder";
 import RiskCalculator from "./components/RiskCalculator";
 import TagStats from "./components/TagStats";
+import Analysis from "./components/Analysis";
+import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -382,6 +387,13 @@ function Dashboard({ userId }: { userId: string }) {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
+  const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
+  const limitStatus = useMemo(() => dailyStatus(trades, limits), [trades, limits]);
+
+  useEffect(() => {
+    fetchLimits(userId).then(setLimits).catch(() => {});
+  }, [userId]);
+
   const [clearArmed, setClearArmed] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [flashId, flash] = useFlashId();
@@ -414,8 +426,22 @@ function Dashboard({ userId }: { userId: string }) {
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   }, []);
 
+  const persistLimits = useCallback(
+    async (l: DailyLimits) => {
+      try {
+        await saveLimits(userId, l);
+        setLimits(l);
+        notify("Límites guardados.");
+      } catch (err) {
+        notify(err instanceof Error ? err.message : "No se pudieron guardar los límites.", "err");
+      }
+    },
+    [userId, notify],
+  );
+
   const addTrades = useCallback(
     async (list: NewTrade[]) => {
+      if (limitStatus.level === "stop" && !window.confirm(`${limitStatus.messages.join("\n")}\n\n¿Querés registrar la operación igual?`)) return;
       try {
         const ids = await insertTrades(userId, list);
         if (ids[0]) flash(ids[0]);
@@ -428,7 +454,7 @@ function Dashboard({ userId }: { userId: string }) {
         notify(err instanceof Error ? err.message : "No se pudo registrar la operación.", "err");
       }
     },
-    [userId, flash, notify],
+    [userId, flash, notify, limitStatus],
   );
 
   const markOutcome = useCallback(
@@ -594,6 +620,7 @@ function Dashboard({ userId }: { userId: string }) {
       {/* Contenido */}
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-5 lg:px-8">
         <WelcomeCard />
+        <LimitBanner status={limitStatus} />
         <Reveal>
           <StatsBand trades={trades} />
         </Reveal>
@@ -623,6 +650,9 @@ function Dashboard({ userId }: { userId: string }) {
                 />
               )}
             </Reveal>
+            <Reveal delay={160} className="max-lg:order-5">
+              <Analysis trades={trades} />
+            </Reveal>
           </div>
 
           <aside className="space-y-5 max-lg:contents">
@@ -634,6 +664,9 @@ function Dashboard({ userId }: { userId: string }) {
             </Reveal>
             <Reveal delay={150} className="max-lg:order-6">
               <WebhookCard userId={userId} notify={notify} />
+            </Reveal>
+            <Reveal delay={170} className="max-lg:order-3">
+              <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
             </Reveal>
             {trades.length > 0 && (
               <Reveal delay={180} className="max-lg:order-5">

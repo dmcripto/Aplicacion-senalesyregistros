@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, Share, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { tradesToCsv } from "@dmcripto/core";
-import type { Trade } from "@dmcripto/core";
+import type { DailyLimits, DailyStatus, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
 import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
@@ -12,11 +12,42 @@ import type { PushStatus } from "../push";
 import { DISCLAIMER, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 
-export default function SettingsScreen({ userId, email, trades }: { userId: string; email?: string; trades: Trade[] }) {
+export default function SettingsScreen({
+  userId,
+  email,
+  trades,
+  limits,
+  limitStatus,
+  onSaveLimits,
+}: {
+  userId: string;
+  email?: string;
+  trades: Trade[];
+  limits: DailyLimits;
+  limitStatus: DailyStatus;
+  onSaveLimits: (l: DailyLimits) => Promise<void>;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
+  const [lossStr, setLossStr] = useState("");
+  const [tradesStr, setTradesStr] = useState("");
+
+  useEffect(() => {
+    setLossStr(limits.maxLossR == null ? "" : String(limits.maxLossR));
+    setTradesStr(limits.maxTrades == null ? "" : String(limits.maxTrades));
+  }, [limits]);
+
+  const positive = (v: string) => {
+    const n = Number(v.replace(",", "."));
+    return v.trim() && Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const saveLimitsNow = () =>
+    onSaveLimits({ maxLossR: positive(lossStr), maxTrades: positive(tradesStr) ? Math.round(positive(tradesStr)!) : null })
+      .then(() => Alert.alert("Listo", "Límites guardados."))
+      .catch((e) => Alert.alert("Error", e instanceof Error ? e.message : "No se pudieron guardar los límites."));
+
   const [push, setPush] = useState<PushStatus | null>(null);
   const [pushNote, setPushNote] = useState<string | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
@@ -119,6 +150,29 @@ export default function SettingsScreen({ userId, email, trades }: { userId: stri
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
       <CommunityCard />
+
+      <Text style={styles.sectionTitle}>LÍMITES DIARIOS</Text>
+      <View style={styles.card}>
+        <Text style={styles.hint}>
+          Hoy: {limitStatus.lossR.toFixed(1).replace(/\.0$/, "")}R · {limitStatus.trades} operaciones
+        </Text>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.fieldLabel}>PÉRDIDA MÁX. (R)</Text>
+            <TextInput value={lossStr} onChangeText={setLossStr} keyboardType="decimal-pad" placeholder="ej: 3" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.fieldLabel}>OPERACIONES MÁX.</Text>
+            <TextInput value={tradesStr} onChangeText={setTradesStr} keyboardType="number-pad" placeholder="ej: 5" placeholderTextColor={colors.dim} style={styles.fieldInput} />
+          </View>
+        </View>
+        <TouchableOpacity style={styles.copyBtn} onPress={saveLimitsNow}>
+          <Text style={styles.copyText}>Guardar límites</Text>
+        </TouchableOpacity>
+        <Text style={styles.hint}>
+          Dejá un campo vacío para no usar ese límite. Te avisamos al llegar al 80 % y cuando lo alcanzás.
+        </Text>
+      </View>
 
       <Text style={styles.sectionTitle}>NOTIFICACIONES</Text>
       <View style={styles.card}>
@@ -248,6 +302,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signOutText: { color: colors.bear, fontWeight: "700", fontSize: 12 },
+  fieldLabel: { color: colors.fog, fontSize: 9.5, fontWeight: "700", letterSpacing: 1 },
+  fieldInput: { backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: colors.snow, fontSize: 14 },
   dangerLink: { alignItems: "center", paddingVertical: 6 },
   dangerLinkText: { color: colors.dim, fontSize: 11.5, textDecorationLine: "underline" },
   legalLink: { color: colors.gold, fontSize: 13, fontWeight: "600", textDecorationLine: "underline" },

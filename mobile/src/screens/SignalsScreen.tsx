@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import type { Trade } from "@dmcripto/core";
-import { CommunityCard, Empty, StatsGrid, TradeCard } from "../components";
+import type { DailyStatus, Trade } from "@dmcripto/core";
+import { LimitBanner, CommunityCard, Empty, StatsGrid, TradeCard } from "../components";
 import { colors } from "../theme";
 
 export default function SignalsScreen({
@@ -10,12 +10,14 @@ export default function SignalsScreen({
   refreshing,
   refresh,
   onCalculate,
+  limitStatus,
 }: {
   trades: Trade[];
   loading: boolean;
   refreshing: boolean;
   refresh: () => void;
   onCalculate?: (t: Trade) => void;
+  limitStatus?: DailyStatus;
 }) {
   const [filter, setFilter] = useState<"open" | "all">("open");
   const data = filter === "open" ? trades.filter((t) => t.outcome === "ABIERTA") : trades.slice(0, 30);
@@ -29,6 +31,7 @@ export default function SignalsScreen({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.gold} />}
       ListHeaderComponent={
         <>
+          {limitStatus && <LimitBanner status={limitStatus} />}
           <StatsGrid trades={trades} />
           <CommunityCard />
           <View style={s.chips}>
