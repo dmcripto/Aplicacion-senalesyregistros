@@ -155,7 +155,7 @@ function CloseModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   );
 }
 
-export function TradeCard({ trade, big }: { trade: Trade; big?: boolean }) {
+export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean; onCalculate?: (t: Trade) => void }) {
   const [closing, setClosing] = useState<Trade | null>(null);
   const abierta = trade.outcome === "ABIERTA";
   const r = resultR(trade);
@@ -221,6 +221,11 @@ export function TradeCard({ trade, big }: { trade: Trade; big?: boolean }) {
               <TouchableOpacity style={s.btn} onPress={() => setClosing(trade)}>
                 <Text style={s.btnText}>Cerrar</Text>
               </TouchableOpacity>
+              {onCalculate && (
+                <TouchableOpacity style={s.btn} onPress={() => onCalculate(trade)}>
+                  <Text style={[s.btnText, { color: colors.gold }]}>Calcular</Text>
+                </TouchableOpacity>
+              )}
             </>
           ) : (
             <TouchableOpacity style={s.btn} onPress={() => run(() => reopenTradeById(trade.id), "No se pudo reabrir.")}>

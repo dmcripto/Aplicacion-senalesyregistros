@@ -65,7 +65,7 @@ export function LiveDot({ color = colors.bull }: { color?: string }) {
   );
 }
 
-export type TabIconName = "signals" | "journal" | "add" | "settings";
+export type TabIconName = "signals" | "journal" | "add" | "risk" | "settings";
 
 export function TabIcon({ name, color, size = 22 }: { name: TabIconName; color: string; size?: number }) {
   const p = { stroke: color, strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
@@ -84,6 +84,17 @@ export function TabIcon({ name, color, size = 22 }: { name: TabIconName; color: 
           <Circle cx={12} cy={12} r={9} {...p} />
           <Line x1={12} y1={8} x2={12} y2={16} {...p} />
           <Line x1={8} y1={12} x2={16} y2={12} {...p} />
+        </>
+      )}
+      {name === "risk" && (
+        <>
+          <Path d="M6 3.5h12a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 19V5A1.5 1.5 0 0 1 6 3.5z" {...p} />
+          <Line x1={8} y1={8} x2={16} y2={8} {...p} />
+          <Line x1={8} y1={12.5} x2={9} y2={12.5} {...p} />
+          <Line x1={12} y1={12.5} x2={13} y2={12.5} {...p} />
+          <Line x1={16} y1={12.5} x2={16.1} y2={12.5} {...p} />
+          <Line x1={8} y1={16.5} x2={9} y2={16.5} {...p} />
+          <Line x1={12} y1={16.5} x2={16} y2={16.5} {...p} />
         </>
       )}
       {name === "settings" && (
