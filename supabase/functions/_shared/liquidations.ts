@@ -26,9 +26,16 @@ export interface LsPoint {
 }
 
 export interface MapBucket {
-  price: number; // centro del nivel
-  longs: number; // intensidad relativa 0..100 de liquidaciones de largos
-  shorts: number; // idem cortos
+  price: number; // centro del nivel de precio
+  longs: number[]; // dólares estimados de liquidaciones de largos, un valor por cada apalancamiento de `leverages`
+  shorts: number[]; // idem cortos
+}
+
+export interface Hotspot {
+  side: "long" | "short";
+  price: number;
+  usd: number; // dólares estimados concentrados en ese nivel
+  pct: number; // distancia al precio actual, en %
 }
 
 export interface LiquidationMapData {
@@ -38,9 +45,10 @@ export interface LiquidationMapData {
   price: number;
   step: number;
   hours: number; // horas de historia usadas
+  leverages: number[]; // apalancamientos que componen cada barra (5x, 10x…)
   buckets: MapBucket[]; // de menor a mayor precio
-  topLong: { price: number; pct: number } | null; // mayor concentración de liquidaciones de largos (debajo del precio)
-  topShort: { price: number; pct: number } | null; // idem cortos (arriba del precio)
+  hotspots: Hotspot[]; // puntos calientes: los niveles más cargados, separados entre sí
+  openInterestUsd: number | null;
   computedAt: number;
 }
 
@@ -60,7 +68,7 @@ const HOUR = 3_600_000;
 const hourKey = (t: number) => Math.floor(t / HOUR);
 
 export interface ComputeOptions {
-  rangePct?: number; // qué tan lejos del precio actual se muestra (0,15 = ±15 %)
+  rangePct?: number; // qué tan lejos del precio actual se calcula (0,15 = ±15 %)
   buckets?: number; // cantidad de niveles de precio
 }
 
@@ -69,10 +77,11 @@ export function computeMap(bars: Bar[], oi: OiPoint[], ls: LsPoint[], meta: { co
   if (sorted.length < 5) throw new Error("not enough bars");
   const price = sorted[sorted.length - 1].c;
   const rangePct = opts.rangePct ?? 0.15;
-  const n = opts.buckets ?? 90;
+  const n = opts.buckets ?? 300;
   const lo = price * (1 - rangePct);
   const hi = price * (1 + rangePct);
   const step = (hi - lo) / n;
+  const K = LEVERAGES.length;
 
   // Precio mínimo / máximo que se alcanzó DESPUÉS de cada vela (para saber si un nivel ya fue tocado).
   const sufMin: number[] = new Array(sorted.length + 1).fill(Infinity);
@@ -82,11 +91,15 @@ export function computeMap(bars: Bar[], oi: OiPoint[], ls: LsPoint[], meta: { co
     sufMax[i] = Math.max(sufMax[i + 1], sorted[i].h);
   }
 
-  const oiByHour = new Map(oi.map((p) => [hourKey(p.t), p.usd]));
-  const lsByHour = new Map(ls.map((p) => [hourKey(p.t), p.longShare]));
-  const longs = new Array(n).fill(0);
-  const shorts = new Array(n).fill(0);
+  const oiSorted = [...oi].sort((a, b) => a.t - b.t);
+  const oiByHour = new Map(oiSorted.map((p) => [hourKey(p.t), p.usd]));
+  const lsSorted = [...ls].sort((a, b) => a.t - b.t);
+  const lsByHour = new Map(lsSorted.map((p) => [hourKey(p.t), p.longShare]));
+  const longs: number[][] = Array.from({ length: n }, () => new Array(K).fill(0));
+  const shorts: number[][] = Array.from({ length: n }, () => new Array(K).fill(0));
   const bucketOf = (p: number) => Math.floor((p - lo) / step);
+  let rawLongs = 0; // todo lo que sigue vivo, también fuera del rango mostrado
+  let rawShorts = 0;
 
   let prevOi: number | undefined;
   let used = 0;
@@ -100,32 +113,51 @@ export function computeMap(bars: Bar[], oi: OiPoint[], ls: LsPoint[], meta: { co
     used++;
     const entry = (bar.h + bar.l + bar.c) / 3;
     const longShare = Math.min(0.9, Math.max(0.1, lsByHour.get(hourKey(bar.t)) ?? 0.5));
-    for (const { x, w } of LEVERAGES) {
+    LEVERAGES.forEach(({ x, w }, k) => {
       const longLiq = entry * (1 - 1 / x + MMR);
       const shortLiq = entry * (1 + 1 / x - MMR);
       if (sufMin[i + 1] > longLiq) {
+        const amount = delta * longShare * w;
+        rawLongs += amount;
         const b = bucketOf(longLiq);
-        if (b >= 0 && b < n) longs[b] += delta * longShare * w;
+        if (b >= 0 && b < n) longs[b][k] += amount;
       }
       if (sufMax[i + 1] < shortLiq) {
+        const amount = delta * (1 - longShare) * w;
+        rawShorts += amount;
         const b = bucketOf(shortLiq);
-        if (b >= 0 && b < n) shorts[b] += delta * (1 - longShare) * w;
+        if (b >= 0 && b < n) shorts[b][k] += amount;
       }
-    }
+    });
   }
 
-  const max = Math.max(1e-9, ...longs, ...shorts);
+  // Calibración: lo que sigue vivo de cada lado no puede superar el interés abierto actual (repartido según largos/cortos).
+  const oiNow = oiSorted.length ? oiSorted[oiSorted.length - 1].usd : null;
+  const shareNow = Math.min(0.9, Math.max(0.1, lsSorted.length ? lsSorted[lsSorted.length - 1].longShare : 0.5));
+  const kLong = oiNow && rawLongs > 0 ? (oiNow * shareNow) / rawLongs : 1;
+  const kShort = oiNow && rawShorts > 0 ? (oiNow * (1 - shareNow)) / rawShorts : 1;
+
   const buckets: MapBucket[] = longs.map((_, b) => ({
     price: lo + (b + 0.5) * step,
-    longs: Math.round((longs[b] / max) * 1000) / 10,
-    shorts: Math.round((shorts[b] / max) * 1000) / 10,
+    longs: longs[b].map((v) => Math.round(v * kLong)),
+    shorts: shorts[b].map((v) => Math.round(v * kShort)),
   }));
 
-  const top = (key: "longs" | "shorts") => {
-    let best: MapBucket | null = null;
-    for (const b of buckets) if (b[key] > 0 && (!best || b[key] > best[key])) best = b;
-    return best ? { price: best.price, pct: (best.price / price - 1) * 100 } : null;
-  };
+  // Puntos calientes: los niveles más cargados de cada lado, separados al menos 1 % entre sí.
+  const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+  const hotspots: Hotspot[] = [];
+  for (const side of ["long", "short"] as const) {
+    const ranked = buckets
+      .map((b) => ({ price: b.price, usd: sum(side === "long" ? b.longs : b.shorts) }))
+      .filter((r) => r.usd > 0)
+      .sort((a, b) => b.usd - a.usd);
+    const chosen: typeof ranked = [];
+    for (const r of ranked) {
+      if (chosen.length >= 3) break;
+      if (chosen.every((c) => Math.abs(c.price / r.price - 1) >= 0.01)) chosen.push(r);
+    }
+    for (const c of chosen) hotspots.push({ side, price: c.price, usd: c.usd, pct: (c.price / price - 1) * 100 });
+  }
 
   return {
     coin: meta.coin,
@@ -134,9 +166,10 @@ export function computeMap(bars: Bar[], oi: OiPoint[], ls: LsPoint[], meta: { co
     price,
     step,
     hours: used,
+    leverages: LEVERAGES.map((l) => l.x),
     buckets,
-    topLong: top("longs"),
-    topShort: top("shorts"),
+    hotspots,
+    openInterestUsd: oiNow,
     computedAt: Date.now(),
   };
 }

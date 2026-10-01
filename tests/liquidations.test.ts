@@ -10,7 +10,15 @@ const meta = { coin: "BTC", symbol: "BTCUSDT", source: "binance" as const };
 const flat = (n: number, price: number, from = 0): Bar[] =>
   Array.from({ length: n }, (_, i) => ({ t: T0 + (from + i) * H, h: price * 1.001, l: price * 0.999, c: price }));
 const oiSeries = (values: number[]): OiPoint[] => values.map((usd, i) => ({ t: T0 + i * H, usd }));
-const at = (m: ReturnType<typeof computeMap>, price: number) => m.buckets.reduce((a, b) => (Math.abs(b.price - price) < Math.abs(a.price - price) ? b : a));
+/** Suma de los niveles que rodean a un precio (±0,25 %), para no depender del borde exacto de cada nivel. */
+const at = (m: ReturnType<typeof computeMap>, price: number) => {
+  const near = m.buckets.filter((b) => Math.abs(b.price / price - 1) <= 0.0025);
+  const add = (k: "longs" | "shorts") => m.leverages.map((_, i) => near.reduce((a, b) => a + b[k][i], 0));
+  return { longs: add("longs"), shorts: add("shorts") };
+};
+
+const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+const tot = (b: { longs: number[]; shorts: number[] }, k: "longs" | "shorts") => sum(b[k]);
 
 describe("estimación de liquidaciones", () => {
   it("las posiciones nuevas dejan largos debajo del precio y cortos arriba", () => {
@@ -18,23 +26,22 @@ describe("estimación de liquidaciones", () => {
     const m = computeMap(bars, oiSeries([1000, 1000, 1000, 1000, 2000, 2000, 2000, 2000, 2000, 2000]), [], meta);
     expect(m.price).toBe(100);
     for (const b of m.buckets) {
-      if (b.longs > 0) expect(b.price).toBeLessThan(100);
-      if (b.shorts > 0) expect(b.price).toBeGreaterThan(100);
+      if (tot(b, "longs") > 0) expect(b.price).toBeLessThan(100);
+      if (tot(b, "shorts") > 0) expect(b.price).toBeGreaterThan(100);
     }
     // 10x: liquidación del largo en 100·(1−0,1+0,005) = 90,5 y del corto en 109,5
-    expect(at(m, 90.5).longs).toBeGreaterThan(0);
-    expect(at(m, 109.5).shorts).toBeGreaterThan(0);
-    // la mayor intensidad está normalizada a 100
-    expect(Math.max(...m.buckets.flatMap((b) => [b.longs, b.shorts]))).toBe(100);
-    expect(m.topLong!.pct).toBeLessThan(0);
-    expect(m.topShort!.pct).toBeGreaterThan(0);
+    const k10 = m.leverages.indexOf(10);
+    expect(at(m, 90.5).longs[k10]).toBeGreaterThan(0);
+    expect(at(m, 109.5).shorts[k10]).toBeGreaterThan(0);
+    // puntos calientes de los dos lados
+    expect(m.hotspots.some((h) => h.side === "long" && h.pct < 0)).toBe(true);
+    expect(m.hotspots.some((h) => h.side === "short" && h.pct > 0)).toBe(true);
   });
 
   it("si el interés abierto baja o no cambia, no se suma nada", () => {
     const m = computeMap(flat(10, 100), oiSeries([2000, 1900, 1800, 1800, 1700, 1700, 1600, 1500, 1500, 1500]), [], meta);
-    expect(m.buckets.every((b) => b.longs === 0 && b.shorts === 0)).toBe(true);
-    expect(m.topLong).toBeNull();
-    expect(m.topShort).toBeNull();
+    expect(m.buckets.every((b) => tot(b, "longs") === 0 && tot(b, "shorts") === 0)).toBe(true);
+    expect(m.hotspots).toEqual([]);
   });
 
   it("las liquidaciones que el precio ya cruzó se descartan", () => {
@@ -43,20 +50,32 @@ describe("estimación de liquidaciones", () => {
     const bars = [...flat(5, 100), ...flat(5, 88, 5)];
     const m = computeMap(bars, oiSeries([1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]), [], meta, { rangePct: 0.25 });
     expect(m.price).toBe(88);
-    expect(at(m, 90.5).longs).toBe(0);
-    expect(at(m, 96.5).longs).toBe(0);
-    const five = m.buckets.filter((b) => b.longs > 0);
-    expect(five.length).toBeGreaterThan(0);
-    expect(five.every((b) => b.price < 88 * 0.95)).toBe(true);
-    expect(at(m, 109.5).shorts).toBeGreaterThan(0);
+    expect(tot(at(m, 90.5), "longs")).toBe(0);
+    expect(tot(at(m, 96.5), "longs")).toBe(0);
+    const alive = m.buckets.filter((b) => tot(b, "longs") > 0);
+    expect(alive.length).toBeGreaterThan(0);
+    expect(alive.every((b) => b.price < 88 * 0.95)).toBe(true);
+    expect(tot(at(m, 109.5), "shorts")).toBeGreaterThan(0);
   });
 
-  it("la proporción de largos y cortos inclina el mapa", () => {
-    const oi = oiSeries([1000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000]);
+  it("los dólares se calibran con el interés abierto actual y la proporción largos/cortos", () => {
+    const oi = oiSeries([1000, 2000, 2500, 2500, 3000, 3000, 3000, 3500, 4000, 4000]);
     const ls = oi.map((p) => ({ t: p.t, longShare: 0.8 }));
-    const m = computeMap(flat(10, 100), oi, ls, meta);
-    const sum = (k: "longs" | "shorts") => m.buckets.reduce((a, b) => a + b[k], 0);
-    expect(sum("longs")).toBeGreaterThan(sum("shorts") * 2);
+    const m = computeMap(flat(10, 100), oi, ls, meta, { rangePct: 0.9 });
+    const longs = sum(m.buckets.map((b) => tot(b, "longs")));
+    const shorts = sum(m.buckets.map((b) => tot(b, "shorts")));
+    expect(m.openInterestUsd).toBe(4000);
+    expect(longs).toBeCloseTo(4000 * 0.8, -1);
+    expect(shorts).toBeCloseTo(4000 * 0.2, -1);
+  });
+
+  it("los puntos calientes de un mismo lado están separados al menos 1 %", () => {
+    const m = computeMap(flat(10, 100), oiSeries([1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000]), [], meta);
+    for (const side of ["long", "short"] as const) {
+      const hs = m.hotspots.filter((h) => h.side === side);
+      expect(hs.length).toBeGreaterThan(0);
+      for (const a of hs) for (const b of hs) if (a !== b) expect(Math.abs(a.price / b.price - 1)).toBeGreaterThanOrEqual(0.01);
+    }
   });
 
   it("los pesos de apalancamiento suman 100 %", () => {
@@ -91,13 +110,13 @@ describe("datos públicos", () => {
     const m = await buildMap("BTC", binance as any);
     expect(m.source).toBe("binance");
     expect(m.symbol).toBe("BTCUSDT");
-    expect(m.buckets.some((b) => b.longs > 0)).toBe(true);
+    expect(m.buckets.some((b) => tot(b, "longs") > 0)).toBe(true);
   });
 
   it("pasa a Bybit si Binance está bloqueado, y convierte el interés abierto a dólares", async () => {
     const m = await buildMap("BTC", (async (url: any) => (new URL(String(url)).host === "fapi.binance.com" ? json({}, 451) : bybit(url))) as any);
     expect(m.source).toBe("bybit");
-    expect(m.buckets.some((b) => b.shorts > 0)).toBe(true);
+    expect(m.buckets.some((b) => tot(b, "shorts") > 0)).toBe(true);
     const d = await fetchBybit("BTCUSDT", bybit as any);
     expect(d.oi.every((p) => p.usd > 0)).toBe(true);
   });
