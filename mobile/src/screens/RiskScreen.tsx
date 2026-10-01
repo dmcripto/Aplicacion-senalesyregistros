@@ -5,6 +5,7 @@ import * as Clipboard from "expo-clipboard";
 import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
+import LiquidationMapView from "../LiquidationMapView";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
 
@@ -25,6 +26,7 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   const [tp, setTp] = useState("");
   const [symbol, setSymbol] = useState("");
   const [copied, setCopied] = useState(false);
+  const [view, setView] = useState<"calc" | "map">("calc");
   const { money } = useMoney();
 
   // Si configuraste tu capital en Ajustes, la calculadora lo usa de base.
@@ -99,6 +101,17 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <View style={s.segment}>
+          {(["calc", "map"] as const).map((v) => (
+            <TouchableOpacity key={v} style={[s.segBtn, view === v && s.segBtnOn]} onPress={() => setView(v)}>
+              <Text style={[s.segText, view === v && { color: colors.ink }]}>{v === "calc" ? t("Calculadora") : t("Mapa de liquidaciones")}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {view === "map" ? (
+          <LiquidationMapView />
+        ) : (
+          <>
         <Text style={s.title}>{t("CALCULADORA DE RIESGO")}</Text>
         <Text style={s.sub}>{t("Cuánto operar para no perder más de lo que decidiste.")}</Text>
 
@@ -155,6 +168,8 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
         )}
 
         <Text style={s.disclaimer}>{t("Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.")}</Text>
+          </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -170,6 +185,10 @@ function Item({ label, value, color }: { label: string; value: string; color?: s
 }
 
 const s = StyleSheet.create({
+  segment: { flexDirection: "row", backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 3, marginBottom: 14 },
+  segBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
+  segBtnOn: { backgroundColor: colors.gold },
+  segText: { color: colors.fog, fontWeight: "800", fontSize: 11.5 },
   title: { color: colors.snow, fontSize: 18, fontWeight: "900", letterSpacing: 1 },
   sub: { color: colors.fog, fontSize: 12.5, marginTop: 4, marginBottom: 14 },
   card: { backgroundColor: "rgba(16,23,32,0.9)", borderWidth: 1, borderColor: colors.line, borderRadius: 14, padding: 14, marginBottom: 12, gap: 10 },

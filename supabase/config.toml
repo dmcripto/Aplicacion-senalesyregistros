@@ -28,3 +28,6 @@ verify_jwt = false
 
 [functions.telegram-bot]
 verify_jwt = false
+
+[functions.liquidation-map]
+verify_jwt = false

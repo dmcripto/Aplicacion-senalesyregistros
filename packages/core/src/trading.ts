@@ -930,3 +930,25 @@ export interface TelegramLink {
   username: string | null;
   linkedAt: string;
 }
+
+// ─── Mapa de liquidaciones (estimado) ───────────────────────────────────────
+
+export const LIQ_COINS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "AVAX", "LINK", "SUI"];
+
+export interface LiquidationBucket {
+  price: number; // centro del nivel de precio
+  longs: number; // intensidad relativa 0..100 de liquidaciones de largos
+  shorts: number; // idem cortos
+}
+
+export interface LiquidationMap {
+  coin: string;
+  symbol: string;
+  source: "binance" | "bybit";
+  price: number;
+  hours: number;
+  buckets: LiquidationBucket[]; // de menor a mayor precio
+  topLong: { price: number; pct: number } | null;
+  topShort: { price: number; pct: number } | null;
+  computedAt: number;
+}
