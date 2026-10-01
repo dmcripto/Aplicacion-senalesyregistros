@@ -66,6 +66,7 @@ import Analysis from "./components/Analysis";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
 import TelegramCard from "./components/TelegramCard";
+import LiquidationMap from "./components/LiquidationMap";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
@@ -710,6 +711,9 @@ function Dashboard({ userId }: { userId: string }) {
             </Reveal>
             <Reveal delay={160} className="max-lg:order-5">
               <Analysis trades={trades} />
+            </Reveal>
+            <Reveal delay={175} className="max-lg:order-5">
+              <LiquidationMap />
             </Reveal>
           </div>
 

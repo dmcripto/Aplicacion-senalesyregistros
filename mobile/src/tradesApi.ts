@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { DailyLimits, ExchangeConnection, ExchangeId, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -303,3 +303,14 @@ export async function unlinkTelegram(userId: string) {
   const { error } = await supabase.from("telegram_links").delete().eq("user_id", userId);
   if (error) throw error;
 }
+
+// ─── Mapa de liquidaciones ──────────────────────────────────────────────────
+
+export interface LiquidationResult {
+  ok: boolean;
+  error?: string;
+  data?: LiquidationMap;
+  stale?: boolean;
+}
+
+export const fetchLiquidationMap = (coin: string) => callFunction<LiquidationResult>("liquidation-map", { coin });

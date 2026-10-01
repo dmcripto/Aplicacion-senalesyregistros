@@ -930,3 +930,102 @@ export interface TelegramLink {
   username: string | null;
   linkedAt: string;
 }
+
+// ─── Mapa de liquidaciones (estimado) ───────────────────────────────────────
+
+export const LIQ_COINS = ["BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA", "AVAX", "LINK", "SUI"];
+
+export interface LiquidationBucket {
+  price: number; // centro del nivel de precio
+  longs: number[]; // dólares estimados de liquidaciones de largos, uno por cada apalancamiento de `leverages`
+  shorts: number[]; // idem cortos
+}
+
+export interface LiquidationHotspot {
+  side: "long" | "short";
+  price: number;
+  usd: number;
+  pct: number; // distancia al precio actual, en %
+}
+
+export interface LiquidationMap {
+  coin: string;
+  symbol: string;
+  source: "binance" | "bybit";
+  price: number;
+  step: number;
+  hours: number;
+  leverages: number[];
+  buckets: LiquidationBucket[]; // de menor a mayor precio
+  hotspots: LiquidationHotspot[];
+  openInterestUsd: number | null;
+  computedAt: number;
+}
+
+export interface LiquidationColumn {
+  from: number;
+  to: number;
+  price: number; // centro de la columna
+  longs: number[];
+  shorts: number[];
+  longTotal: number;
+  shortTotal: number;
+}
+
+const sumArr = (a: number[]) => a.reduce((x, y) => x + y, 0);
+
+/** Agrupa los niveles finos del mapa en `cols` columnas dentro de [lo, hi] (para dibujar y para el zoom). */
+export function rebinLiquidations(map: LiquidationMap, lo: number, hi: number, cols = 64): LiquidationColumn[] {
+  const width = (hi - lo) / cols;
+  const out: LiquidationColumn[] = Array.from({ length: cols }, (_, i) => ({
+    from: lo + i * width,
+    to: lo + (i + 1) * width,
+    price: lo + (i + 0.5) * width,
+    longs: map.leverages.map(() => 0),
+    shorts: map.leverages.map(() => 0),
+    longTotal: 0,
+    shortTotal: 0,
+  }));
+  for (const b of map.buckets) {
+    if (b.price < lo || b.price >= hi) continue;
+    const c = out[Math.min(cols - 1, Math.floor((b.price - lo) / width))];
+    b.longs.forEach((v, k) => (c.longs[k] += v));
+    b.shorts.forEach((v, k) => (c.shorts[k] += v));
+  }
+  for (const c of out) {
+    c.longTotal = sumArr(c.longs);
+    c.shortTotal = sumArr(c.shorts);
+  }
+  return out;
+}
+
+/**
+ * Liquidaciones acumuladas desde el precio actual hacia afuera: a cada precio, cuánto se liquidaría
+ * (largos si el precio baja hasta ahí, cortos si sube hasta ahí).
+ */
+export function cumulativeLiquidations(map: LiquidationMap): { longs: Array<{ price: number; usd: number }>; shorts: Array<{ price: number; usd: number }> } {
+  const longs: Array<{ price: number; usd: number }> = [];
+  let acc = 0;
+  for (let i = map.buckets.length - 1; i >= 0; i--) {
+    const b = map.buckets[i];
+    if (b.price > map.price) continue;
+    acc += sumArr(b.longs);
+    longs.push({ price: b.price, usd: acc });
+  }
+  longs.reverse(); // de menor a mayor precio
+  const shorts: Array<{ price: number; usd: number }> = [];
+  acc = 0;
+  for (const b of map.buckets) {
+    if (b.price < map.price) continue;
+    acc += sumArr(b.shorts);
+    shorts.push({ price: b.price, usd: acc });
+  }
+  return { longs, shorts };
+}
+
+/** $1.2B · $15.3M · $820K */
+export const fmtUsdShort = (n: number) =>
+  n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
+
+/** Colores de cada apalancamiento (de menor a mayor). */
+export const LEVERAGE_COLORS = ["#3b82f6", "#06b6d4", "#22c55e", "#f59e0b", "#ef4444"];

@@ -136,3 +136,43 @@ describe("etiquetas y exportación", () => {
     expect(Object.keys(s)).not.toContain("money");
   });
 });
+
+import { cumulativeLiquidations, fmtUsdShort, rebinLiquidations } from "../packages/core/src/trading";
+import type { LiquidationMap } from "../packages/core/src/trading";
+
+describe("mapa de liquidaciones: agrupar y acumular", () => {
+  const map: LiquidationMap = {
+    coin: "BTC", symbol: "BTCUSDT", source: "binance", price: 100, step: 1, hours: 10, leverages: [5, 10], openInterestUsd: 1000, computedAt: 0, hotspots: [],
+    buckets: [
+      { price: 96.5, longs: [10, 20], shorts: [0, 0] },
+      { price: 97.5, longs: [5, 0], shorts: [0, 0] },
+      { price: 98.5, longs: [1, 1], shorts: [0, 0] },
+      { price: 101.5, longs: [0, 0], shorts: [4, 6] },
+      { price: 102.5, longs: [0, 0], shorts: [2, 3] },
+    ],
+  };
+
+  it("agrupa por columnas sin perder dinero y respeta el rango", () => {
+    const cols = rebinLiquidations(map, 96, 104, 4); // columnas de 2 de ancho: 96–98, 98–100, 100–102, 102–104
+    expect(cols).toHaveLength(4);
+    expect(cols.map((c) => c.longTotal)).toEqual([35, 2, 0, 0]); // 96,5 (30) + 97,5 (5) | 98,5 (2)
+    expect(cols.map((c) => c.shortTotal)).toEqual([0, 0, 10, 5]);
+    expect(cols[0].longs).toEqual([15, 20]); // por apalancamiento: 10+5 y 20+0
+    expect(cols.reduce((a, c) => a + c.longTotal + c.shortTotal, 0)).toBe(52); // nada se pierde
+    // un zoom que deja afuera parte de los niveles solo cuenta los de adentro
+    expect(rebinLiquidations(map, 100, 104, 2).reduce((a, c) => a + c.longTotal, 0)).toBe(0);
+  });
+
+  it("acumula desde el precio actual hacia afuera", () => {
+    const cum = cumulativeLiquidations(map);
+    expect(cum.longs.map((p) => [p.price, p.usd])).toEqual([[96.5, 37], [97.5, 7], [98.5, 2]]); // si cae hasta 96,5 se liquidan 37
+    expect(cum.shorts.map((p) => [p.price, p.usd])).toEqual([[101.5, 10], [102.5, 15]]);
+  });
+
+  it("formatea dólares abreviados", () => {
+    expect(fmtUsdShort(1_230_000_000)).toBe("$1.23B");
+    expect(fmtUsdShort(15_340_000)).toBe("$15.3M");
+    expect(fmtUsdShort(820_000)).toBe("$820K");
+    expect(fmtUsdShort(95)).toBe("$95");
+  });
+});
