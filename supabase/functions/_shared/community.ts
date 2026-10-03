@@ -46,14 +46,15 @@ export function communityResultMessage(symbol: string, outcome: "TP" | "SL", r: 
 export async function publishToCommunities(supabase: any, token: string | undefined, userId: string, build: (lang: Lang) => string): Promise<number> {
   try {
     if (!token) return 0;
-    const { data: rows } = await supabase.from("telegram_communities").select("id,chat_id").eq("user_id", userId);
+    const { data: rows } = await supabase.from("telegram_communities").select("id,chat_id,thread_id").eq("user_id", userId);
     if (!rows?.length) return 0;
     const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
     const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
     const text = build(lang);
     let ok = 0;
-    for (const row of rows as Array<{ id: string; chat_id: number }>) {
-      const r = await sendMessage(token, Number(row.chat_id), text);
+    for (const row of rows as Array<{ id: string; chat_id: number; thread_id?: number | null }>) {
+      // En un grupo con temas se publica en el tema donde se conectó.
+      const r = await sendMessage(token, Number(row.chat_id), text, row.thread_id ? { message_thread_id: Number(row.thread_id) } : {});
       if (r?.ok) ok++;
       else if (r?.error_code === 403 || r?.error_code === 400) await supabase.from("telegram_communities").delete().eq("id", row.id);
     }

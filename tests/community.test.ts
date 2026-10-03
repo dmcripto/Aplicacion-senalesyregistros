@@ -67,6 +67,19 @@ describe("conectar la comunidad", () => {
     expect(lastText()).toMatch(/Comunidad conectada/);
   });
 
+  it("en un grupo con temas, se conecta al tema donde se escribió el comando y responde ahí", async () => {
+    const { code } = await newCode();
+    await inGroup(`/comunidad ${code}`, { is_topic_message: true, message_thread_id: 777 });
+    expect(db.tables.telegram_communities).toEqual([expect.objectContaining({ chat_id: GROUP, thread_id: 777 })]);
+    expect([...sent].reverse().find((s) => s.method === "sendMessage")?.payload.message_thread_id).toBe(777);
+  });
+
+  it("fuera de un tema (General) no guarda tema", async () => {
+    const { code } = await newCode();
+    await inGroup(`/comunidad ${code}`);
+    expect(db.tables.telegram_communities[0].thread_id).toBeNull();
+  });
+
   it("acepta el comando con el nombre del bot (/comunidad@bot CÓDIGO)", async () => {
     const { code } = await newCode();
     await inGroup(`/comunidad@veltrix_bot ${code}`);
@@ -143,6 +156,25 @@ describe("publicación", () => {
     expect(posted[0].payload.text).toContain("65000");
     expect(posted[0].payload.text).toMatch(/no es asesoramiento financiero/);
     expect(posted[0].payload.text).not.toMatch(/u1|555/);
+  });
+
+  it("si la comunidad se conectó en un tema, publica en ese tema", async () => {
+    link();
+    db.tables.telegram_communities.push({ id: "c1", user_id: "u1", chat_id: GROUP, thread_id: 777 });
+    await priv("BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500");
+    await update({ update_id: ++uid, callback_query: { id: "cb", data: `ok:${db.tables.telegram_pending[0].id}`, from: { id: 555 }, message: { message_id: 7, chat: { id: 555, type: "private" } } } });
+    const posted = sent.filter((s) => s.method === "sendMessage" && s.payload.chat_id === GROUP);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].payload.message_thread_id).toBe(777);
+  });
+
+  it("sin tema (canal o General) no manda message_thread_id", async () => {
+    link();
+    db.tables.telegram_communities.push({ id: "c1", user_id: "u1", chat_id: GROUP, thread_id: null });
+    await priv("BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500");
+    await update({ update_id: ++uid, callback_query: { id: "cb", data: `ok:${db.tables.telegram_pending[0].id}`, from: { id: 555 }, message: { message_id: 7, chat: { id: 555, type: "private" } } } });
+    const posted = sent.find((s) => s.method === "sendMessage" && s.payload.chat_id === GROUP)!;
+    expect(posted.payload.message_thread_id).toBeUndefined();
   });
 
   it("sin comunidad conectada no publica nada", async () => {
