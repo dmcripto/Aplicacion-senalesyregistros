@@ -279,27 +279,30 @@ async function communityCommand(msg: any, cmd: string, rawCode: string | undefin
   const chatId: number = msg.chat.id;
   if (!token) return;
   const fallback = guessLang(msg.from?.language_code);
+  // En un grupo con temas, las respuestas y las publicaciones van al tema donde se escribió el comando.
+  const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
+  const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
   // En grupos, solo un administrador de Telegram puede conectar. En canales solo publican administradores.
   if (msg.chat.type !== "channel") {
     const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
     const status = r?.result?.status;
-    if (status !== "creator" && status !== "administrator") return say(chatId, T[fallback].adminOnly);
+    if (status !== "creator" && status !== "administrator") return reply(T[fallback].adminOnly);
   }
   if (cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") {
     await admin.from("telegram_communities").delete().eq("chat_id", chatId);
-    return say(chatId, T[fallback].communityRemoved);
+    return reply(T[fallback].communityRemoved);
   }
   const code = String(rawCode ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const { data: row } = await admin.from("telegram_link_codes").select("code, user_id, expires_at, kind").eq("code", code).maybeSingle();
   if (!row || row.kind !== "community" || new Date(row.expires_at).getTime() < Date.now()) {
     if (row && row.kind === "community") await admin.from("telegram_link_codes").delete().eq("code", code);
-    return say(chatId, T[fallback].communityBad);
+    return reply(T[fallback].communityBad);
   }
   await admin.from("telegram_communities").delete().eq("chat_id", chatId); // un chat, una cuenta
-  await admin.from("telegram_communities").insert({ user_id: row.user_id, chat_id: chatId, title: msg.chat.title ?? null });
+  await admin.from("telegram_communities").insert({ user_id: row.user_id, chat_id: chatId, title: msg.chat.title ?? null, thread_id: thread });
   await admin.from("telegram_link_codes").delete().eq("code", code);
   const lang = await langOf(row.user_id, fallback);
-  return say(chatId, T[lang].communityLinked);
+  return reply(T[lang].communityLinked);
 }
 
 async function handleMessage(msg: any) {
@@ -308,7 +311,7 @@ async function handleMessage(msg: any) {
     const [first, ...rest] = text.split(/\s+/);
     const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
-    if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint);
+    if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint, msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     return;
   }
   const chatId: number = msg.chat.id;
