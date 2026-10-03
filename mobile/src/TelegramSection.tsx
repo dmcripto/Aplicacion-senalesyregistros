@@ -123,7 +123,7 @@ export default function TelegramSection({ userId }: { userId: string }) {
           </View>
           <Text style={s.hint}>{t("• Pegá o reenviá una señal al bot y confirmá con un toque.")}</Text>
           <Text style={s.hint}>{t("• Te avisa cuando llega una alerta o se toca un TP/SL.")}</Text>
-          <Text style={s.hint}>{t("• Comandos: /abiertas, /resumen, /idioma, /desvincular.")}</Text>
+          <Text style={s.hint}>{t("• Comandos: /abiertas, /resumen, /whatsapp, /idioma, /desvincular.")}</Text>
           <View style={s.community}>
             <Text style={s.communityTitle}>{t("Tu comunidad")}</Text>
             {communities.length === 0 && !cStart && (

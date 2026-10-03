@@ -379,3 +379,14 @@ export async function removeCommunity(id: string) {
   const { error } = await supabase.from("telegram_communities").delete().eq("id", id);
   if (error) throw error;
 }
+
+export async function fetchWhatsappButton(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("profiles").select("whatsapp_button").eq("id", userId).single();
+  if (error) throw error;
+  return data.whatsapp_button === true;
+}
+
+export async function setWhatsappButton(userId: string, enabled: boolean) {
+  const { error } = await supabase.from("profiles").update({ whatsapp_button: enabled }).eq("id", userId);
+  if (error) throw error;
+}
