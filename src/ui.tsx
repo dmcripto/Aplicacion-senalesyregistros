@@ -40,13 +40,6 @@ export const IconTarget = ({ className }: IconProps) => (
   </svg>
 );
 
-export const IconFlag = ({ className }: IconProps) => (
-  <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-    <path d="M3.5 14.5v-12" strokeLinecap="round" />
-    <path d="M3.5 2.5h8.5l-2.4 3 2.4 3H3.5" fill="currentColor" fillOpacity="0.25" strokeLinejoin="round" />
-  </svg>
-);
-
 export const IconTrash = ({ className }: IconProps) => (
   <svg viewBox="0 0 16 16" className={className} fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
     <path d="M2.5 4.5h11M6.5 2.5h3M4 4.5l.7 9h6.6l.7-9M6.6 7v4.5M9.4 7v4.5" strokeLinecap="round" strokeLinejoin="round" />

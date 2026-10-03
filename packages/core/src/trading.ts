@@ -895,7 +895,6 @@ export function sampleTrades(): Trade[] {
   ];
 }
 
-export const EXAMPLE_ALERT = "VELTRIX|BTCUSDT|COMPRA|65405.8|66694.4|65161.1";
 /** Ejemplo de alerta en el idioma activo (COMPRA/BUY). */
 export const exampleAlert = () => `VELTRIX|BTCUSDT|${tr("COMPRA")}|65405.8|66694.4|65161.1`;
 
