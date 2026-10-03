@@ -111,6 +111,84 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
   const iconBtn =
     "flex h-7 items-center justify-center gap-1 rounded border border-line px-2 text-[10px] font-bold uppercase tracking-wide text-fog transition-all hover:-translate-y-px";
 
+  // Acciones de una operación; en las tarjetas del celular los botones son más grandes para tocarlos bien.
+  const renderActions = (tr: Trade, abierta: boolean, big: boolean) => {
+    const btn = cx(iconBtn, big && "h-9 px-3 text-[11px]");
+    return (
+      <div className={cx("flex gap-1.5", big ? "flex-wrap" : "justify-end")}>
+        <a
+          href={whatsappShareUrl(signalShareMessage(tr))}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={t("Enviar esta señal por WhatsApp")}
+          aria-label={t("Enviar esta señal por WhatsApp")}
+          className={cx(btn, "hover:border-bull/50 hover:bg-bull/10 hover:text-bull")}
+        >
+          WhatsApp
+        </a>
+        <button
+          onClick={() => onNotes(tr)}
+          title={t("Notas y etiquetas")}
+          className={cx(btn, "hover:border-gold/50 hover:bg-gold/10 hover:text-gold")}
+        >
+          {"✎ "}{t("Notas")}
+        </button>
+        {abierta ? (
+          <>
+            <button
+              onClick={() => onMark(tr.id, "TP")}
+              title={t("Marcar Take Profit")}
+              className={cx(btn, "border-bull/40 bg-bull/10 text-bull hover:bg-bull/20")}
+            >
+              TP
+            </button>
+            <button
+              onClick={() => onMark(tr.id, "SL")}
+              title={t("Marcar Stop Loss")}
+              className={cx(btn, "border-bear/40 bg-bear/10 text-bear hover:bg-bear/20")}
+            >
+              SL
+            </button>
+            <button
+              onClick={() => onManual(tr)}
+              title={t("Cierre manual (parcial / break even)")}
+              className={cx(btn, "hover:border-cyan/50 hover:bg-cyan/10 hover:text-cyan")}
+            >
+              <IconTarget className="h-3.5 w-3.5" /> {t("Cerrar")}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => onReopen(tr.id)}
+            title={t("Reabrir operación")}
+            className={cx(btn, "hover:border-gold/50 hover:bg-gold/10 hover:text-gold")}
+          >
+            <IconUndo className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {armedId === tr.id ? (
+          <button
+            onClick={() => {
+              setArmedId(null);
+              onDelete(tr.id);
+            }}
+            className={cx("num flex items-center rounded border border-bear bg-bear/20 text-[10px] font-bold text-bear transition-colors hover:bg-bear/35", big ? "h-9 px-3" : "h-7 px-2")}
+          >
+            {t("¿Borrar?")}
+          </button>
+        ) : (
+          <button
+            onClick={() => setArmedId(tr.id)}
+            title={t("Eliminar")}
+            className={cx(btn, "hover:border-bear/50 hover:bg-bear/10 hover:text-bear")}
+          >
+            <IconTrash className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Panel
       id="journal"
@@ -128,24 +206,24 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
     >
 
       {/* filtros */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-ink/50 px-5 py-3">
-        <div className="relative min-w-[150px] flex-1 sm:max-w-[210px]">
+      <div className="grid grid-cols-2 items-center gap-2 border-b border-line bg-ink/50 px-4 py-3 sm:flex sm:flex-wrap sm:px-5">
+        <div className="relative col-span-2 min-w-[150px] flex-1 sm:col-span-1 sm:max-w-[210px]">
           <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-dim" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Buscar activo…")} className="field num pl-8 text-[12px]" />
         </div>
-        <select value={dirF} onChange={(e) => setDirF(e.target.value as "all" | "LONG" | "SHORT")} className="field w-auto cursor-pointer py-1.5 text-[12px]">
+        <select value={dirF} onChange={(e) => setDirF(e.target.value as "all" | "LONG" | "SHORT")} className="field w-full cursor-pointer px-2.5 py-1.5 text-[11.5px] sm:text-[12px] sm:w-auto">
           <option value="all">{t("LONG y SHORT")}</option>
           <option value="LONG">{t("Solo LONG")}</option>
           <option value="SHORT">{t("Solo SHORT")}</option>
         </select>
-        <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoF)} className="field w-auto cursor-pointer py-1.5 text-[12px]">
+        <select value={estado} onChange={(e) => setEstado(e.target.value as EstadoF)} className="field w-full cursor-pointer px-2.5 py-1.5 text-[11.5px] sm:text-[12px] sm:w-auto">
           <option value="all">{t("Todos los estados")}</option>
           <option value="abierta">{t("Abiertas")}</option>
           <option value="ganada">{t("Ganadas")}</option>
           <option value="perdida">{t("Perdidas")}</option>
           <option value="be">{t("En Break Even")}</option>
         </select>
-        <select value={mes} onChange={(e) => setMes(e.target.value)} className="field w-auto cursor-pointer py-1.5 text-[12px] capitalize">
+        <select value={mes} onChange={(e) => setMes(e.target.value)} className="field w-full cursor-pointer px-2.5 py-1.5 text-[11.5px] sm:text-[12px] capitalize sm:w-auto">
           <option value="all">{t("Todos los meses")}</option>
           {months.map(([k, label]) => (
             <option key={k} value={k}>
@@ -161,7 +239,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
               setEstado("all");
               setMes("all");
             }}
-            className="flex items-center gap-1 rounded-md border border-line px-2.5 py-1.5 text-[11px] font-semibold text-fog transition-colors hover:border-bear/50 hover:text-bear"
+            className="col-span-2 flex items-center justify-center gap-1 rounded-md border border-line px-2.5 py-1.5 text-[11px] font-semibold text-fog transition-colors hover:border-bear/50 hover:text-bear sm:col-span-1"
           >
             <IconX className="h-3 w-3" /> {t("Limpiar")}
           </button>
@@ -184,7 +262,47 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
           </button>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          {/* Celular: una tarjeta por operación */}
+          <ul className="divide-y divide-line/60 lg:hidden">
+            {filtered.map((tr) => {
+              const abierta = tr.outcome === "ABIERTA";
+              return (
+                <li key={tr.id} className={cx("space-y-3 px-4 py-4", flashId === tr.id && "row-flash")}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2">
+                        <span className="num text-[15px] font-bold tracking-wide text-snow">{tr.symbol}</span>
+                        <DirBadge dir={tr.direction} />
+                        {tr.source && (
+                          <span className="num rounded border border-line px-1.5 py-px text-[9.5px] font-semibold text-dim">⇄ {exchangeName(tr.source)}</span>
+                        )}
+                      </p>
+                      <p className="num mt-0.5 text-[11px] text-dim">{fmtDateTime(tr.date)}</p>
+                    </div>
+                    <OutcomeBadge trade={tr} />
+                  </div>
+                  <dl className="num grid grid-cols-4 gap-2 rounded-md border border-line/70 bg-ink/40 px-3 py-2 text-center text-[12px]">
+                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">{t("Entrada")}</dt><dd className="font-semibold text-snow">{fmtPrice(tr.entry)}</dd></div>
+                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">TP</dt><dd className="text-bull/90">{fmtPrice(tr.tp)}</dd></div>
+                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">SL</dt><dd className="text-bear/90">{fmtPrice(tr.sl)}</dd></div>
+                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">R:R</dt><dd className="text-fog">1:{rrOf(tr).toFixed(1)}</dd></div>
+                  </dl>
+                  {abierta && <LevelBar trade={tr} price={prices?.[tr.id]} />}
+                  {tr.notes && <p className="text-[12px] italic leading-snug text-dim">{tr.notes}</p>}
+                  {!!tr.tags?.length && (
+                    <div className="flex flex-wrap gap-1">
+                      {tr.tags.map((tag) => (
+                        <span key={tag} className="rounded-full border border-gold/40 bg-gold/10 px-2 py-px text-[10.5px] font-semibold text-gold">{t(tag)}</span>
+                      ))}
+                    </div>
+                  )}
+                  {renderActions(tr, abierta, true)}
+                </li>
+              );
+            })}
+          </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[860px] text-left text-[12.5px]">
             <thead>
               <tr className="border-b border-line text-[10px] uppercase tracking-[0.16em] text-dim">
@@ -242,77 +360,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                       {abierta && <LevelBar trade={tr} price={prices?.[tr.id]} className="mt-2 max-w-[150px]" />}
                     </td>
                     <td className="px-5 py-3">
-                      <div className="flex justify-end gap-1.5">
-                        <a
-                          href={whatsappShareUrl(signalShareMessage(tr))}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title={t("Enviar esta señal por WhatsApp")}
-                          aria-label={t("Enviar esta señal por WhatsApp")}
-                          className={cx(iconBtn, "hover:border-bull/50 hover:bg-bull/10 hover:text-bull")}
-                        >
-                          WhatsApp
-                        </a>
-                        <button
-                          onClick={() => onNotes(tr)}
-                          title={t("Notas y etiquetas")}
-                          className={cx(iconBtn, "hover:border-gold/50 hover:bg-gold/10 hover:text-gold")}
-                        >
-                          {"✎ "}{t("Notas")}
-                        </button>
-                        {abierta ? (
-                          <>
-                            <button
-                              onClick={() => onMark(tr.id, "TP")}
-                              title={t("Marcar Take Profit")}
-                              className={cx(iconBtn, "border-bull/40 bg-bull/10 text-bull hover:bg-bull/20")}
-                            >
-                              TP
-                            </button>
-                            <button
-                              onClick={() => onMark(tr.id, "SL")}
-                              title={t("Marcar Stop Loss")}
-                              className={cx(iconBtn, "border-bear/40 bg-bear/10 text-bear hover:bg-bear/20")}
-                            >
-                              SL
-                            </button>
-                            <button
-                              onClick={() => onManual(tr)}
-                              title={t("Cierre manual (parcial / break even)")}
-                              className={cx(iconBtn, "hover:border-cyan/50 hover:bg-cyan/10 hover:text-cyan")}
-                            >
-                              <IconTarget className="h-3.5 w-3.5" /> {t("Cerrar")}
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            onClick={() => onReopen(tr.id)}
-                            title={t("Reabrir operación")}
-                            className={cx(iconBtn, "hover:border-gold/50 hover:bg-gold/10 hover:text-gold")}
-                          >
-                            <IconUndo className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                        {armedId === tr.id ? (
-                          <button
-                            onClick={() => {
-                              setArmedId(null);
-                              onDelete(tr.id);
-                            }}
-                            className="num flex h-7 items-center rounded border border-bear bg-bear/20 px-2 text-[10px] font-bold text-bear transition-colors hover:bg-bear/35"
-                          >
-                            {t("¿Borrar?")}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setArmedId(tr.id)}
-                            title={t("Eliminar")}
-                            className={cx(iconBtn, "hover:border-bear/50 hover:bg-bear/10 hover:text-bear")}
-                          >
-                            <IconTrash className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
+                      {renderActions(tr, abierta, false)}
                     </td>
                   </tr>
                 );
@@ -320,6 +368,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Panel>
   );

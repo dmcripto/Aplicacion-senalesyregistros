@@ -631,20 +631,20 @@ function Dashboard({ userId }: { userId: string }) {
       <Ticker trades={trades} />
 
       {/* Cabecera */}
-      <header className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-4 px-4 py-5 lg:px-8">
+      <header className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:gap-y-4 sm:py-5 lg:px-8">
         <div className="flex items-center gap-3.5">
-          <ShieldLogo className="h-14 w-14 drop-shadow-[0_0_18px_rgba(46,196,241,.35)]" />
+          <ShieldLogo className="h-11 w-11 drop-shadow-[0_0_18px_rgba(46,196,241,.35)] sm:h-14 sm:w-14" />
           <div>
-            <h1 className="font-display text-[34px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
+            <h1 className="font-display text-[28px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
               VELTRIX
             </h1>
-            <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
+            <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.22em] text-fog sm:text-[10.5px] sm:tracking-[0.28em]">
               {t("Diario de trading · En vivo")}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="hidden items-center gap-3 rounded-md border border-line bg-panel/70 px-3.5 py-2 sm:flex">
             <span className="live-dot h-2 w-2 rounded-full bg-bull" />
             <div>
@@ -660,28 +660,34 @@ function Dashboard({ userId }: { userId: string }) {
             href={COMMUNITY_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-md border border-cyan/45 bg-cyan/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-all hover:-translate-y-px hover:bg-cyan/20 active:scale-[0.98]"
+            title={t("Comunidad")}
+            aria-label={t("Comunidad")}
+            className="flex items-center gap-2 rounded-md border border-cyan/45 bg-cyan/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-all hover:-translate-y-px hover:bg-cyan/20 active:scale-[0.98] sm:px-4"
           >
-            <IconTelegram className="h-4 w-4" /> {t("Comunidad")}
+            <IconTelegram className="h-4 w-4" /> <span className="hidden sm:inline">{t("Comunidad")}</span>
           </a>
           <button
             onClick={() => setSharing(true)}
             disabled={!trades.length}
-            className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+            title={t("Compartir")}
+            aria-label={t("Compartir")}
+            className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0 sm:px-4"
           >
-            {"↗ "}{t("Compartir")}
+            <span className="text-[15px] leading-none">↗</span><span className="hidden sm:inline">{t("Compartir")}</span>
           </button>
           <button
             onClick={exportCsv}
             disabled={!trades.length}
-            className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
+            title={t("Exportar CSV")}
+            aria-label={t("Exportar CSV")}
+            className="flex items-center gap-2 rounded-md border border-gold/45 px-3 py-2.5 sm:px-4 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
           >
-            <IconDownload className="h-3.5 w-3.5" /> {t("Exportar CSV")}
+            <IconDownload className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{t("Exportar CSV")}</span>
           </button>
           <LangSwitch />
           <button
             onClick={() => supabase.auth.signOut()}
-            className="rounded-md border border-line px-3.5 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow"
+            className="rounded-md border border-line px-3 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow sm:px-3.5"
           >
             {t("Salir")}
           </button>
@@ -702,9 +708,10 @@ function Dashboard({ userId }: { userId: string }) {
         </Reveal>
 
         {/* Atajos a cada sección y abrir/cerrar todo */}
-        <nav className="flex flex-wrap items-center gap-2" aria-label={t("Secciones")}>
+        <nav className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden" aria-label={t("Secciones")}>
           {(
             [
+              ["register", t("Registrar")],
               ["journal", t("Diario")],
               ["analysis", t("Análisis")],
               ["liqmap", t("Mapa")],
@@ -715,12 +722,12 @@ function Dashboard({ userId }: { userId: string }) {
               key={id}
               type="button"
               onClick={() => jumpToPanel(id)}
-              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+              className="shrink-0 whitespace-nowrap rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
             >
               {label}
             </button>
           ))}
-          <span className="ml-auto flex gap-2">
+          <span className="ml-auto flex shrink-0 gap-2 whitespace-nowrap pl-2">
             <button
               type="button"
               onClick={() => openAllPanels(true)}
