@@ -5,7 +5,6 @@ import * as Clipboard from "expo-clipboard";
 import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
-import LiquidationMapView from "../LiquidationMapView";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
 
@@ -26,7 +25,6 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   const [tp, setTp] = useState("");
   const [symbol, setSymbol] = useState("");
   const [copied, setCopied] = useState(false);
-  const [view, setView] = useState<"calc" | "map">("calc");
   const { money } = useMoney();
 
   // Si configuraste tu capital en Ajustes, la calculadora lo usa de base.
@@ -101,16 +99,6 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-        <View style={s.segment}>
-          {(["calc", "map"] as const).map((v) => (
-            <TouchableOpacity key={v} style={[s.segBtn, view === v && s.segBtnOn]} onPress={() => setView(v)}>
-              <Text style={[s.segText, view === v && { color: colors.ink }]}>{v === "calc" ? t("Calculadora") : t("Mapa de liquidaciones")}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {view === "map" ? (
-          <LiquidationMapView />
-        ) : (
           <>
         <Text style={s.title}>{t("CALCULADORA DE RIESGO")}</Text>
         <Text style={s.sub}>{t("Cuánto operar para no perder más de lo que decidiste.")}</Text>
@@ -169,7 +157,6 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
 
         <Text style={s.disclaimer}>{t("Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.")}</Text>
           </>
-        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
