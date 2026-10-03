@@ -3,7 +3,7 @@
 // `Trade` de @dmcripto/core (camelCase), y expone las mutaciones que antes
 // vivían como setState directo sobre localStorage.
 
-import { t } from "./lib";
+import { LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
 import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
@@ -319,6 +319,13 @@ export interface LiquidationResult {
 }
 
 export const fetchLiquidationMap = (coin: string) => callFunction<LiquidationResult>("liquidation-map", { coin });
+
+/** Activos con contrato perpetuo (para el buscador del mapa). Si falla, quedan los más conocidos. */
+export async function fetchLiquidationCoins(): Promise<string[]> {
+  const r = await callFunction<{ ok: boolean; coins?: string[] }>("liquidation-map", { action: "list" });
+  return r.ok && r.coins?.length ? r.coins : LIQ_COINS;
+}
+
 
 // ─── Resumen diario ─────────────────────────────────────────────────────────
 

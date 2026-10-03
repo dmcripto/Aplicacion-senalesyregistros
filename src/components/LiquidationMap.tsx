@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import { LEVERAGE_COLORS, LIQ_COINS, cumulativeLiquidations, cx, fmtPrice, fmtUsdShort, rebinLiquidations, t } from "../lib";
 import type { LiquidationMap as MapData } from "../lib";
-import { fetchLiquidationMap } from "../tradesApi";
+import { fetchLiquidationCoins, fetchLiquidationMap } from "../tradesApi";
 import Panel from "./Panel";
 
 const W = 720;
@@ -23,6 +23,8 @@ const sign = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1) + "%
 
 function LiquidationMapBody() {
   const [coin, setCoin] = useState("BTC");
+  const [query, setQuery] = useState("");
+  const [allCoins, setAllCoins] = useState<string[]>(LIQ_COINS);
   const [map, setMap] = useState<MapData | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [stale, setStale] = useState(false);
@@ -31,6 +33,21 @@ function LiquidationMapBody() {
   const [drag, setDrag] = useState<[number, number] | null>(null); // selección en curso, en unidades del gráfico
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    void fetchLiquidationCoins().then(setAllCoins);
+  }, []);
+
+  const q = query.trim().toUpperCase();
+  const matches = useMemo(
+    () => (q ? [...allCoins.filter((c) => c.startsWith(q)), ...allCoins.filter((c) => !c.startsWith(q) && c.includes(q))].slice(0, 8) : []),
+    [q, allCoins],
+  );
+  const pick = (c: string) => {
+    setCoin(c);
+    setQuery("");
+  };
+  const chips = LIQ_COINS.includes(coin) ? LIQ_COINS : [coin, ...LIQ_COINS];
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +61,7 @@ function LiquidationMapBody() {
         setStale(!!r.stale);
         setState("ok");
       } else {
-        setError(r.error ?? t("No se pudo cargar el mapa."));
+        setError(r.error ? t(r.error) : t("No se pudo cargar el mapa."));
         setState("error");
       }
     });
@@ -111,8 +128,38 @@ function LiquidationMapBody() {
 
   return (
     <div className="space-y-3 p-5">
+        <div className="relative">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !q) return;
+              if (matches.includes(q)) pick(q);
+              else if (matches[0]) pick(matches[0]);
+              else if (/^[A-Z0-9]{1,15}$/.test(q)) pick(q);
+            }}
+            placeholder={t("Buscar activo (ej: PEPE, LTC, ARB)")}
+            autoCapitalize="characters"
+            autoComplete="off"
+            spellCheck={false}
+            className="field num text-[12px] uppercase"
+            aria-label={t("Buscar activo")}
+          />
+          {matches.length > 0 && (
+            <ul className="absolute left-0 right-0 z-20 mt-1 max-h-56 overflow-auto rounded-md border border-line2 bg-panel2 shadow-xl">
+              {matches.map((c) => (
+                <li key={c}>
+                  <button type="button" onClick={() => pick(c)} className="num flex w-full items-center justify-between px-3 py-2 text-left text-[12px] font-bold text-snow hover:bg-raise">
+                    {c}
+                    <span className="text-[10px] font-normal text-dim">{c}/USDT</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <div className="flex flex-wrap gap-1.5">
-          {LIQ_COINS.map((c) => (
+          {chips.map((c) => (
             <button
               key={c}
               type="button"
@@ -274,7 +321,7 @@ function LiquidationMapBody() {
 
         <p className="text-[10.5px] leading-relaxed text-dim">
           {t("Estimación propia de VELTRIX con datos públicos (precio e interés abierto). Muestra zonas donde probablemente haya liquidaciones pendientes, con montos aproximados: no son cifras exactas ni una señal de compra o venta.")}{" "}
-          <a href={`https://coinmarketcap.com/charts/liquidation-map/?type=exact&coin=${SLUGS[coin] ?? "bitcoin"}`} target="_blank" rel="noopener noreferrer" className="text-cyan underline">
+          <a href={`https://coinmarketcap.com/charts/liquidation-map/?type=exact&coin=${SLUGS[coin] ?? coin.toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="text-cyan underline">
             {t("Comparar con CoinMarketCap")} ↗
           </a>
         </p>

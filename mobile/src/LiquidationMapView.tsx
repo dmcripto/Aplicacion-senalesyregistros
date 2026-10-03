@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Linking, PanResponder, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Keyboard, Linking, PanResponder, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import Svg, { G, Line, Polygon, Polyline, Rect, Text as SvgText } from "react-native-svg";
 import { LEVERAGE_COLORS, LIQ_COINS, cumulativeLiquidations, fmtPrice, fmtUsdShort, rebinLiquidations, t } from "@dmcripto/core";
 import type { LiquidationMap } from "@dmcripto/core";
-import { fetchLiquidationMap } from "./tradesApi";
+import { fetchLiquidationCoins, fetchLiquidationMap } from "./tradesApi";
 import { colors } from "./theme";
 
 const W = 360;
@@ -23,6 +23,8 @@ const sign = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1) + "%
 /** Mapa de liquidaciones estimado (datos públicos de Binance/Bybit calculados en el servidor). */
 export default function LiquidationMapView() {
   const [coin, setCoin] = useState("BTC");
+  const [query, setQuery] = useState("");
+  const [allCoins, setAllCoins] = useState<string[]>(LIQ_COINS);
   const [map, setMap] = useState<LiquidationMap | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const [stale, setStale] = useState(false);
@@ -31,6 +33,22 @@ export default function LiquidationMapView() {
   const [drag, setDrag] = useState<[number, number] | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [boxW, setBoxW] = useState(320);
+
+  useEffect(() => {
+    void fetchLiquidationCoins().then(setAllCoins);
+  }, []);
+
+  const q = query.trim().toUpperCase();
+  const matches = useMemo(
+    () => (q ? [...allCoins.filter((c) => c.startsWith(q)), ...allCoins.filter((c) => !c.startsWith(q) && c.includes(q))].slice(0, 8) : []),
+    [q, allCoins],
+  );
+  const pick = (c: string) => {
+    setCoin(c);
+    setQuery("");
+    Keyboard.dismiss();
+  };
+  const chips = LIQ_COINS.includes(coin) ? LIQ_COINS : [coin, ...LIQ_COINS];
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +62,7 @@ export default function LiquidationMapView() {
         setStale(!!r.stale);
         setState("ok");
       } else {
-        setError(r.error ?? t("No se pudo cargar el mapa."));
+        setError(r.error ? t(r.error) : t("No se pudo cargar el mapa."));
         setState("error");
       }
     });
@@ -118,8 +136,34 @@ export default function LiquidationMapView() {
       <Text style={s.title}>{t("MAPA DE LIQUIDACIONES")}</Text>
       <Text style={s.sub}>{t("Dónde se acumulan liquidaciones (estimado)")}</Text>
 
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        onSubmitEditing={() => {
+          if (!q) return;
+          if (matches.includes(q)) pick(q);
+          else if (matches[0]) pick(matches[0]);
+          else if (/^[A-Z0-9]{1,15}$/.test(q)) pick(q);
+        }}
+        placeholder={t("Buscar activo (ej: PEPE, LTC, ARB)")}
+        placeholderTextColor={colors.dim}
+        autoCapitalize="characters"
+        autoCorrect={false}
+        returnKeyType="search"
+        style={s.search}
+      />
+      {matches.length > 0 && (
+        <View style={s.coins}>
+          {matches.map((c) => (
+            <TouchableOpacity key={c} style={s.suggest} onPress={() => pick(c)}>
+              <Text style={s.suggestText}>{c}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       <View style={s.coins}>
-        {LIQ_COINS.map((c) => (
+        {chips.map((c) => (
           <TouchableOpacity key={c} style={[s.chip, coin === c && s.chipOn]} onPress={() => setCoin(c)}>
             <Text style={[s.chipText, coin === c && { color: colors.ink }]}>{c}</Text>
           </TouchableOpacity>
@@ -260,7 +304,7 @@ export default function LiquidationMapView() {
       <Text style={[s.hint, { marginTop: 12 }]}>
         {t("Estimación propia de VELTRIX con datos públicos (precio e interés abierto). Muestra zonas donde probablemente haya liquidaciones pendientes, con montos aproximados: no son cifras exactas ni una señal de compra o venta.")}
       </Text>
-      <TouchableOpacity onPress={() => Linking.openURL(`https://coinmarketcap.com/charts/liquidation-map/?type=exact&coin=${SLUGS[coin] ?? "bitcoin"}`).catch(() => {})}>
+      <TouchableOpacity onPress={() => Linking.openURL(`https://coinmarketcap.com/charts/liquidation-map/?type=exact&coin=${SLUGS[coin] ?? coin.toLowerCase()}`).catch(() => {})}>
         <Text style={s.link}>{t("Comparar con CoinMarketCap")} ↗</Text>
       </TouchableOpacity>
     </View>
@@ -270,6 +314,9 @@ export default function LiquidationMapView() {
 const s = StyleSheet.create({
   title: { color: colors.snow, fontSize: 18, fontWeight: "900", letterSpacing: 1 },
   sub: { color: colors.fog, fontSize: 12.5, marginTop: 4, marginBottom: 14 },
+  search: { backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: colors.snow, fontSize: 13, marginBottom: 10 },
+  suggest: { backgroundColor: colors.golddeep + "88", borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  suggestText: { color: colors.gold, fontWeight: "900", fontSize: 12.5 },
   coins: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
   chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 11, paddingVertical: 7 },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },

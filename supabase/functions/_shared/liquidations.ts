@@ -218,6 +218,13 @@ export async function fetchBybit(symbol: string, fetchFn: FetchFn = fetch) {
   };
 }
 
+/** El símbolo no existe en el exchange (o es tan nuevo que todavía no tiene historia). */
+export class SymbolNotFound extends Error {
+  constructor(coin: string) {
+    super(`symbol not found: ${coin}`);
+  }
+}
+
 /** Binance primero; si no responde (por ejemplo bloqueo regional), Bybit. */
 export async function buildMap(coin: string, fetchFn: FetchFn = fetch, opts: ComputeOptions = {}): Promise<LiquidationMapData> {
   const symbol = `${coin}USDT`;
@@ -226,13 +233,33 @@ export async function buildMap(coin: string, fetchFn: FetchFn = fetch, opts: Com
     ["bybit", () => fetchBybit(symbol, fetchFn)],
   ];
   let lastError: unknown;
+  let bybitEmpty = false;
   for (const [source, load] of attempts) {
     try {
       const d = await load();
       return computeMap(d.bars, d.oi, d.ls, { coin, symbol, source }, opts);
     } catch (e) {
       lastError = e;
+      if (source === "bybit" && e instanceof Error && e.message === "not enough bars") bybitEmpty = true;
     }
   }
+  // Bybit no devolvió velas: el símbolo no existe en ninguno de los dos (o es demasiado nuevo).
+  if (bybitEmpty) throw new SymbolNotFound(coin);
   throw lastError instanceof Error ? lastError : new Error("sin datos");
+}
+
+/** Activos con contrato perpetuo contra USDT, los más conocidos primero. Binance; si no responde, Bybit. */
+export async function fetchSymbols(fetchFn: FetchFn = fetch): Promise<string[]> {
+  let names: string[] = [];
+  try {
+    const j = await getJson(fetchFn, "https://fapi.binance.com/fapi/v1/exchangeInfo");
+    names = ((j?.symbols ?? []) as any[]).filter((x) => x.contractType === "PERPETUAL" && x.quoteAsset === "USDT" && x.status === "TRADING").map((x) => String(x.baseAsset));
+  } catch {
+    const j = await getJson(fetchFn, "https://api.bybit.com/v5/market/instruments-info?category=linear&limit=1000");
+    names = ((j?.result?.list ?? []) as any[]).filter((x) => x.quoteCoin === "USDT" && x.status === "Trading" && /Perpetual/.test(String(x.contractType))).map((x) => String(x.baseCoin));
+  }
+  const clean = [...new Set(names.filter((n) => /^[A-Z0-9]{1,15}$/.test(n)))];
+  if (!clean.length) throw new Error("sin símbolos");
+  const rest = clean.filter((n) => !COINS.includes(n)).sort();
+  return [...COINS.filter((c) => clean.includes(c)), ...rest];
 }

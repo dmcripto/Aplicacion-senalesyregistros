@@ -3,7 +3,7 @@
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
 import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
-import { t } from "@dmcripto/core";
+import { LIQ_COINS, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
 interface TradeRow {
@@ -314,6 +314,13 @@ export interface LiquidationResult {
 }
 
 export const fetchLiquidationMap = (coin: string) => callFunction<LiquidationResult>("liquidation-map", { coin });
+
+/** Activos con contrato perpetuo (para el buscador del mapa). Si falla, quedan los más conocidos. */
+export async function fetchLiquidationCoins(): Promise<string[]> {
+  const r = await callFunction<{ ok: boolean; coins?: string[] }>("liquidation-map", { action: "list" });
+  return r.ok && r.coins?.length ? r.coins : LIQ_COINS;
+}
+
 
 // ─── Resumen diario ─────────────────────────────────────────────────────────
 
