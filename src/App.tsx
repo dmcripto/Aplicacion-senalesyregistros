@@ -684,6 +684,7 @@ function Dashboard({ userId }: { userId: string }) {
           <StatsBand trades={trades} />
         </Reveal>
 
+        {/* Fila 1: curva y libro de operaciones | registrar, calculadora y límites */}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="min-w-0 space-y-5 max-lg:contents">
             <Reveal delay={70} className="max-lg:order-4">
@@ -709,12 +710,6 @@ function Dashboard({ userId }: { userId: string }) {
                 />
               )}
             </Reveal>
-            <Reveal delay={160} className="max-lg:order-5">
-              <Analysis trades={trades} />
-            </Reveal>
-            <Reveal delay={175} className="max-lg:order-5">
-              <LiquidationMap />
-            </Reveal>
           </div>
 
           <aside className="space-y-5 max-lg:contents">
@@ -724,21 +719,20 @@ function Dashboard({ userId }: { userId: string }) {
             <Reveal delay={130} className="max-lg:order-3">
               <RiskCalculator notify={notify} />
             </Reveal>
-            <Reveal delay={150} className="max-lg:order-6">
-              <WebhookCard userId={userId} notify={notify} />
-            </Reveal>
-            <Reveal delay={154} className="max-lg:order-3">
-              <TelegramCard userId={userId} notify={notify} />
-            </Reveal>
-            <Reveal delay={158} className="max-lg:order-3">
-              <ExchangeCard money={money} notify={notify} />
-            </Reveal>
-            <Reveal delay={165} className="max-lg:order-3">
-              <MoneyCard money={money} trades={trades} onSave={persistMoney} />
-            </Reveal>
-            <Reveal delay={170} className="max-lg:order-3">
+            <Reveal delay={150} className="max-lg:order-3">
               <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
             </Reveal>
+          </aside>
+        </div>
+
+        {/* Fila 2: análisis | resúmenes */}
+        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="min-w-0 max-lg:contents">
+            <Reveal delay={160} className="max-lg:order-5">
+              <Analysis trades={trades} />
+            </Reveal>
+          </div>
+          <aside className="space-y-5 max-lg:contents">
             {trades.length > 0 && (
               <Reveal delay={180} className="max-lg:order-5">
                 <MonthlySummary trades={trades} />
@@ -751,6 +745,38 @@ function Dashboard({ userId }: { userId: string }) {
             )}
           </aside>
         </div>
+
+        {/* El mapa ocupa todo el ancho: es un gráfico ancho y así no deja huecos al costado */}
+        <Reveal delay={175}>
+          <LiquidationMap />
+        </Reveal>
+
+        {/* Conexiones y ajustes: dos columnas parejas, debajo del diario */}
+        <section className="space-y-4 pt-1">
+          <div className="flex items-end gap-4">
+            <div>
+              <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("CONEXIONES Y AJUSTES")}</h2>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Tus señales, tu exchange, tu capital y tus límites")}</p>
+            </div>
+            <div className="mb-2 hidden h-px flex-1 bg-gradient-to-r from-line to-transparent sm:block" />
+          </div>
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <Reveal delay={150}>
+              <WebhookCard userId={userId} notify={notify} />
+            </Reveal>
+            <div className="space-y-5">
+              <Reveal delay={154}>
+                <TelegramCard userId={userId} notify={notify} />
+              </Reveal>
+              <Reveal delay={158}>
+                <ExchangeCard money={money} notify={notify} />
+              </Reveal>
+              <Reveal delay={165}>
+                <MoneyCard money={money} trades={trades} onSave={persistMoney} />
+              </Reveal>
+            </div>
+          </div>
+        </section>
       </main>
 
       {/* Pie */}
