@@ -25,7 +25,7 @@ import MapScreen from "./src/screens/MapScreen";
 import { dailyStatus } from "@dmcripto/core";
 import { NO_MONEY, getLang } from "@dmcripto/core";
 import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
-import { fetchConnections, fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney, syncExchanges } from "./src/tradesApi";
+import { fetchConnections, fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney, saveTimezone, syncExchanges } from "./src/tradesApi";
 import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
@@ -70,6 +70,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   useEffect(() => {
     fetchMoney(userId).then(setMoney).catch(() => {});
     Promise.resolve(saveLang(userId, getLang())).catch(() => {});
+    Promise.resolve(saveTimezone(userId)).catch(() => {});
   }, [userId]);
 
   // Si hay un exchange conectado, se sincroniza solo al abrir la app (máximo una vez cada 5 minutos).

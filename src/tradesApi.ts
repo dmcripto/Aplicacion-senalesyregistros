@@ -319,3 +319,27 @@ export interface LiquidationResult {
 }
 
 export const fetchLiquidationMap = (coin: string) => callFunction<LiquidationResult>("liquidation-map", { coin });
+
+// ─── Resumen diario ─────────────────────────────────────────────────────────
+
+/** Guarda la zona horaria del dispositivo: el resumen sale a las 21:00 de esa zona. */
+export async function saveTimezone(userId: string) {
+  let tz: string | undefined;
+  try {
+    tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return;
+  }
+  if (tz) await supabase.from("profiles").update({ timezone: tz }).eq("id", userId);
+}
+
+export async function fetchDailySummary(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("profiles").select("daily_summary").eq("id", userId).single();
+  if (error) throw error;
+  return data.daily_summary !== false;
+}
+
+export async function setDailySummary(userId: string, enabled: boolean) {
+  const { error } = await supabase.from("profiles").update({ daily_summary: enabled }).eq("id", userId);
+  if (error) throw error;
+}
