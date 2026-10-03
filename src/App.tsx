@@ -783,11 +783,11 @@ function Dashboard({ userId }: { userId: string }) {
             </div>
             <div className="mb-2 hidden h-px flex-1 bg-gradient-to-r from-line to-transparent sm:block" />
           </div>
-          <div className="grid items-start gap-5 lg:grid-cols-2">
-            <Reveal delay={150}>
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
+            <Reveal delay={150} className="min-w-0">
               <WebhookCard userId={userId} notify={notify} />
             </Reveal>
-            <div className="space-y-5">
+            <div className="min-w-0 space-y-5">
               <Reveal delay={154}>
                 <TelegramCard userId={userId} notify={notify} />
               </Reveal>
