@@ -925,6 +925,13 @@ export interface ExchangeConnection {
   lastImportCount: number;
 }
 
+export interface TelegramCommunity {
+  id: string;
+  chatId: number;
+  title: string | null;
+  linkedAt: string;
+}
+
 export interface TelegramLink {
   chatId: number;
   username: string | null;

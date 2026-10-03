@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { CoachResult, DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -342,3 +342,33 @@ export async function setDailySummary(userId: string, enabled: boolean) {
 // ─── Coach con IA ───────────────────────────────────────────────────────────
 
 export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;
+
+// ─── Comunidad de Telegram (grupo o canal donde el bot publica tus señales) ─
+
+export interface CommunityStart {
+  ok: boolean;
+  error?: string;
+  code?: string;
+  command?: string;
+  botUsername?: string;
+  addToGroupUrl?: string;
+  addToChannelUrl?: string;
+}
+
+export const startCommunityLink = () => callFunction<CommunityStart>("telegram-bot", { action: "community_code" });
+
+export async function fetchCommunities(): Promise<TelegramCommunity[]> {
+  const { data, error } = await supabase.from("telegram_communities").select("id, chat_id, title, linked_at").order("linked_at");
+  if (error || !data) return [];
+  return (data as Array<{ id: string; chat_id: number | string; title: string | null; linked_at: string }>).map((r) => ({
+    id: r.id,
+    chatId: Number(r.chat_id),
+    title: r.title,
+    linkedAt: r.linked_at,
+  }));
+}
+
+export async function removeCommunity(id: string) {
+  const { error } = await supabase.from("telegram_communities").delete().eq("id", id);
+  if (error) throw error;
+}
