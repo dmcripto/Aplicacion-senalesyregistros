@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
 import type { DailyStatus, GroupRow, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -460,6 +460,9 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
               <Text style={s.btnText}>{t("Reabrir")}</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity style={s.btn} onPress={() => openLink(whatsappShareUrl(signalShareMessage(trade)))} accessibilityLabel={t("Enviar esta señal por WhatsApp")}>
+            <Text style={[s.btnText, { color: colors.bull }]}>WhatsApp</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={s.btn} onPress={() => setEditingNotes(trade)}>
             <Text style={s.btnText}>{"✎ "}{t("Notas")}</Text>
           </TouchableOpacity>

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   analyze, balanceInfo, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
-  parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, summarize, tagStats, tradesToCsv,
+  parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv, whatsappShareUrl,
 } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
 
@@ -174,5 +174,30 @@ describe("mapa de liquidaciones: agrupar y acumular", () => {
     expect(fmtUsdShort(15_340_000)).toBe("$15.3M");
     expect(fmtUsdShort(820_000)).toBe("$820K");
     expect(fmtUsdShort(95)).toBe("$95");
+  });
+});
+
+describe("compartir una señal", () => {
+  it("arma el texto con activo, niveles y R:R, sin dinero", () => {
+    const m = signalShareMessage(trade({ symbol: "ETHUSDT", direction: "SHORT", entry: 3000, tp: 2900, sl: 3050 }));
+    expect(m).toContain("▼ ETHUSDT VENTA");
+    expect(m).toContain("Entrada 3000 · TP 2900 · SL 3050 · R:R 1:2.0");
+    expect(m).toContain("no es asesoramiento financiero");
+    expect(m).not.toContain("$"); // sin montos de dinero
+  });
+
+  it("en inglés usa los textos en inglés", () => {
+    setLang("en");
+    const m = signalShareMessage(trade({ direction: "LONG" }));
+    expect(m).toContain("New signal");
+    expect(m).toContain("BTCUSDT BUY");
+    expect(m).toContain("Entry 100");
+  });
+
+  it("el enlace de WhatsApp codifica el texto (saltos de línea, símbolos y emojis)", () => {
+    const url = whatsappShareUrl("a b\n& c ▲");
+    expect(url.startsWith("https://wa.me/?text=")).toBe(true);
+    expect(decodeURIComponent(url.split("?text=")[1])).toBe("a b\n& c ▲");
+    expect(url).not.toMatch(/\s/);
   });
 });
