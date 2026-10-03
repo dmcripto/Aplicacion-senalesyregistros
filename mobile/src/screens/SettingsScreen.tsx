@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
 import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
@@ -38,6 +38,7 @@ export default function SettingsScreen({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
+  const [dailySummary, setDailySummaryState] = useState(true);
   const [lossStr, setLossStr] = useState("");
   const [tradesStr, setTradesStr] = useState("");
 
@@ -108,7 +109,16 @@ export default function SettingsScreen({
 
   useEffect(() => {
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
+    fetchDailySummary(userId).then(setDailySummaryState).catch(() => {});
   }, [userId]);
+
+  const toggleDailySummary = (value: boolean) => {
+    setDailySummaryState(value);
+    setDailySummary(userId, value).catch((e) => {
+      setDailySummaryState(!value);
+      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
+    });
+  };
 
   const toggleAutoClose = (value: boolean) => {
     setAutoCloseState(value);
@@ -284,6 +294,21 @@ export default function SettingsScreen({
           <Switch
             value={autoClose}
             onValueChange={toggleAutoClose}
+            trackColor={{ false: colors.line2, true: colors.gold }}
+            thumbColor={colors.snow}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("RESUMEN DIARIO")}</Text>
+      <View style={styles.card}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Text style={[styles.hint, { flex: 1 }]}>
+            {t("Cada noche a las 21:00 te mandamos por Telegram y como notificación cómo te fue en el día, con tus rachas. Si ese día no operaste, no te molestamos.")}
+          </Text>
+          <Switch
+            value={dailySummary}
+            onValueChange={toggleDailySummary}
             trackColor={{ false: colors.line2, true: colors.gold }}
             thumbColor={colors.snow}
           />

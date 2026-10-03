@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
 import type { TelegramLink } from "../lib";
 import Panel from "./Panel";
-import { fetchTelegramLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
+import { fetchDailySummary, fetchTelegramLink, setDailySummary, startTelegramLink, unlinkTelegram } from "../tradesApi";
 import type { TelegramStart } from "../tradesApi";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -15,6 +15,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   const [start, setStart] = useState<TelegramStart | null>(null);
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
+  const [daily, setDaily] = useState(true);
   const timer = useRef<number | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -26,8 +27,21 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
 
   useEffect(() => {
     void reload();
+    fetchDailySummary(userId).then(setDaily).catch(() => {});
     return stopPolling;
-  }, [reload, stopPolling]);
+  }, [reload, stopPolling, userId]);
+
+  const toggleDaily = async () => {
+    const next = !daily;
+    setDaily(next);
+    try {
+      await setDailySummary(userId, next);
+      notify(next ? t("Resumen diario activado.") : t("Resumen diario desactivado."));
+    } catch (err) {
+      setDaily(!next);
+      notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
+    }
+  };
 
   useEffect(() => {
     if (!armed) return;
@@ -100,6 +114,13 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
               <li>{t("• Te avisa cuando llega una alerta o se toca un TP/SL.")}</li>
               <li>{t("• Comandos: /abiertas, /resumen, /idioma, /desvincular.")}</li>
             </ul>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
+              <input type="checkbox" checked={daily} onChange={toggleDaily} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
+              <span>
+                <b className="text-snow">{t("Resumen diario:")}</b>{" "}
+                {t("cada noche a las 21:00 te mandamos cómo te fue en el día, con tus rachas. Si no operaste, no te molestamos.")}
+              </span>
+            </label>
             {armed ? (
               <button onClick={disconnect} className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-bear">
                 {t("Confirmar: desconectar Telegram")}

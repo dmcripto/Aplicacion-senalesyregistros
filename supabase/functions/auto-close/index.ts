@@ -7,7 +7,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { detectHit, fetchCandles, parseMarketSymbol, rOfHit } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
-import { esc, notifyTelegram } from "../_shared/telegram.ts";
+import { sendDailySummaries } from "../_shared/dailySummary.ts";
+import { botToken, esc, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -31,6 +32,20 @@ Deno.serve(async () => {
   if (last && Date.now() - new Date(last.ran_at).getTime() < MIN_GAP_MS) return json({ skipped: true });
   await supabase.from("auto_close_runs").insert({});
   await supabase.from("auto_close_runs").delete().lt("ran_at", new Date(Date.now() - 86_400_000).toISOString());
+
+  // Resumen diario: se revisa una vez cada 10 minutos (a partir de las 21:00 de cada zona horaria).
+  if (new Date().getUTCMinutes() % 10 === 0) {
+    try {
+      const token = botToken();
+      await sendDailySummaries({
+        supabase,
+        telegram: async (chatId, html) => (token ? await sendMessage(token, chatId, html) : undefined),
+        push: sendExpoPush,
+      });
+    } catch (e) {
+      console.error("daily-summary:", e instanceof Error ? e.message : e);
+    }
+  }
 
   const { data: disabled } = await supabase.from("profiles").select("id").eq("auto_close", false);
   const off = new Set((disabled ?? []).map((p) => p.id as string));
