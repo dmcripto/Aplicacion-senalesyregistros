@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { analyze, cx, fmtR } from "../lib";
 import type { GroupRow, Trade } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 type View = "symbol" | "weekday" | "hour" | "direction";
 const VIEWS: Array<[View, string]> = [
@@ -50,11 +51,13 @@ export default function Analysis({ trades }: { trades: Trade[] }) {
   const rows = view === "symbol" ? a.bySymbol : view === "weekday" ? a.byWeekday : view === "hour" ? a.byHour : a.byDirection;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("ANÁLISIS")}</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Dónde ganás y dónde perdés")}</p>
-      </header>
+    <Panel
+      id="analysis"
+      title={t("ANÁLISIS")}
+      subtitle={t("Dónde ganás y dónde perdés")}
+      summary={a.bySymbol[0] ? `${t("Mejor activo")}: ${a.bySymbol[0].label}` : undefined}
+      defaultOpen={false}
+    >
       <div className="space-y-4 p-5">
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-md border border-line bg-ink/50 p-3">
@@ -99,6 +102,6 @@ export default function Analysis({ trades }: { trades: Trade[] }) {
         <Bars rows={rows} />
         <p className="text-[10.5px] text-dim">{t("R neto por grupo y cantidad de operaciones cerradas. Usá los consejos con cuidado si son pocas operaciones.")}</p>
       </div>
-    </section>
+    </Panel>
   );
 }

@@ -66,6 +66,7 @@ import Analysis from "./components/Analysis";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
 import TelegramCard from "./components/TelegramCard";
+import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
@@ -216,7 +217,6 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [regenArmed, setRegenArmed] = useState(false);
-  const [open, setOpen] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 1024px)").matches);
   const [autoClose, setAutoCloseState] = useState(true);
 
   useEffect(() => {
@@ -272,24 +272,13 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   };
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
-      >
-        <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CONECTÁ TU FUENTE DE SEÑALES")}</span>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">
-            {t("Enviá tus señales a esta URL, vengan de donde vengan")}
-          </span>
-        </span>
-        <span className="shrink-0 text-lg text-gold" aria-hidden>
-          {open ? "▾" : "▸"}
-        </span>
-      </button>
-      {open && (
+    <Panel
+      id="webhook"
+      title={t("CONECTÁ TU FUENTE DE SEÑALES")}
+      subtitle={t("Enviá tus señales a esta URL, vengan de donde vengan")}
+      summary={autoClose ? t("Cierre automático activado") : t("Cierre automático desactivado")}
+      defaultOpen={false}
+    >
       <div className="space-y-3 p-5">
         {error && <p className="text-[12px] text-bear">{error}</p>}
         {url && (
@@ -345,8 +334,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             </button>
           ))}
       </div>
-      )}
-    </section>
+    </Panel>
   );
 }
 
@@ -684,66 +672,95 @@ function Dashboard({ userId }: { userId: string }) {
           <StatsBand trades={trades} />
         </Reveal>
 
-        {/* Fila 1: curva y libro de operaciones | registrar, calculadora y límites */}
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="min-w-0 space-y-5 max-lg:contents">
-            <Reveal delay={70} className="max-lg:order-4">
-              <div className="overflow-hidden rounded-lg border border-line bg-panel">
-                <EquityChart trades={trades} />
+        {/* Atajos a cada sección y abrir/cerrar todo */}
+        <nav className="flex flex-wrap items-center gap-2" aria-label={t("Secciones")}>
+          {(
+            [
+              ["journal", t("Diario")],
+              ["analysis", t("Análisis")],
+              ["liqmap", t("Mapa")],
+              ["telegram", t("Conexiones")],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => jumpToPanel(id)}
+              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+            >
+              {label}
+            </button>
+          ))}
+          <span className="ml-auto flex gap-2">
+            <button
+              type="button"
+              onClick={() => openAllPanels(true)}
+              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
+            >
+              {t("Expandir todo")}
+            </button>
+            <button
+              type="button"
+              onClick={() => openAllPanels(false)}
+              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
+            >
+              {t("Contraer todo")}
+            </button>
+          </span>
+        </nav>
+
+        {/* Panel principal: curva | registrar; libro a todo el ancho; análisis | herramientas.
+            Cada sección se abre y se cierra; las columnas son independientes para no dejar huecos. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <Reveal delay={70} className="min-w-0 max-lg:order-5">
+            <EquityChart trades={trades} />
+          </Reveal>
+          <Reveal delay={110} className="max-lg:order-2">
+            <TradeForm onAdd={addTrades} notify={notify} />
+          </Reveal>
+
+          <Reveal delay={140} className="min-w-0 max-lg:order-1 lg:col-span-2">
+            {loading ? (
+              <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
+                {t("Cargando diario…")}
               </div>
-            </Reveal>
-            <Reveal delay={140} className="max-lg:order-1">
-              {loading ? (
-                <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
-                  {t("Cargando diario…")}
-                </div>
-              ) : (
-                <TradeTable
-                  trades={trades}
-                  flashId={flashId}
-                  onMark={markOutcome}
-                  onManual={setManualTrade}
-                  onDelete={deleteTrade}
-                  onReopen={reopenTrade}
-                  onNotes={setNotesTrade}
-                  onLoadSample={loadSample}
-                />
-              )}
-            </Reveal>
-          </div>
+            ) : (
+              <TradeTable
+                trades={trades}
+                flashId={flashId}
+                onMark={markOutcome}
+                onManual={setManualTrade}
+                onDelete={deleteTrade}
+                onReopen={reopenTrade}
+                onNotes={setNotesTrade}
+                onLoadSample={loadSample}
+              />
+            )}
+          </Reveal>
 
-          <aside className="space-y-5 max-lg:contents">
-            <Reveal delay={110} className="max-lg:order-2">
-              <TradeForm onAdd={addTrades} notify={notify} />
-            </Reveal>
-            <Reveal delay={130} className="max-lg:order-3">
-              <RiskCalculator notify={notify} />
-            </Reveal>
-            <Reveal delay={150} className="max-lg:order-3">
-              <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
-            </Reveal>
-          </aside>
-        </div>
-
-        {/* Fila 2: análisis | resúmenes */}
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-          <div className="min-w-0 max-lg:contents">
-            <Reveal delay={160} className="max-lg:order-5">
+          <div className="min-w-0 space-y-5 max-lg:contents">
+            <Reveal delay={160} className="max-lg:order-6">
               <Analysis trades={trades} />
             </Reveal>
-          </div>
-          <aside className="space-y-5 max-lg:contents">
             {trades.length > 0 && (
-              <Reveal delay={180} className="max-lg:order-5">
+              <Reveal delay={180} className="max-lg:order-7">
                 <MonthlySummary trades={trades} />
               </Reveal>
             )}
+          </div>
+          <div className="space-y-5 max-lg:contents">
+            <Reveal delay={130} className="max-lg:order-3">
+              <RiskCalculator notify={notify} />
+            </Reveal>
+            <Reveal delay={150} className="max-lg:order-4">
+              <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
+            </Reveal>
             {trades.some((x) => x.tags?.length) && (
-              <Reveal delay={200} className="max-lg:order-5">
+              <Reveal delay={200} className="max-lg:order-8">
                 <TagStats trades={trades} />
               </Reveal>
             )}
-          </aside>
+          </div>
         </div>
 
         {/* El mapa ocupa todo el ancho: es un gráfico ancho y así no deja huecos al costado */}
