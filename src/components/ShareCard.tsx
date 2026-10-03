@@ -228,17 +228,51 @@ export default function ShareCard({
     };
   }, [summary, logo]);
 
-  const blob = () => new Promise<Blob | null>((resolve) => ref.current?.toBlob(resolve, "image/png") ?? resolve(null));
+  // toBlob no devuelve nada (avisa con la función que recibe), así que no se puede encadenar con «??»: eso resolvía siempre con null.
+  const blob = () =>
+    new Promise<Blob | null>((resolve) => {
+      const canvas = ref.current;
+      if (!canvas) return resolve(null);
+      try {
+        canvas.toBlob(resolve, "image/png");
+      } catch {
+        resolve(null);
+      }
+    });
+
+  /** Guarda la imagen como archivo. El enlace tiene que estar en la página y la dirección temporal no se puede borrar enseguida, o el celular cancela la descarga. */
+  const saveFile = (b: Blob): boolean => {
+    try {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "veltrix-resultado.png";
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const download = async () => {
     const b = await blob();
-    if (!b) return;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(b);
-    a.download = "veltrix-resultado.png";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    notify(t("Imagen descargada."));
+    if (!b) return notify(t("No se pudo preparar la imagen. Probá de nuevo."), "err");
+    if (saveFile(b)) notify(t("Imagen descargada."));
+    else notify(t("No se pudo descargar. Probá con «Abrir la imagen»."), "err");
+  };
+
+  /** Plan B: abre la imagen en otra pestaña; ahí se puede mantener apretada y elegir «Descargar imagen». */
+  const openImage = async () => {
+    const b = await blob();
+    if (!b) return notify(t("No se pudo preparar la imagen. Probá de nuevo."), "err");
+    const url = URL.createObjectURL(b);
+    if (!window.open(url, "_blank")) notify(t("El navegador bloqueó la ventana nueva. Permitila e intentá de nuevo."), "err");
+    window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
   };
 
   const share = async () => {
@@ -302,6 +336,9 @@ export default function ShareCard({
               {t("Compartir")}
             </button>
           </div>
+          <button onClick={openImage} className="w-full text-center text-[11px] font-semibold text-dim underline hover:text-fog">
+            {t("¿No se descargó? Abrir la imagen")}
+          </button>
           <p className="text-[10.5px] leading-relaxed text-dim">
             {t("La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.")}
           </p>
