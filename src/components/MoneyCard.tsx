@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { balanceInfo, cx, fmtCurrency, rValueMoney } from "../lib";
 import type { MoneySettings, Trade } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 export default function MoneyCard({
   money,
@@ -15,7 +16,6 @@ export default function MoneyCard({
   const [capital, setCapital] = useState("");
   const [risk, setRisk] = useState("1");
   const [currency, setCurrency] = useState("USD");
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -42,19 +42,13 @@ export default function MoneyCard({
   };
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
-      >
-        <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CAPITAL Y DINERO")}</span>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">{t("Tus resultados en dinero, no solo en R")}</span>
-        </span>
-        <span className="shrink-0 text-lg text-gold" aria-hidden>{open ? "▾" : "▸"}</span>
-      </button>
+    <Panel
+      id="money"
+      title={t("CAPITAL Y DINERO")}
+      subtitle={t("Tus resultados en dinero, no solo en R")}
+      summary={info ? `${fmtCurrency(info.balance, money.currency, false)} · ${info.returnPct >= 0 ? "+" : "−"}${Math.abs(info.returnPct).toFixed(1)}%` : t("Sin configurar")}
+      defaultOpen={false}
+    >
       <div className="space-y-3 p-5">
         {info ? (
           <div className="grid grid-cols-2 gap-2">
@@ -75,7 +69,7 @@ export default function MoneyCard({
           </p>
         )}
 
-        {open && (
+        <>
           <div className="space-y-3 border-t border-line pt-4">
             <div className="flex gap-2.5">
               <label className="min-w-0 flex-[1.4]">
@@ -111,8 +105,8 @@ export default function MoneyCard({
               {t("El dinero se calcula multiplicando tus R por el valor de 1R (riesgo fijo sobre el capital inicial). Es una estimación: no incluye comisiones ni deslizamiento.")}
             </p>
           </div>
-        )}
+        </>
       </div>
-    </section>
+    </Panel>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { cx, fmtR } from "../lib";
 import type { DailyLimits, DailyStatus } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 export function LimitBanner({ status }: { status: DailyStatus }) {
   if (!status.messages.length) return null;
@@ -36,7 +37,6 @@ export default function DailyLimitsCard({
 }) {
   const [loss, setLoss] = useState("");
   const [count, setCount] = useState("");
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -69,19 +69,13 @@ export default function DailyLimitsCard({
     ) : null;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
-      >
-        <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("LÍMITES DIARIOS")}</span>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">{t("Disciplina: frená antes de que sea tarde")}</span>
-        </span>
-        <span className="shrink-0 text-lg text-gold" aria-hidden>{open ? "▾" : "▸"}</span>
-      </button>
+    <Panel
+      id="limits"
+      title={t("LÍMITES DIARIOS")}
+      subtitle={t("Disciplina: frená antes de que sea tarde")}
+      summary={`${status.trades}${limits.maxTrades ? ` / ${limits.maxTrades}` : ""} ${t("operaciones")} · ${fmtR(status.lossR)}R`}
+      defaultOpen={false}
+    >
       <div className="space-y-4 p-5">
         <div className="space-y-3">
           <div>
@@ -105,7 +99,7 @@ export default function DailyLimitsCard({
           </div>
         </div>
 
-        {open && (
+        <>
           <div className="space-y-3 border-t border-line pt-4">
             <div className="flex gap-2.5">
               <label className="min-w-0 flex-1">
@@ -128,8 +122,8 @@ export default function DailyLimitsCard({
               {t("Dejá un campo vacío para no usar ese límite. Te avisamos al llegar al 80 % y cuando lo alcanzás.")}
             </p>
           </div>
-        )}
+        </>
       </div>
-    </section>
+    </Panel>
   );
 }

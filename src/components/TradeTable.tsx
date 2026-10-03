@@ -12,6 +12,7 @@ import {
   OutcomeBadge,
 } from "../ui";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 type SortMode = "recientes" | "antiguas" | "mejorR" | "peorR";
 type EstadoF = "all" | "abierta" | "ganada" | "perdida" | "be";
@@ -108,21 +109,20 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
     "flex h-7 items-center justify-center gap-1 rounded border border-line px-2 text-[10px] font-bold uppercase tracking-wide text-fog transition-all hover:-translate-y-px";
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-5 py-4">
-        <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("LIBRO DE OPERACIONES")}</h2>
-          <p className="num text-[11px] uppercase tracking-[0.16em] text-dim">
-            {filtered.length} {t("de")} {trades.length} {t("en pantalla")}
-          </p>
-        </div>
+    <Panel
+      id="journal"
+      title={t("LIBRO DE OPERACIONES")}
+      subtitle={`${filtered.length} ${t("de")} ${trades.length} ${t("en pantalla")}`}
+      summary={`${trades.length} ${t("operaciones")}`}
+      right={
         <select value={sort} onChange={(e) => setSort(e.target.value as SortMode)} className="field num w-auto cursor-pointer py-1.5 text-[12px]">
           <option value="recientes">{t("Más recientes")}</option>
           <option value="antiguas">{t("Más antiguas")}</option>
           <option value="mejorR">{t("Mejor R primero")}</option>
           <option value="peorR">{t("Peor R primero")}</option>
         </select>
-      </header>
+      }
+    >
 
       {/* filtros */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-ink/50 px-5 py-3">
@@ -307,6 +307,6 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
           </table>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

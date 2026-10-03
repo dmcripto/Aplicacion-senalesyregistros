@@ -4,6 +4,7 @@ import type { Trade } from "../lib";
 import { useInView } from "../hooks";
 import { IconCandles, TriDown, TriUp } from "../ui";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 const W = 820;
 const H = 252;
@@ -12,7 +13,7 @@ const PR = 16;
 const PT = 18;
 const PB = 30;
 
-export default function EquityChart({ trades }: { trades: Trade[] }) {
+function EquityBody({ trades }: { trades: Trade[] }) {
   const series = useMemo(() => equitySeries(trades), [trades]);
   const [hover, setHover] = useState<number | null>(null);
   const [ref, inView] = useInView<HTMLDivElement>(0.25);
@@ -65,19 +66,7 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
 
   return (
     <div ref={ref}>
-      {/* cabecera */}
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
-        <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("CURVA DE CAPITAL")}</h2>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("R acumulado por operación cerrada")}</p>
-        </div>
-        <div
-          className={`num rounded-md px-3.5 py-1.5 text-lg font-bold ${pos ? "bg-bull/12 text-bull" : "bg-bear/12 text-bear"}`}
-          style={{ boxShadow: `inset 0 0 0 1px ${pos ? "rgba(22,217,138,.35)" : "rgba(255,77,103,.35)"}` }}
-        >
-          {fmtR(final)}R
-        </div>
-      </div>
+      <div className="pt-3" />
 
       <div className="relative px-2 pb-3">
         <svg
@@ -207,5 +196,31 @@ export default function EquityChart({ trades }: { trades: Trade[] }) {
         )}
       </div>
     </div>
+  );
+}
+
+export default function EquityChart({ trades }: { trades: Trade[] }) {
+  const series = useMemo(() => equitySeries(trades), [trades]);
+  const final = series.length ? series[series.length - 1].cum : 0;
+  const pos = final >= 0;
+  return (
+    <Panel
+      id="equity"
+      title={t("CURVA DE CAPITAL")}
+      subtitle={t("R acumulado por operación cerrada")}
+      summary={series.length ? `${fmtR(final)}R · ${series.length} ${t("operaciones")}` : undefined}
+      right={
+        series.length ? (
+          <div
+            className={`num rounded-md px-3.5 py-1.5 text-lg font-bold ${pos ? "bg-bull/12 text-bull" : "bg-bear/12 text-bear"}`}
+            style={{ boxShadow: `inset 0 0 0 1px ${pos ? "rgba(22,217,138,.35)" : "rgba(255,77,103,.35)"}` }}
+          >
+            {fmtR(final)}R
+          </div>
+        ) : undefined
+      }
+    >
+      <EquityBody trades={trades} />
+    </Panel>
   );
 }

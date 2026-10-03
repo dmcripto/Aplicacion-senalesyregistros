@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 const STORE_KEY = "veltrix_risk_settings_v1";
 
@@ -14,7 +15,6 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
   const [entry, setEntry] = useState("");
   const [sl, setSl] = useState("");
   const [tp, setTp] = useState("");
-  const [open, setOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -82,26 +82,15 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
   );
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
-      >
-        <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CALCULADORA DE RIESGO")}</span>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">
-            {t("Cuánto operar para no perder más de lo que decidiste")}
-          </span>
-        </span>
-        <span className="shrink-0 text-lg text-gold" aria-hidden>
-          {open ? "▾" : "▸"}
-        </span>
-      </button>
+    <Panel
+      id="risk"
+      title={t("CALCULADORA DE RIESGO")}
+      subtitle={t("Cuánto operar para no perder más de lo que decidiste")}
+      summary={res ? `${t("Cantidad a operar")}: ${fmtQty(res.units)}` : undefined}
+      defaultOpen={false}
+    >
 
-      {open && (
-        <div className="space-y-3 p-5">
+      <div className="space-y-3 p-5">
           <div className="flex gap-2.5">
             {input(t("Capital ($)"), capital, setCapital, "1000")}
             {input(t("Riesgo (%)"), riskPct, setRiskPct, "1")}
@@ -151,8 +140,7 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
           <p className="text-center text-[10.5px] text-dim">
             {t("Cálculo orientativo. Verificá siempre los valores en tu plataforma antes de operar.")}
           </p>
-        </div>
-      )}
-    </section>
+      </div>
+    </Panel>
   );
 }

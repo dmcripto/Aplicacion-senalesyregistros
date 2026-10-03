@@ -9,6 +9,7 @@ import {
 import type { Direction, NewTrade, ParseResult } from "../lib";
 import { IconCheck, IconClipboard, IconPlus, IconAlert, TriDown, TriUp } from "../ui";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
@@ -110,13 +111,12 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
     );
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
-        <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("REGISTRAR OPERACIÓN")}</h2>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Pegá una señal de cualquier fuente o cargala a mano")}</p>
-        </div>
-      </header>
+    <Panel
+      id="register"
+      title={t("REGISTRAR OPERACIÓN")}
+      subtitle={t("Pegá una señal de cualquier fuente o cargala a mano")}
+      summary={t("Pegá una señal o cargala a mano")}
+    >
 
       <div className="p-5">
         <div className="mb-4 flex gap-1 rounded-lg border border-line bg-ink p-1">
@@ -306,6 +306,6 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
           </form>
         )}
       </div>
-    </section>
+    </Panel>
   );
 }

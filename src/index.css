@@ -198,8 +198,13 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   transform: none;
 }
 
+/* El ancho base va en una capa de componentes para que clases como w-auto lo puedan pisar. */
+@layer components {
+  .field {
+    width: 100%;
+  }
+}
 .field {
-  width: 100%;
   background: var(--color-ink);
   border: 1px solid var(--color-line);
   border-radius: 6px;
@@ -232,3 +237,10 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.panel-body { animation: panelIn 0.18s ease-out; }
+@media (prefers-reduced-motion: reduce) { .panel-body { animation: none; } }

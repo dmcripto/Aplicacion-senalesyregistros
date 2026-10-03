@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { EXCHANGE_LIST, cx, exchangeName, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
+import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
@@ -36,7 +37,6 @@ function Guide({ exchange }: { exchange: ExchangeId }) {
 }
 
 export default function ExchangeCard({ money, notify }: { money: MoneySettings; notify: Notify }) {
-  const [open, setOpen] = useState(false);
   const [conns, setConns] = useState<ExchangeConnection[] | null>(null);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
@@ -119,19 +119,13 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
   const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && !busy;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 border-b border-line px-5 py-4 text-left"
-      >
-        <span>
-          <span className="block font-display text-2xl font-bold tracking-wide text-snow">{t("CONECTAR EXCHANGE")}</span>
-          <span className="block text-[11px] uppercase tracking-[0.16em] text-dim">{t("Traé tus operaciones automáticamente · solo lectura")}</span>
-        </span>
-        <span className="shrink-0 text-lg text-gold" aria-hidden>{open ? "▾" : "▸"}</span>
-      </button>
+    <Panel
+      id="exchange"
+      title={t("CONECTAR EXCHANGE")}
+      subtitle={t("Traé tus operaciones automáticamente · solo lectura")}
+      summary={conns?.length ? `${conns.map((c) => exchangeName(c.exchange)).join(", ")} · ${t("Conectado")}` : t("Sin conectar")}
+      defaultOpen={false}
+    >
 
       <div className="space-y-3 p-5">
         {conns?.length ? (
@@ -182,7 +176,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
           </button>
         )}
 
-        {open && (
+        <>
           <div className="space-y-3 border-t border-line pt-4">
             {unit == null && (
               <p className="rounded-md border border-gold/40 bg-golddeep/30 px-3 py-2 text-[11.5px] leading-relaxed text-gold">
@@ -233,8 +227,8 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
               {t("Tu clave secreta se guarda cifrada en el servidor y no se vuelve a mostrar. VELTRIX solo lee: rechaza claves que permitan operar o retirar. Las operaciones se importan con tu 1R (capital × riesgo %) y quedan marcadas con el exchange de origen.")}
             </p>
           </div>
-        )}
+        </>
       </div>
-    </section>
+    </Panel>
   );
 }

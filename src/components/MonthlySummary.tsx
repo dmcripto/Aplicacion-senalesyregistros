@@ -3,6 +3,7 @@ import { cx, fmtCurrency, fmtR, monthlySummary } from "../lib";
 import { useMoney } from "../money";
 import type { Trade } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 export default function MonthlySummary({ trades }: { trades: Trade[] }) {
   const rows = useMemo(() => monthlySummary(trades), [trades]);
@@ -17,11 +18,13 @@ export default function MonthlySummary({ trades }: { trades: Trade[] }) {
   }, [rows]);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("RESUMEN MENSUAL")}</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Rendimiento por mes calendario")}</p>
-      </header>
+    <Panel
+      id="monthly"
+      title={t("RESUMEN MENSUAL")}
+      subtitle={t("Rendimiento por mes calendario")}
+      summary={`${totals.cerradas} ${t("cerradas")} · ${fmtR(totals.netR)}R`}
+      defaultOpen={false}
+    >
 
       <div className="px-5 py-3">
         <div className="mb-1 grid grid-cols-[1fr_44px_1fr_70px] gap-2 text-[9.5px] font-bold uppercase tracking-[0.16em] text-dim">
@@ -80,6 +83,6 @@ export default function MonthlySummary({ trades }: { trades: Trade[] }) {
           </span>
         </div>
       </div>
-    </section>
+    </Panel>
   );
 }

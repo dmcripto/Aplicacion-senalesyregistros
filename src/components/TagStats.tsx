@@ -2,16 +2,19 @@ import { useMemo } from "react";
 import { cx, fmtR, tagStats } from "../lib";
 import type { Trade } from "../lib";
 import { t } from "../lib";
+import Panel from "./Panel";
 
 export default function TagStats({ trades }: { trades: Trade[] }) {
   const rows = useMemo(() => tagStats(trades), [trades]);
   if (!rows.length) return null;
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("RESULTADO POR ETIQUETA")}</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Qué te suma y qué te resta")}</p>
-      </header>
+    <Panel
+      id="tags"
+      title={t("RESULTADO POR ETIQUETA")}
+      subtitle={t("Qué te suma y qué te resta")}
+      summary={`${rows.length} ${t("etiquetas")}`}
+      defaultOpen={false}
+    >
       <ul className="px-5 py-3">
         {rows.map((r) => (
           <li key={r.tag} className="grid grid-cols-[1fr_44px_44px_64px] items-center gap-2 border-b border-line/50 py-2.5 last:border-b-0">
@@ -24,6 +27,6 @@ export default function TagStats({ trades }: { trades: Trade[] }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
   );
 }

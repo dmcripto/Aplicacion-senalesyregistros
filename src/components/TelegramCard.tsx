@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
 import type { TelegramLink } from "../lib";
+import Panel from "./Panel";
 import { fetchTelegramLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
 import type { TelegramStart } from "../tradesApi";
 
@@ -77,11 +78,13 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   };
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("BOT DE TELEGRAM")}</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Registrá señales y recibí avisos sin abrir la app")}</p>
-      </header>
+    <Panel
+      id="telegram"
+      title={t("BOT DE TELEGRAM")}
+      subtitle={t("Registrá señales y recibí avisos sin abrir la app")}
+      summary={link ? `${link.username ? `@${link.username}` : t("Chat conectado")} · ${t("Conectado")}` : t("Sin conectar")}
+      defaultOpen={false}
+    >
       <div className="space-y-3 p-5">
         {link === undefined ? null : link ? (
           <>
@@ -134,6 +137,6 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
           </>
         )}
       </div>
-    </section>
+    </Panel>
   );
 }

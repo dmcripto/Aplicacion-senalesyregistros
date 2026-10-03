@@ -3,6 +3,7 @@ import type { PointerEvent } from "react";
 import { LEVERAGE_COLORS, LIQ_COINS, cumulativeLiquidations, cx, fmtPrice, fmtUsdShort, rebinLiquidations, t } from "../lib";
 import type { LiquidationMap as MapData } from "../lib";
 import { fetchLiquidationMap } from "../tradesApi";
+import Panel from "./Panel";
 
 const W = 720;
 const H = 300;
@@ -20,7 +21,7 @@ const SLUGS: Record<string, string> = {
 const axis = (n: number) => (n >= 100 ? Math.round(n).toLocaleString("en-US") : fmtPrice(n));
 const sign = (n: number) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(1) + "%";
 
-export default function LiquidationMap() {
+function LiquidationMapBody() {
   const [coin, setCoin] = useState("BTC");
   const [map, setMap] = useState<MapData | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
@@ -109,12 +110,7 @@ export default function LiquidationMap() {
   const ticks = (max: number) => [0, 0.25, 0.5, 0.75, 1].map((f) => max * f);
 
   return (
-    <section className="overflow-hidden rounded-lg border border-line bg-panel">
-      <header className="border-b border-line px-5 py-4">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("MAPA DE LIQUIDACIONES")}</h2>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Dónde se acumulan liquidaciones (estimado)")}</p>
-      </header>
-      <div className="space-y-3 p-5">
+    <div className="space-y-3 p-5">
         <div className="flex flex-wrap gap-1.5">
           {LIQ_COINS.map((c) => (
             <button
@@ -282,7 +278,20 @@ export default function LiquidationMap() {
             {t("Comparar con CoinMarketCap")} ↗
           </a>
         </p>
-      </div>
-    </section>
+    </div>
+  );
+}
+
+export default function LiquidationMap() {
+  return (
+    <Panel
+      id="liqmap"
+      title={t("MAPA DE LIQUIDACIONES")}
+      subtitle={t("Dónde se acumulan liquidaciones (estimado)")}
+      summary={t("BTC, ETH, SOL y más · tocá para ver las zonas")}
+      defaultOpen={false}
+    >
+      <LiquidationMapBody />
+    </Panel>
   );
 }
