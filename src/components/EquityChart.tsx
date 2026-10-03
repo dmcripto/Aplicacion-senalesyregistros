@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { equitySeries, fmtDateTime, fmtR } from "../lib";
 import type { Trade } from "../lib";
 import { useInView } from "../hooks";
@@ -6,7 +6,6 @@ import { IconCandles, TriDown, TriUp } from "../ui";
 import { t } from "../lib";
 import Panel from "./Panel";
 
-const W = 820;
 const H = 252;
 const PL = 48;
 const PR = 16;
@@ -14,9 +13,27 @@ const PT = 18;
 const PB = 30;
 
 function EquityBody({ trades }: { trades: Trade[] }) {
+  // El dibujo usa el ancho real de la pantalla: en el celular las letras y los puntos no se achican.
+  const [W, setW] = useState(820);
+  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!wrapEl || typeof ResizeObserver === "undefined") return;
+    const measure = () => setW(Math.max(300, Math.round(wrapEl.clientWidth - 16)));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrapEl);
+    return () => ro.disconnect();
+  }, [wrapEl]);
   const series = useMemo(() => equitySeries(trades), [trades]);
   const [hover, setHover] = useState<number | null>(null);
   const [ref, inView] = useInView<HTMLDivElement>(0.25);
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      ref(el);
+      setWrapEl(el);
+    },
+    [ref],
+  );
 
   const geom = useMemo(() => {
     if (!series.length) return null;
@@ -37,7 +54,7 @@ function EquityBody({ trades }: { trades: Trade[] }) {
     const linePath = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
     const areaPath = `${linePath} L${pts[n - 1].x.toFixed(1)},${y(Math.max(0, min + pad * 0)).toFixed(1)}`;
     return { pts, linePath, areaPath, x, y, min, max, n };
-  }, [series]);
+  }, [series, W]);
 
   if (!geom) {
     return (
@@ -65,7 +82,7 @@ function EquityBody({ trades }: { trades: Trade[] }) {
   const hp = hover != null ? pts[hover] : null;
 
   return (
-    <div ref={ref}>
+    <div ref={setRefs}>
       <div className="pt-3" />
 
       <div className="relative px-2 pb-3">
