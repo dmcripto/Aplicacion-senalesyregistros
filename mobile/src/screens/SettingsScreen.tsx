@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
 import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchWebhookUrl, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
@@ -39,6 +39,7 @@ export default function SettingsScreen({
   const [copied, setCopied] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
   const [dailySummary, setDailySummaryState] = useState(true);
+  const [waButton, setWaButtonState] = useState(false);
   const [lossStr, setLossStr] = useState("");
   const [tradesStr, setTradesStr] = useState("");
 
@@ -110,12 +111,21 @@ export default function SettingsScreen({
   useEffect(() => {
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
     fetchDailySummary(userId).then(setDailySummaryState).catch(() => {});
+    fetchWhatsappButton(userId).then(setWaButtonState).catch(() => {});
   }, [userId]);
 
   const toggleDailySummary = (value: boolean) => {
     setDailySummaryState(value);
     setDailySummary(userId, value).catch((e) => {
       setDailySummaryState(!value);
+      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
+    });
+  };
+
+  const toggleWaButton = (value: boolean) => {
+    setWaButtonState(value);
+    setWhatsappButton(userId, value).catch((e) => {
+      setWaButtonState(!value);
       Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
     });
   };
@@ -309,6 +319,21 @@ export default function SettingsScreen({
           <Switch
             value={dailySummary}
             onValueChange={toggleDailySummary}
+            trackColor={{ false: colors.line2, true: colors.gold }}
+            thumbColor={colors.snow}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("BOTÓN DE WHATSAPP")}</Text>
+      <View style={styles.card}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Text style={[styles.hint, { flex: 1 }]}>
+            {t("Cada aviso del bot de Telegram trae un botón «Enviar a WhatsApp». Lo tocás y se abre WhatsApp con el mensaje armado para elegir a quién mandarlo.")}
+          </Text>
+          <Switch
+            value={waButton}
+            onValueChange={toggleWaButton}
             trackColor={{ false: colors.line2, true: colors.gold }}
             thumbColor={colors.snow}
           />

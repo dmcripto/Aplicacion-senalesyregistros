@@ -11,6 +11,7 @@ import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, notifyTelegram } from "../_shared/telegram.ts";
+import { waSignalText } from "../_shared/whatsapp.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -146,7 +147,7 @@ Deno.serve(async (req) => {
     return `🔔 <b>${lang === "en" ? "New signal" : "Nueva señal"}</b>\n${alert.direction === "LONG" ? "▲" : "▼"} <b>${esc(alert.symbol)}</b> ${side}\n${
       lang === "en" ? "Entry" : "Entrada"
     } ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`;
-  });
+  }, (lang) => waSignalText({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang));
 
   // Publicación en la comunidad de Telegram (si el usuario conectó una).
   await publishToCommunities(supabase, botToken(), profile.id, (lang) =>

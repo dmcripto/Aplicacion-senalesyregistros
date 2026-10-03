@@ -351,6 +351,17 @@ export async function setDailySummary(userId: string, enabled: boolean) {
   if (error) throw error;
 }
 
+export async function fetchWhatsappButton(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("profiles").select("whatsapp_button").eq("id", userId).single();
+  if (error) throw error;
+  return data.whatsapp_button === true;
+}
+
+export async function setWhatsappButton(userId: string, enabled: boolean) {
+  const { error } = await supabase.from("profiles").update({ whatsapp_button: enabled }).eq("id", userId);
+  if (error) throw error;
+}
+
 // ─── Coach con IA ───────────────────────────────────────────────────────────
 
 export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;

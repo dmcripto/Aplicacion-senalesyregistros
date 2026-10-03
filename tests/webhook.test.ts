@@ -67,6 +67,15 @@ describe("webhook de TradingView", () => {
     expect(db.tables.trades).toHaveLength(1);
   });
 
+  it("con el interruptor de WhatsApp activado, el aviso privado trae el botón (la comunidad no)", async () => {
+    db.tables.profiles[0].whatsapp_button = true;
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500");
+    const priv = telegramCalls().find((c) => c.body.chat_id === 555)!;
+    expect(priv.body.reply_markup.inline_keyboard[0][0].url).toMatch(/^https:\/\/wa\.me\/\?text=/);
+    expect(telegramCalls().find((c) => c.body.chat_id === -1001)!.body.reply_markup).toBeUndefined();
+  });
+
   it("avisa en el idioma del usuario", async () => {
     db.tables.profiles[0].lang = "en";
     await post("VELTRIX|ETHUSDT|VENTA|3000|2900|3050");

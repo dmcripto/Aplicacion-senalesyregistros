@@ -10,6 +10,7 @@ import { sendExpoPush } from "../_shared/expoPush.ts";
 import { communityResultMessage, publishToCommunities } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { botToken, esc, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
+import { waResultText } from "../_shared/whatsapp.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -118,7 +119,7 @@ Deno.serve(async () => {
       const ok = hit.outcome === "TP";
       const title = ok ? (lang === "en" ? "TP hit" : "TP alcanzado") : lang === "en" ? "SL hit" : "SL alcanzado";
       return `${ok ? "✅" : "❌"} <b>${title}</b> · ${esc(trade.symbol)}\n${lang === "en" ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
-    });
+    }, (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
     await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang));
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {

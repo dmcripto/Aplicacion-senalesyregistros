@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
 import type { TelegramCommunity, TelegramLink } from "../lib";
 import Panel from "./Panel";
-import { fetchCommunities, fetchDailySummary, fetchTelegramLink, removeCommunity, setDailySummary, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
+import { fetchCommunities, fetchDailySummary, fetchTelegramLink, fetchWhatsappButton, removeCommunity, setDailySummary, setWhatsappButton, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
 import type { CommunityStart, TelegramStart } from "../tradesApi";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -16,6 +16,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const [daily, setDaily] = useState(true);
+  const [wa, setWa] = useState(false);
   const [communities, setCommunities] = useState<TelegramCommunity[]>([]);
   const [cStart, setCStart] = useState<CommunityStart | null>(null);
   const [cBusy, setCBusy] = useState(false);
@@ -37,6 +38,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   useEffect(() => {
     void reload();
     fetchDailySummary(userId).then(setDaily).catch(() => {});
+    fetchWhatsappButton(userId).then(setWa).catch(() => {});
     void fetchCommunities().then(setCommunities);
     return () => {
       stopPolling();
@@ -98,6 +100,18 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
       notify(next ? t("Resumen diario activado.") : t("Resumen diario desactivado."));
     } catch (err) {
       setDaily(!next);
+      notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
+    }
+  };
+
+  const toggleWa = async () => {
+    const next = !wa;
+    setWa(next);
+    try {
+      await setWhatsappButton(userId, next);
+      notify(next ? t("Botón de WhatsApp activado.") : t("Botón de WhatsApp desactivado."));
+    } catch (err) {
+      setWa(!next);
       notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
     }
   };
@@ -171,13 +185,20 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
             <ul className="space-y-1 text-[11.5px] leading-relaxed text-fog">
               <li>{t("• Pegá o reenviá una señal al bot y confirmá con un toque.")}</li>
               <li>{t("• Te avisa cuando llega una alerta o se toca un TP/SL.")}</li>
-              <li>{t("• Comandos: /abiertas, /resumen, /idioma, /desvincular.")}</li>
+              <li>{t("• Comandos: /abiertas, /resumen, /whatsapp, /idioma, /desvincular.")}</li>
             </ul>
             <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
               <input type="checkbox" checked={daily} onChange={toggleDaily} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
               <span>
                 <b className="text-snow">{t("Resumen diario:")}</b>{" "}
                 {t("cada noche a las 21:00 te mandamos cómo te fue en el día, con tus rachas. Si no operaste, no te molestamos.")}
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
+              <input type="checkbox" checked={wa} onChange={toggleWa} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
+              <span>
+                <b className="text-snow">{t("Botón de WhatsApp:")}</b>{" "}
+                {t("cada aviso del bot trae un botón «Enviar a WhatsApp». Lo tocás y se abre WhatsApp con el mensaje armado para elegir a quién mandarlo.")}
               </span>
             </label>
             <div className="space-y-2 rounded-md border border-line bg-ink/40 p-3">
