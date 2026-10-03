@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  analyze, balanceInfo, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
+  analyze, balanceInfo, binanceSymbol, levelProgress, todayOverview, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
   parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv, whatsappShareUrl,
 } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
@@ -199,5 +199,59 @@ describe("compartir una señal", () => {
     expect(url.startsWith("https://wa.me/?text=")).toBe(true);
     expect(decodeURIComponent(url.split("?text=")[1])).toBe("a b\n& c ▲");
     expect(url).not.toMatch(/\s/);
+  });
+});
+
+describe("panel «Tu día» y avance hacia TP/SL", () => {
+  const NOW = new Date(2026, 9, 3, 15, 0, 0); // 3 oct 2026, hora local
+  const at = (days: number, h = 10) => new Date(2026, 9, 3 + days, h, 0, 0).toISOString();
+  const mk = (over: Partial<Trade>): Trade => ({
+    id: String(Math.random()), symbol: "BTCUSDT", direction: "LONG", entry: 100, tp: 110, sl: 95, date: at(0), outcome: "ABIERTA", tags: [], ...over,
+  } as Trade);
+
+  it("suma solo lo cerrado hoy y cuenta abiertas", () => {
+    const o = todayOverview([
+      mk({ outcome: "TP", closedAt: at(0, 12) }), // +2R
+      mk({ outcome: "SL", closedAt: at(0, 13) }), // −1R
+      mk({ outcome: "TP", date: at(-1), closedAt: at(-1, 12) }), // ayer
+      mk({ outcome: "ABIERTA", date: at(-2) }),
+    ], NOW);
+    expect(o).toMatchObject({ r: 1, closed: 2, wins: 1, losses: 1, open: 1 });
+  });
+
+  it("racha activa y racha en verde (días seguidos)", () => {
+    const o = todayOverview([
+      mk({ outcome: "TP", date: at(0), closedAt: at(0, 12) }),
+      mk({ outcome: "TP", date: at(-1), closedAt: at(-1, 12) }),
+      mk({ outcome: "SL", date: at(-2), closedAt: at(-2, 12) }),
+      mk({ outcome: "TP", date: at(-3), closedAt: at(-3, 12) }),
+    ], NOW);
+    expect(o.activeStreak).toBe(4);
+    expect(o.greenStreak).toBe(2); // hoy y ayer; el SL de anteayer la corta
+  });
+
+  it("sin operaciones hoy, las rachas son 0", () => {
+    expect(todayOverview([mk({ outcome: "TP", date: at(-3), closedAt: at(-3) })], NOW)).toMatchObject({ r: 0, activeStreak: 0, greenStreak: 0 });
+  });
+
+  it("levelProgress sirve igual para LONG y SHORT", () => {
+    const long = levelProgress({ direction: "LONG", entry: 100, tp: 110, sl: 95 }, 105)!;
+    expect(long.pos).toBeCloseTo(2 / 3);
+    expect(long.entry).toBeCloseTo(1 / 3);
+    expect(long.r).toBeCloseTo(1);
+    const short = levelProgress({ direction: "SHORT", entry: 100, tp: 90, sl: 105 }, 95)!;
+    expect(short.pos).toBeCloseTo(2 / 3);
+    expect(short.r).toBeCloseTo(1);
+    expect(levelProgress({ direction: "LONG", entry: 100, tp: 110, sl: 95 }, 200)!.pos).toBe(1); // pasado el TP
+    expect(levelProgress({ direction: "LONG", entry: 100, tp: 110, sl: 95 }, 50)!.pos).toBe(0);
+    expect(levelProgress({ direction: "LONG", entry: 100, tp: 100, sl: 100 }, 100)).toBeNull();
+  });
+
+  it("binanceSymbol entiende los formatos habituales y descarta lo que no es cripto", () => {
+    expect(binanceSymbol("BTCUSDT")).toEqual({ symbol: "BTCUSDT", perp: false });
+    expect(binanceSymbol("BINANCE:SOLUSDT.P")).toEqual({ symbol: "SOLUSDT", perp: true });
+    expect(binanceSymbol("eth/usd")).toEqual({ symbol: "ETHUSDT", perp: false });
+    expect(binanceSymbol("EURUSD")).toBeNull();
+    expect(binanceSymbol("AAPL")).toBeNull();
   });
 });

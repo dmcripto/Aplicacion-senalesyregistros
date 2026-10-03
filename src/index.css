@@ -244,3 +244,179 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 .panel-body { animation: panelIn 0.18s ease-out; }
 @media (prefers-reduced-motion: reduce) { .panel-body { animation: none; } }
+
+/* ─── Diseño dinámico: vidrio, brillo al pasar el mouse, aurora y festejo ─── */
+
+.glass {
+  background: linear-gradient(180deg, rgba(27, 39, 53, 0.62), rgba(16, 23, 32, 0.72));
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--color-line);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 18px 40px -26px rgba(0, 0, 0, 0.75);
+}
+
+/* Resplandor que sigue al cursor (la posición la fija App con --mx / --my) */
+.glow-card {
+  position: relative;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.glow-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(46, 196, 241, 0.1), transparent 60%);
+}
+.glow-card:hover {
+  border-color: var(--color-line2);
+}
+.glow-card:hover::after {
+  opacity: 1;
+}
+
+/* «Tu día»: luz de fondo según el resultado */
+.today-glow-bull {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 0 0 1px rgba(22, 217, 138, 0.16),
+    0 24px 70px -30px rgba(22, 217, 138, 0.38);
+}
+.today-glow-bear {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 0 0 1px rgba(255, 77, 103, 0.16),
+    0 24px 70px -30px rgba(255, 77, 103, 0.34);
+}
+
+/* Punto del precio actual en la barra TP/SL */
+@keyframes levelPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+.level-dot {
+  animation: levelPulse 1.8s ease-out infinite;
+  transition: left 0.9s cubic-bezier(0.3, 0.8, 0.3, 1);
+}
+
+/* Fondo con vida: tres luces desenfocadas que se mueven despacio */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.aurora i {
+  position: absolute;
+  width: 46vw;
+  height: 46vw;
+  max-width: 720px;
+  max-height: 720px;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.2;
+  will-change: transform;
+}
+.aurora i:nth-child(1) {
+  background: #16d98a;
+  top: -14%;
+  left: -8%;
+  animation: auroraA 26s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(2) {
+  background: #2ec4f1;
+  top: -10%;
+  right: -12%;
+  animation: auroraB 32s ease-in-out infinite alternate;
+}
+.aurora i:nth-child(3) {
+  background: #3b5bdb;
+  bottom: -22%;
+  left: 34%;
+  opacity: 0.14;
+  animation: auroraC 38s ease-in-out infinite alternate;
+}
+@keyframes auroraA {
+  to {
+    transform: translate(18vw, 14vh) scale(1.15);
+  }
+}
+@keyframes auroraB {
+  to {
+    transform: translate(-16vw, 20vh) scale(0.9);
+  }
+}
+@keyframes auroraC {
+  to {
+    transform: translate(-22vw, -12vh) scale(1.2);
+  }
+}
+
+/* Brillo en la curva de capital */
+.eq-glow {
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* Festejo al tocar TP */
+@keyframes celebrateIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.85);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0) scale(1.04);
+  }
+  20% {
+    transform: scale(1);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+.celebrate-badge {
+  animation: celebrateIn 3.1s ease both;
+}
+@keyframes confettiFly {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(0, 0) rotate(0deg);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(var(--dx), calc(var(--dy) + 150px)) rotate(var(--rot));
+  }
+}
+.confetti {
+  animation: confettiFly 2.2s cubic-bezier(0.15, 0.7, 0.35, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora i,
+  .level-dot,
+  .celebrate-badge {
+    animation: none;
+  }
+  .confetti {
+    display: none;
+  }
+}

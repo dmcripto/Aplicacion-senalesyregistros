@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtCurrency, fmtPrice, fmtR, resultR, riskOf } from "./lib";
+import { MAX_TAGS, PRESET_TAGS, cleanTags, cx, fmtCurrency, fmtPrice, fmtR, levelProgress, resultR, riskOf } from "./lib";
 import { useMoney } from "./money";
 import type { Trade } from "./lib";
 import { useInView } from "./hooks";
@@ -160,6 +160,27 @@ export const OutcomeBadge = ({ trade }: { trade: Trade }) => {
     </span>
   );
 };
+
+/** Barra de avance de una señal abierta: del SL (izquierda) al TP (derecha), con la entrada marcada y el precio actual. */
+export function LevelBar({ trade, price, className }: { trade: Trade; price: number | undefined; className?: string }) {
+  const lp = price != null ? levelProgress(trade, price) : null;
+  if (!lp) return null;
+  const good = lp.r >= 0;
+  return (
+    <div className={cx("w-full min-w-[120px]", className)} title={`${t("Precio ahora")} ${fmtPrice(price!)}`}>
+      <div className="relative h-1.5 rounded-full bg-gradient-to-r from-bear/55 via-line2 to-bull/55">
+        <span className="absolute -top-0.5 h-2.5 w-px bg-fog/70" style={{ left: `${lp.entry * 100}%` }} aria-hidden />
+        <span
+          className={cx("level-dot absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-ink", good ? "bg-bull" : "bg-bear")}
+          style={{ left: `${lp.pos * 100}%`, color: good ? "var(--color-bull)" : "var(--color-bear)" }}
+        />
+      </div>
+      <p className={cx("num mt-1 text-[10.5px] font-semibold", good ? "text-bull" : "text-bear")}>
+        {fmtR(lp.r)}R <span className="font-normal text-dim">{t("ahora")}</span>
+      </p>
+    </div>
+  );
+}
 
 // ─── Reveal al hacer scroll ─────────────────────────────────────────────────
 

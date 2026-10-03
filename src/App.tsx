@@ -15,7 +15,7 @@ import {
 } from "./lib";
 import { NO_MONEY, balanceInfo, fmtCurrency } from "./lib";
 import type { DailyLimits, MoneySettings, Trade } from "./lib";
-import { useCountUp, useFlashId, useNow, useSession, useTrades } from "./hooks";
+import { useCountUp, useFlashId, useNow, usePrices, useSession, useTpCelebration, useTrades } from "./hooks";
 import {
   CloseModal,
   NotesModal,
@@ -70,6 +70,8 @@ import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
 import CoachCard from "./components/CoachCard";
+import TodayCard from "./components/TodayCard";
+import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
@@ -140,7 +142,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
   const bal = useMemo(() => balanceInfo(trades, money), [trades, money]);
 
   return (
-    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line md:grid-cols-4 xl:grid-cols-[1.5fr_1fr_1fr_1fr_1.15fr]">
+    <div className="glow-card grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_40px_-26px_rgba(0,0,0,.75)] md:grid-cols-4 xl:grid-cols-[1.5fr_1fr_1fr_1fr_1.15fr]">
       <div className="col-span-2 bg-panel px-5 py-4 md:col-span-4 md:py-5 xl:col-span-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("R neto acumulado")}</p>
         <p
@@ -426,6 +428,21 @@ function Dashboard({ userId }: { userId: string }) {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [flashId, flash] = useFlashId();
   const now = useNow(1000);
+  const prices = usePrices(trades);
+  const [tpHit, clearTpHit] = useTpCelebration(trades);
+
+  // Resplandor que sigue al cursor en las tarjetas con la clase glow-card.
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".glow-card");
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+      el.style.setProperty("--my", `${e.clientY - r.top}px`);
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    return () => window.removeEventListener("pointermove", move);
+  }, []);
 
   useEffect(() => {
     if (!deleteArmed) return;
@@ -605,6 +622,12 @@ function Dashboard({ userId }: { userId: string }) {
   return (
     <MoneyContext.Provider value={moneyCtx}>
     <div className="min-h-screen">
+      <div className="aurora" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </div>
+      {tpHit && <Celebration symbol={tpHit.symbol} token={tpHit.token} onDone={clearTpHit} />}
       <Ticker trades={trades} />
 
       {/* Cabecera */}
@@ -672,6 +695,9 @@ function Dashboard({ userId }: { userId: string }) {
         <WelcomeCard />
         <LimitBanner status={limitStatus} />
         <Reveal>
+          <TodayCard trades={trades} prices={prices} now={now} />
+        </Reveal>
+        <Reveal delay={90}>
           <StatsBand trades={trades} />
         </Reveal>
 
@@ -737,6 +763,7 @@ function Dashboard({ userId }: { userId: string }) {
                 onReopen={reopenTrade}
                 onNotes={setNotesTrade}
                 onLoadSample={loadSample}
+                prices={prices}
               />
             )}
           </Reveal>
