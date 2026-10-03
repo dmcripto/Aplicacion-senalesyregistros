@@ -68,12 +68,14 @@ export async function setupPush(userId: string): Promise<PushStatus> {
     };
   }
 
-  const { error } = await supabase
-    .from("device_tokens")
-    .upsert(
-      { user_id: userId, expo_push_token: token, platform: Platform.OS },
-      { onConflict: "expo_push_token" },
-    );
+  // Función del servidor: guarda el token (y lo pasa a esta cuenta si el celular venía de otra).
+  let { error } = await supabase.rpc("claim_device_token", { p_token: token, p_platform: Platform.OS });
+  if (error) {
+    // Servidor sin la función todavía: se intenta el guardado directo.
+    ({ error } = await supabase
+      .from("device_tokens")
+      .upsert({ user_id: userId, expo_push_token: token, platform: Platform.OS }, { onConflict: "expo_push_token" }));
+  }
   if (error) return { ok: false, token, message: t("No se pudo guardar este celular en tu cuenta: ") + error.message };
 
   return { ok: true, token, message: t(t("Notificaciones activas en este celular.")) };

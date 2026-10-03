@@ -21,6 +21,7 @@ import SignalsScreen from "./src/screens/SignalsScreen";
 import AddScreen from "./src/screens/AddScreen";
 import OnboardingScreen from "./src/screens/OnboardingScreen";
 import RiskScreen from "./src/screens/RiskScreen";
+import MapScreen from "./src/screens/MapScreen";
 import { dailyStatus } from "@dmcripto/core";
 import { NO_MONEY, getLang } from "@dmcripto/core";
 import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
@@ -37,12 +38,13 @@ import { t } from "@dmcripto/core";
 
 const ONBOARDING_KEY = "veltrix_onboarding_v1";
 
-type Tab = "signals" | "journal" | "add" | "risk" | "settings";
+type Tab = "signals" | "journal" | "add" | "risk" | "map" | "settings";
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: "signals", label: "Señales" },
   { key: "journal", label: "Diario" },
   { key: "add", label: "Registrar" },
   { key: "risk", label: "Riesgo" },
+  { key: "map", label: "Mapa" },
   { key: "settings", label: "Ajustes" },
 ];
 
@@ -144,6 +146,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
         {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); setTab("signals"); }} />}
         {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
+        {tab === "map" && <MapScreen />}
         {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} onSaveMoney={persistMoney} />}
       </View>
       <View style={styles.tabBar}>
