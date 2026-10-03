@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { CoachResult, DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -338,3 +338,7 @@ export async function setDailySummary(userId: string, enabled: boolean) {
   const { error } = await supabase.from("profiles").update({ daily_summary: enabled }).eq("id", userId);
   if (error) throw error;
 }
+
+// ─── Coach con IA ───────────────────────────────────────────────────────────
+
+export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;
