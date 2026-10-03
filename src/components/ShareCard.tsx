@@ -248,11 +248,15 @@ export default function ShareCard({
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: t("Mi resultado en VELTRIX") });
-      } catch {
-        /* el usuario canceló */
+      } catch (err) {
+        if ((err as { name?: string }).name === "AbortError") return; // el usuario canceló
+        // El navegador no dejó abrir el menú de compartir: se descarga la imagen para que se pueda mandar igual.
+        await download();
+        notify(t("No se pudo abrir el menú de compartir; se descargó la imagen."), "info");
       }
     } else {
-      download();
+      await download();
+      notify(t("Este navegador no permite compartir imágenes directo; se descargó para que la mandes desde tu galería."), "info");
     }
   };
 

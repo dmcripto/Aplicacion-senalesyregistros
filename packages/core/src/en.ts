@@ -323,6 +323,8 @@ export const EN: Record<string, string> = {
   "Buscar activo (ej: PEPE, LTC, ARB)": "Search asset (e.g. PEPE, LTC, ARB)",
   "Buscar activo": "Search asset",
   "No encontré ese activo (o es muy nuevo). Probá con el símbolo como en Binance, por ejemplo PEPE o LTC.": "I couldn't find that asset (or it's too new). Try the symbol as on Binance, for example PEPE or LTC.",
+  "No se pudo abrir el menú de compartir; se descargó la imagen.": "The share menu couldn't be opened; the image was downloaded.",
+  "Este navegador no permite compartir imágenes directo; se descargó para que la mandes desde tu galería.": "This browser can't share images directly; it was downloaded so you can send it from your gallery.",
   "No se pudo cargar el mapa.": "Couldn't load the map.",
   "MAPA DE LIQUIDACIONES": "LIQUIDATION MAP",
   "Dónde se acumulan liquidaciones (estimado)": "Where liquidations pile up (estimated)",
