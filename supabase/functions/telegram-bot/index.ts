@@ -10,6 +10,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
+import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, sendMessage, tgApi } from "../_shared/telegram.ts";
 import type { Lang } from "../_shared/telegram.ts";
 
@@ -73,6 +74,10 @@ const T = {
     sell: "VENTA",
     entry: "Entrada",
     groupsHint: "Escribime por privado 🙂",
+    adminOnly: "Solo un administrador de este chat puede conectar la comunidad.",
+    communityBad: "Ese código no es válido o venció. Generá uno nuevo en la app o la web, en «Bot de Telegram → Conectar comunidad».",
+    communityLinked: "✅ Comunidad conectada. Acá voy a publicar las señales y los resultados (TP/SL) de la cuenta de VELTRIX que la conectó.\n\nPara dejar de publicar: /desconectarcomunidad",
+    communityRemoved: "Listo, dejé de publicar en este chat.",
   },
   en: {
     help:
@@ -109,6 +114,10 @@ const T = {
     sell: "SELL",
     entry: "Entry",
     groupsHint: "Message me in private 🙂",
+    adminOnly: "Only an admin of this chat can connect the community.",
+    communityBad: "That code isn't valid or has expired. Generate a new one in the app or the web, under “Telegram bot → Connect community”.",
+    communityLinked: "✅ Community connected. I'll post here the signals and results (TP/SL) of the VELTRIX account that connected it.\n\nTo stop posting: /disconnectcommunity",
+    communityRemoved: "Done, I stopped posting in this chat.",
   },
 } as const;
 
@@ -164,8 +173,8 @@ const arrow = (direction: string) => (direction === "LONG" ? "▲" : "▼");
 
 async function linkAccount(chatId: number, from: any, rawCode: string, fallback: Lang) {
   const code = rawCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const { data: row } = await admin.from("telegram_link_codes").select("code, user_id, expires_at").eq("code", code).maybeSingle();
-  if (!row || new Date(row.expires_at).getTime() < Date.now()) {
+  const { data: row } = await admin.from("telegram_link_codes").select("code, user_id, expires_at, kind").eq("code", code).maybeSingle();
+  if (!row || (row.kind ?? "private") !== "private" || new Date(row.expires_at).getTime() < Date.now()) {
     if (row) await admin.from("telegram_link_codes").delete().eq("code", code);
     return say(chatId, T[fallback].badCode);
   }
@@ -229,7 +238,10 @@ async function handleCallback(cb: any) {
       .from("trades").select("id").eq("user_id", link.user_id).eq("symbol", t.symbol).eq("direction", t.direction).eq("entry", t.entry).gte("created_at", iso(60_000)).limit(1);
     if (same?.length) { dup++; continue; }
     const { error } = await admin.from("trades").insert({ user_id: link.user_id, symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp, sl: t.sl, date: new Date().toISOString() });
-    if (!error) saved++;
+    if (!error) {
+      saved++;
+      await publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l));
+    }
   }
   return edit(T[lang].registered(saved, dup));
 }
@@ -261,9 +273,42 @@ async function summary(chatId: number, link: Link, lang: Lang) {
   return say(chatId, [T[lang].summaryTitle, "", block(T[lang].last24, 86_400_000), block(T[lang].last7, 7 * 86_400_000), block(T[lang].last30, 30 * 86_400_000)].join("\n"));
 }
 
+/** Conecta (o desconecta) un grupo o canal para que el bot publique ahí las señales y resultados de una cuenta. */
+async function communityCommand(msg: any, cmd: string, rawCode: string | undefined) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token) return;
+  const fallback = guessLang(msg.from?.language_code);
+  // En grupos, solo un administrador de Telegram puede conectar. En canales solo publican administradores.
+  if (msg.chat.type !== "channel") {
+    const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
+    const status = r?.result?.status;
+    if (status !== "creator" && status !== "administrator") return say(chatId, T[fallback].adminOnly);
+  }
+  if (cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") {
+    await admin.from("telegram_communities").delete().eq("chat_id", chatId);
+    return say(chatId, T[fallback].communityRemoved);
+  }
+  const code = String(rawCode ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const { data: row } = await admin.from("telegram_link_codes").select("code, user_id, expires_at, kind").eq("code", code).maybeSingle();
+  if (!row || row.kind !== "community" || new Date(row.expires_at).getTime() < Date.now()) {
+    if (row && row.kind === "community") await admin.from("telegram_link_codes").delete().eq("code", code);
+    return say(chatId, T[fallback].communityBad);
+  }
+  await admin.from("telegram_communities").delete().eq("chat_id", chatId); // un chat, una cuenta
+  await admin.from("telegram_communities").insert({ user_id: row.user_id, chat_id: chatId, title: msg.chat.title ?? null });
+  await admin.from("telegram_link_codes").delete().eq("code", code);
+  const lang = await langOf(row.user_id, fallback);
+  return say(chatId, T[lang].communityLinked);
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
-    if (msg.chat?.id && /^\/\w+/.test(String(msg.text ?? ""))) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint);
+    const text = String(msg.text ?? "").trim();
+    const [first, ...rest] = text.split(/\s+/);
+    const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
+    if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
+    if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint);
     return;
   }
   const chatId: number = msg.chat.id;
@@ -320,10 +365,27 @@ async function handleClient(req: Request, body: Record<string, unknown>) {
     if (!username) return json({ ok: false, error: "No se pudo contactar al bot de Telegram. Probá de nuevo en unos minutos." }, 502);
     const bytes = crypto.getRandomValues(new Uint8Array(8));
     const code = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
-    await admin.from("telegram_link_codes").delete().eq("user_id", user.id);
-    const { error } = await admin.from("telegram_link_codes").insert({ code, user_id: user.id, expires_at: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString() });
+    await admin.from("telegram_link_codes").delete().eq("user_id", user.id).eq("kind", "private");
+    const { error } = await admin.from("telegram_link_codes").insert({ code, kind: "private", user_id: user.id, expires_at: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString() });
     if (error) return json({ ok: false, error: "No se pudo generar el código." }, 500);
     return json({ ok: true, code, botUsername: username, url: `https://t.me/${username}?start=${code}` });
+  }
+  if (body.action === "community_code") {
+    const username = await botUsername(bot);
+    if (!username) return json({ ok: false, error: "No se pudo contactar al bot de Telegram. Probá de nuevo en unos minutos." }, 502);
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    const code = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+    await admin.from("telegram_link_codes").delete().eq("user_id", user.id).eq("kind", "community");
+    const { error } = await admin.from("telegram_link_codes").insert({ code, kind: "community", user_id: user.id, expires_at: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString() });
+    if (error) return json({ ok: false, error: "No se pudo generar el código." }, 500);
+    return json({
+      ok: true,
+      code,
+      botUsername: username,
+      command: `/comunidad ${code}`,
+      addToGroupUrl: `https://t.me/${username}?startgroup=true`,
+      addToChannelUrl: `https://t.me/${username}?startchannel=true&admin=post_messages`,
+    });
   }
   return json({ ok: false, error: "Acción desconocida." }, 400);
 }
@@ -348,6 +410,7 @@ Deno.serve(async (req) => {
     try {
       if (body.callback_query) await handleCallback(body.callback_query);
       else if (body.message) await handleMessage(body.message);
+      else if (body.channel_post) await handleMessage(body.channel_post);
     } catch (e) {
       console.error("telegram-bot:", e instanceof Error ? e.message : e); // siempre 200: Telegram no debe reintentar
     }

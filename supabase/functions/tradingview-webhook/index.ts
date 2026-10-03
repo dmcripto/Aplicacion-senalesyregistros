@@ -9,7 +9,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
-import { esc, notifyTelegram } from "../_shared/telegram.ts";
+import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
+import { botToken, esc, notifyTelegram } from "../_shared/telegram.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -146,6 +147,11 @@ Deno.serve(async (req) => {
       lang === "en" ? "Entry" : "Entrada"
     } ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`;
   });
+
+  // Publicación en la comunidad de Telegram (si el usuario conectó una).
+  await publishToCommunities(supabase, botToken(), profile.id, (lang) =>
+    communitySignalMessage({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang),
+  );
 
   return new Response(JSON.stringify({ ok: true, trade }), {
     status: 201,

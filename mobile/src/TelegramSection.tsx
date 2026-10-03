@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { fmtDateTime, t } from "@dmcripto/core";
-import type { TelegramLink } from "@dmcripto/core";
-import { fetchTelegramLink, startTelegramLink, unlinkTelegram } from "./tradesApi";
-import type { TelegramStart } from "./tradesApi";
+import type { TelegramCommunity, TelegramLink } from "@dmcripto/core";
+import { fetchCommunities, fetchTelegramLink, removeCommunity, startCommunityLink, startTelegramLink, unlinkTelegram } from "./tradesApi";
+import type { CommunityStart, TelegramStart } from "./tradesApi";
+import * as Clipboard from "expo-clipboard";
 import { colors } from "./theme";
 
 const POLL_MS = 3000;
@@ -14,6 +15,9 @@ export default function TelegramSection({ userId }: { userId: string }) {
   const [link, setLink] = useState<TelegramLink | null | undefined>(undefined);
   const [start, setStart] = useState<TelegramStart | null>(null);
   const [busy, setBusy] = useState(false);
+  const [communities, setCommunities] = useState<TelegramCommunity[]>([]);
+  const [cStart, setCStart] = useState<CommunityStart | null>(null);
+  const cTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -21,7 +25,40 @@ export default function TelegramSection({ userId }: { userId: string }) {
     timer.current = null;
   }, []);
 
-  const reload = useCallback(async () => setLink(await fetchTelegramLink()), []);
+  const reload = useCallback(async () => {
+    setLink(await fetchTelegramLink());
+    setCommunities(await fetchCommunities());
+  }, []);
+
+  const connectCommunity = async () => {
+    setBusy(true);
+    try {
+      const r = await startCommunityLink();
+      if (!r.ok || !r.code) return Alert.alert(t("Error"), r.error ?? t("No se pudo conectar."));
+      setCStart(r);
+      if (cTimer.current) clearInterval(cTimer.current);
+      const startedAt = Date.now();
+      const before = communities.length;
+      cTimer.current = setInterval(async () => {
+        const list = await fetchCommunities();
+        if (list.length > before) {
+          if (cTimer.current) clearInterval(cTimer.current);
+          setCommunities(list);
+          setCStart(null);
+        } else if (Date.now() - startedAt > POLL_MAX_MS) {
+          if (cTimer.current) clearInterval(cTimer.current);
+          setCStart(null);
+        }
+      }, POLL_MS);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const dropCommunity = (c: TelegramCommunity) =>
+    removeCommunity(c.id)
+      .then(() => setCommunities((l) => l.filter((x) => x.id !== c.id)))
+      .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo desconectar.")));
 
   useEffect(() => {
     void reload();
@@ -29,6 +66,7 @@ export default function TelegramSection({ userId }: { userId: string }) {
     return () => {
       sub.remove();
       stopPolling();
+      if (cTimer.current) clearInterval(cTimer.current);
     };
   }, [reload, stopPolling]);
 
@@ -86,6 +124,42 @@ export default function TelegramSection({ userId }: { userId: string }) {
           <Text style={s.hint}>{t("• Pegá o reenviá una señal al bot y confirmá con un toque.")}</Text>
           <Text style={s.hint}>{t("• Te avisa cuando llega una alerta o se toca un TP/SL.")}</Text>
           <Text style={s.hint}>{t("• Comandos: /abiertas, /resumen, /idioma, /desvincular.")}</Text>
+          <View style={s.community}>
+            <Text style={s.communityTitle}>{t("Tu comunidad")}</Text>
+            {communities.length === 0 && !cStart && (
+              <Text style={s.hint}>{t("Conectá un grupo o canal de Telegram y el bot publica ahí tus señales y cuando toquen TP o SL, sin mostrar tu dinero.")}</Text>
+            )}
+            {communities.map((c) => (
+              <View key={c.id} style={s.row}>
+                <Text style={s.name}>
+                  {c.title ?? t("Comunidad")} <Text style={[s.status, { color: colors.bull }]}>{t("Publicando")}</Text>
+                </Text>
+                <TouchableOpacity onPress={() => dropCommunity(c)}>
+                  <Text style={s.link}>{t("Desconectar")}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+            {cStart ? (
+              <View style={s.notice}>
+                <Text style={s.hint}>{t("1. Agregá el bot a tu grupo o canal:")}</Text>
+                <TouchableOpacity onPress={() => cStart.addToGroupUrl && Linking.openURL(cStart.addToGroupUrl).catch(() => {})}>
+                  <Text style={s.link}>{t("Agregar a un grupo")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => cStart.addToChannelUrl && Linking.openURL(cStart.addToChannelUrl).catch(() => {})}>
+                  <Text style={s.link}>{t("Agregar a un canal")}</Text>
+                </TouchableOpacity>
+                <Text style={s.hint}>{t("2. Escribí este mensaje en ese grupo o canal (tenés que ser administrador):")}</Text>
+                <TouchableOpacity onPress={() => cStart.command && Clipboard.setStringAsync(cStart.command)}>
+                  <Text style={s.noticeText}>{cStart.command} · {t("Tocá para copiar")}</Text>
+                </TouchableOpacity>
+                <Text style={s.hint}>{t("Esto se completa solo en unos segundos. El código dura 10 minutos.")}</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={s.outline} onPress={connectCommunity} disabled={busy}>
+                <Text style={[s.outlineText, { color: colors.gold }]}>{communities.length ? t("Conectar otra comunidad") : t("Conectar comunidad")}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <TouchableOpacity style={s.outline} onPress={disconnect}>
             <Text style={s.outlineText}>{t("Desconectar")}</Text>
           </TouchableOpacity>
@@ -128,6 +202,8 @@ const s = StyleSheet.create({
   link: { color: colors.gold, fontSize: 12, fontWeight: "800", textDecorationLine: "underline" },
   btn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 12, alignItems: "center" },
   btnText: { color: colors.ink, fontWeight: "800", fontSize: 12.5, letterSpacing: 0.5 },
+  community: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, gap: 8 },
+  communityTitle: { color: colors.dim, fontSize: 10, fontWeight: "700", letterSpacing: 1.2, textTransform: "uppercase" },
   outline: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
   outlineText: { color: colors.dim, fontWeight: "700", fontSize: 12 },
 });

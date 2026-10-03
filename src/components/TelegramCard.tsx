@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
-import type { TelegramLink } from "../lib";
+import type { TelegramCommunity, TelegramLink } from "../lib";
 import Panel from "./Panel";
-import { fetchDailySummary, fetchTelegramLink, setDailySummary, startTelegramLink, unlinkTelegram } from "../tradesApi";
-import type { TelegramStart } from "../tradesApi";
+import { fetchCommunities, fetchDailySummary, fetchTelegramLink, removeCommunity, setDailySummary, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
+import type { CommunityStart, TelegramStart } from "../tradesApi";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
@@ -16,6 +16,15 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const [daily, setDaily] = useState(true);
+  const [communities, setCommunities] = useState<TelegramCommunity[]>([]);
+  const [cStart, setCStart] = useState<CommunityStart | null>(null);
+  const [cBusy, setCBusy] = useState(false);
+  const cTimer = useRef<number | null>(null);
+
+  const stopCommunityPolling = useCallback(() => {
+    if (cTimer.current != null) window.clearInterval(cTimer.current);
+    cTimer.current = null;
+  }, []);
   const timer = useRef<number | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -28,8 +37,58 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   useEffect(() => {
     void reload();
     fetchDailySummary(userId).then(setDaily).catch(() => {});
-    return stopPolling;
-  }, [reload, stopPolling, userId]);
+    void fetchCommunities().then(setCommunities);
+    return () => {
+      stopPolling();
+      stopCommunityPolling();
+    };
+  }, [reload, stopPolling, stopCommunityPolling, userId]);
+
+  const connectCommunity = async () => {
+    setCBusy(true);
+    try {
+      const r = await startCommunityLink();
+      if (!r.ok || !r.code) return notify(r.error ?? t("No se pudo conectar."), "err");
+      setCStart(r);
+      stopCommunityPolling();
+      const startedAt = Date.now();
+      const before = communities.length;
+      cTimer.current = window.setInterval(async () => {
+        const list = await fetchCommunities();
+        if (list.length > before) {
+          stopCommunityPolling();
+          setCommunities(list);
+          setCStart(null);
+          notify(t("Comunidad conectada."));
+        } else if (Date.now() - startedAt > POLL_MAX_MS) {
+          stopCommunityPolling();
+          setCStart(null);
+        }
+      }, POLL_MS);
+    } finally {
+      setCBusy(false);
+    }
+  };
+
+  const dropCommunity = async (id: string) => {
+    try {
+      await removeCommunity(id);
+      setCommunities((l) => l.filter((c) => c.id !== id));
+      notify(t("Comunidad desconectada."), "info");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t("No se pudo desconectar."), "err");
+    }
+  };
+
+  const copyCommand = async () => {
+    if (!cStart?.command) return;
+    try {
+      await navigator.clipboard.writeText(cStart.command);
+      notify(t("Comando copiado."));
+    } catch {
+      notify(t("No se pudo copiar automáticamente — seleccioná el texto a mano."), "err");
+    }
+  };
 
   const toggleDaily = async () => {
     const next = !daily;
@@ -121,6 +180,48 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
                 {t("cada noche a las 21:00 te mandamos cómo te fue en el día, con tus rachas. Si no operaste, no te molestamos.")}
               </span>
             </label>
+            <div className="space-y-2 rounded-md border border-line bg-ink/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-dim">{t("Tu comunidad")}</p>
+              {communities.length === 0 && !cStart && (
+                <p className="text-[11.5px] leading-relaxed text-fog">
+                  {t("Conectá un grupo o canal de Telegram y el bot publica ahí tus señales y cuando toquen TP o SL, sin mostrar tu dinero.")}
+                </p>
+              )}
+              {communities.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-2 text-[12px]">
+                  <span className="min-w-0 truncate font-bold text-snow">
+                    {c.title ?? t("Comunidad")} <span className="text-[10px] font-semibold uppercase tracking-wider text-bull">{t("Publicando")}</span>
+                  </span>
+                  <button onClick={() => dropCommunity(c.id)} className="shrink-0 rounded border border-line px-2 py-1 text-[10.5px] font-semibold text-dim hover:border-bear/50 hover:text-bear">
+                    {t("Desconectar")}
+                  </button>
+                </div>
+              ))}
+              {cStart ? (
+                <ol className="list-decimal space-y-2 pl-4 text-[11.5px] leading-relaxed text-fog">
+                  <li>
+                    {t("Agregá el bot a tu")}{" "}
+                    <a href={cStart.addToGroupUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-cyan underline">{t("grupo")}</a> {t("o")}{" "}
+                    <a href={cStart.addToChannelUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-cyan underline">{t("canal")}</a>.
+                  </li>
+                  <li>
+                    {t("Escribí este mensaje en ese grupo o canal (tenés que ser administrador):")}
+                    <button onClick={copyCommand} className="mt-1 block w-full rounded border border-gold/40 bg-golddeep/30 px-2 py-1.5 text-left font-mono text-[12px] font-bold text-gold">
+                      {cStart.command} <span className="float-right text-[10px] font-semibold uppercase">{t("Copiar")}</span>
+                    </button>
+                  </li>
+                  <li>{t("Esto se completa solo en unos segundos. El código dura 10 minutos.")}</li>
+                </ol>
+              ) : (
+                <button
+                  onClick={connectCommunity}
+                  disabled={cBusy}
+                  className="w-full rounded-md border border-gold/45 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-50"
+                >
+                  {cBusy ? t("Un momento…") : communities.length ? t("Conectar otra comunidad") : t("Conectar comunidad")}
+                </button>
+              )}
+            </div>
             {armed ? (
               <button onClick={disconnect} className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-bear">
                 {t("Confirmar: desconectar Telegram")}

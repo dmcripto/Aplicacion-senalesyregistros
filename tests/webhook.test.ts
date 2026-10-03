@@ -25,6 +25,7 @@ beforeEach(() => {
     profiles: [{ id: "u1", webhook_token: WEBHOOK, lang: "es" }],
     device_tokens: [{ user_id: "u1", expo_push_token: "ExponentPushToken[abc]" }],
     telegram_links: [{ user_id: "u1", chat_id: 555 }],
+    telegram_communities: [],
   });
   vi.stubGlobal("fetch", async (url: any, init: any) => {
     const body = init?.body ? JSON.parse(init.body) : null;
@@ -47,6 +48,23 @@ describe("webhook de TradingView", () => {
     expect(tg[0].body).toMatchObject({ chat_id: 555, parse_mode: "HTML" });
     expect(tg[0].body.text).toMatch(/Nueva señal/);
     expect(tg[0].body.text).toMatch(/BTCUSDT/);
+  });
+
+  it("publica la señal en la comunidad conectada, además del aviso privado", async () => {
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    expect((await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).status).toBe(201);
+    const posted = telegramCalls().filter((c) => c.body.chat_id === -1001);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].body.text).toMatch(/Nueva señal/);
+    expect(posted[0].body.text).toMatch(/no es asesoramiento financiero/);
+    expect(telegramCalls().filter((c) => c.body.chat_id === 555)).toHaveLength(1); // el aviso privado sigue
+  });
+
+  it("una comunidad caída no impide guardar la señal", async () => {
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    telegramBlocked = true;
+    expect((await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).status).toBe(201);
+    expect(db.tables.trades).toHaveLength(1);
   });
 
   it("avisa en el idioma del usuario", async () => {
