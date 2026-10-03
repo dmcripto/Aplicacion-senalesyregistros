@@ -261,6 +261,8 @@ export const EN: Record<string, string> = {
   "Riesgo 1 : Beneficio —": "Risk 1 : Reward —",
   "Riesgo 1 : Beneficio {rr}": "Risk 1 : Reward {rr}",
   "Añadir al diario": "Add to journal",
+  "CONEXIONES Y AJUSTES": "CONNECTIONS & SETTINGS",
+  "Tus señales, tu exchange, tu capital y tus límites": "Your signals, your exchange, your capital and your limits",
   "No se pudo cargar el mapa.": "Couldn't load the map.",
   "MAPA DE LIQUIDACIONES": "LIQUIDATION MAP",
   "Dónde se acumulan liquidaciones (estimado)": "Where liquidations pile up (estimated)",
