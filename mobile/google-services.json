@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "76579135268",
+    "project_id": "veltrix-9ef60",
+    "storage_bucket": "veltrix-9ef60.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:76579135268:android:d775945dee829e27e35db1",
+        "android_client_info": {
+          "package_name": "com.dmcripto.senales"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAPBbHYF9eBIipvsk4c4vEPty4AxLweSvM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
