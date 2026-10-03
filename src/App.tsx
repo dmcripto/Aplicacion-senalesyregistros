@@ -69,6 +69,7 @@ import ExchangeCard from "./components/ExchangeCard";
 import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
+import CoachCard from "./components/CoachCard";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
@@ -743,6 +744,9 @@ function Dashboard({ userId }: { userId: string }) {
           <div className="min-w-0 space-y-5 max-lg:contents">
             <Reveal delay={160} className="max-lg:order-6">
               <Analysis trades={trades} />
+            </Reveal>
+            <Reveal delay={170} className="max-lg:order-6">
+              <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />
             </Reveal>
             {trades.length > 0 && (
               <Reveal delay={180} className="max-lg:order-7">

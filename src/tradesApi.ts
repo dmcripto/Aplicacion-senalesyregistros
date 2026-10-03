@@ -5,7 +5,7 @@
 
 import { t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { CoachResult, DailyLimits, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -343,3 +343,7 @@ export async function setDailySummary(userId: string, enabled: boolean) {
   const { error } = await supabase.from("profiles").update({ daily_summary: enabled }).eq("id", userId);
   if (error) throw error;
 }
+
+// ─── Coach con IA ───────────────────────────────────────────────────────────
+
+export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;

@@ -4,6 +4,7 @@ import { resultR } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { AnalysisBlock, Empty, EquityBars, MonthlyList, StatsGrid, TagList, TradeCard } from "../components";
 import ShareCardModal from "../ShareCardModal";
+import CoachCard from "../CoachCard";
 import { colors } from "../theme";
 import { t } from "@dmcripto/core";
 
@@ -47,6 +48,7 @@ export default function JournalScreen({
           <EquityBars trades={trades} />
           <MonthlyList trades={trades} />
           <AnalysisBlock trades={trades} />
+          <CoachCard closedCount={closed.length} />
           <TagList trades={trades} />
           <Text style={s.title}>{t("HISTORIAL")}</Text>
           <View style={s.chips}>

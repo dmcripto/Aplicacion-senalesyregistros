@@ -67,6 +67,7 @@
       <li><b>Money settings (optional)</b> — starting capital, risk per trade and currency, if you choose to enter them to see results in money.</li>
       <li><b>Exchange API keys (optional)</b> — if you connect Binance or Bybit: your <b>read-only</b> API key and secret, stored encrypted on the server, and the closed trades imported with them. VELTRIX rejects keys that allow trading or withdrawing and never trades on your behalf.</li>
       <li><b>Time zone</b> — your device's, only to send you the daily summary at 9 PM your time. You can turn the summary off in Settings.</li>
+      <li><b>AI coach (optional)</b> — when you ask for an analysis, statistics calculated from your closed trades (for example, results by day and time) are sent to an AI service. Your exchange keys, email and other personal data are not sent. The analysis text is stored in your account.</li>
       <li><b>Telegram (optional)</b> — if you connect the VELTRIX bot: your chat identifier and Telegram username, to send you alerts and log the signals you send it. You can disconnect it at any time.</li>
       <li><b>Error diagnostics</b> — if the app or the web fails unexpectedly, the technical error message, version and platform are stored against your account, only to fix the problem.</li>
       <li><b>Preferences</b> — your language, daily limits and auto-close setting.</li>
@@ -92,7 +93,7 @@
     <p>
       We do not sell or share your data with third parties. The only external services that process
       data on your behalf are Supabase (database and authentication), Expo (sending push
-      notifications) and, if you connect it, Telegram (alerts and bot) — all as infrastructure providers, not as final recipients of your information.
+      notifications), Anthropic (only if you use the AI coach: it receives statistics calculated from your journal, never your keys or email) and, if you connect it, Telegram (alerts and bot) — all as infrastructure providers, not as final recipients of your information.
     </p>
 
     <h2>Your rights</h2>

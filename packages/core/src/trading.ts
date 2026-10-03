@@ -1029,3 +1029,29 @@ export const fmtUsdShort = (n: number) =>
 
 /** Colores de cada apalancamiento (de menor a mayor). */
 export const LEVERAGE_COLORS = ["#3b82f6", "#06b6d4", "#22c55e", "#f59e0b", "#ef4444"];
+
+// ─── Coach con IA ───────────────────────────────────────────────────────────
+
+export type CoachResult =
+  | { ok: true; text: string; closed: number; cached: boolean; createdAt: string }
+  | { ok: false; reason: "not_enough_data"; needed: number; have: number }
+  | { ok: false; reason: "limit"; createdAt: string | null; text: string | null }
+  | { ok: false; reason: "refused" | "unavailable" | "no_key" }
+  | { ok: false; error: string; reason?: undefined };
+
+/** Mensaje para mostrar cuando el coach no pudo dar un informe. */
+export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
+  if ("error" in r && r.error) return r.error;
+  switch (r.reason) {
+    case "not_enough_data":
+      return tr("Para encontrar patrones necesito al menos {n} operaciones cerradas (tenés {have}). Seguí registrando y volvé.", { n: r.needed, have: r.have });
+    case "limit":
+      return tr("Ya hiciste varios análisis hoy. Mañana podés pedir uno nuevo.");
+    case "no_key":
+      return tr("El coach todavía no está activado en el servidor.");
+    case "refused":
+      return tr("No pude armar un análisis con estos datos. Probá de nuevo más tarde.");
+    default:
+      return tr("No se pudo generar el análisis ahora. Probá de nuevo en unos minutos.");
+  }
+}
