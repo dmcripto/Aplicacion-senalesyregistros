@@ -1062,3 +1062,22 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
       return tr("No se pudo generar el análisis ahora. Probá de nuevo en unos minutos.");
   }
 }
+
+// ─── Compartir una señal (WhatsApp, etc.) ───────────────────────────────────
+
+/** Texto listo para mandar a un contacto o grupo. No incluye dinero ni datos de la cuenta. */
+export function signalShareMessage(t: Trade): string {
+  const risk = Math.abs(t.entry - t.sl);
+  const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
+  const side = t.direction === "LONG" ? tr("COMPRA") : tr("VENTA");
+  return [
+    `📢 ${tr("Nueva señal")}`,
+    `${t.direction === "LONG" ? "▲" : "▼"} ${t.symbol} ${side}`,
+    `${tr("Entrada")} ${t.entry} · TP ${t.tp} · SL ${t.sl} · R:R 1:${rr.toFixed(1)}`,
+    `⚠️ ${tr("Información para registro personal: no es asesoramiento financiero.")}`,
+    "VELTRIX",
+  ].join("\n");
+}
+
+/** Enlace que abre WhatsApp con el texto ya escrito, para elegir el contacto o grupo. */
+export const whatsappShareUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;

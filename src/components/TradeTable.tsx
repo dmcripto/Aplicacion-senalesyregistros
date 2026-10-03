@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cx, exchangeName, fmtDateTime, fmtPrice, locale, resultR, rrOf } from "../lib";
+import { cx, exchangeName, fmtDateTime, fmtPrice, locale, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "../lib";
 import type { Trade } from "../lib";
 import {
   DirBadge,
@@ -239,6 +239,16 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1.5">
+                        <a
+                          href={whatsappShareUrl(signalShareMessage(tr))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={t("Enviar esta señal por WhatsApp")}
+                          aria-label={t("Enviar esta señal por WhatsApp")}
+                          className={cx(iconBtn, "hover:border-bull/50 hover:bg-bull/10 hover:text-bull")}
+                        >
+                          WhatsApp
+                        </a>
                         <button
                           onClick={() => onNotes(tr)}
                           title={t("Notas y etiquetas")}
