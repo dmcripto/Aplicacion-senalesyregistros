@@ -65,24 +65,24 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             <LinearGradient colors={["transparent", good ? "rgba(22,217,138,0.22)" : "rgba(255,77,103,0.2)"]} start={{ x: 0.3, y: 0.6 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
 
             <View style={st.cardTop}>
-              <Logo size={40} />
+              <Logo size={34} />
               <View style={{ flex: 1 }}>
-                <Text style={st.brand}>VELTRIX</Text>
-                <Text style={st.brandSub}>{t("Diario de trading")}</Text>
+                <Text allowFontScaling={false} style={st.brand}>VELTRIX</Text>
+                <Text allowFontScaling={false} style={st.brandSub}>{t("Diario de trading")}</Text>
               </View>
               <View style={{ alignItems: "flex-end" }}>
-                <Text style={st.period}>{s.label}</Text>
-                <Text style={st.periodSub}>
+                <Text allowFontScaling={false} style={st.period}>{s.label}</Text>
+                <Text allowFontScaling={false} style={st.periodSub}>
                   {s.closed} {s.closed === 1 ? t("operación") : t("operaciones")}
                 </Text>
               </View>
             </View>
 
-            <Text style={st.kicker}>{t("RESULTADO NETO")}</Text>
-            <Text style={[st.big, { color: accent, textShadowColor: accent }]}>{s.closed === 0 ? "0R" : `${fmtR(s.netR)}R`}</Text>
+            <Text allowFontScaling={false} style={st.kicker}>{t("RESULTADO NETO")}</Text>
+            <Text allowFontScaling={false} style={[st.big, { color: accent, textShadowColor: accent }]}>{s.closed === 0 ? "0R" : `${fmtR(s.netR)}R`}</Text>
 
             <View style={st.chart}>
-              <AreaChart values={s.curve} color={accent === colors.fog ? colors.cyan : accent} height={82} />
+              <AreaChart values={s.curve} color={accent === colors.fog ? colors.cyan : accent} height={54} />
             </View>
 
             <View style={st.stats}>
@@ -91,7 +91,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
               <Stat label={t("MEJOR")} value={s.closed ? `${fmtR(s.bestR)}R` : "—"} />
             </View>
 
-            <Text style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
+            <Text allowFontScaling={false} style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
             <View style={st.badge}>
               <Svg width={16} height={18} viewBox="0 0 42 48">
                 <Path d="M0 0 L23 24 L0 48 Z" fill="#00a0ff" />
@@ -100,11 +100,11 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
                 <Path d="M0 48 L23 24 L31 30.2 Z" fill="#ff3d57" />
               </Svg>
               <View>
-                <Text style={st.badgeTop}>{t("PRÓXIMAMENTE EN")}</Text>
-                <Text style={st.badgeMain}>Google Play</Text>
+                <Text allowFontScaling={false} style={st.badgeTop}>{t("PRÓXIMAMENTE EN")}</Text>
+                <Text allowFontScaling={false} style={st.badgeMain}>Google Play</Text>
               </View>
             </View>
-            <Text style={st.legal}>{t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.")}</Text>
+            <Text allowFontScaling={false} style={st.legal}>{t("Resultados pasados no garantizan resultados futuros. No es asesoramiento financiero.")}</Text>
           </View>
 
           <TouchableOpacity style={st.shareBtn} onPress={share} disabled={busy}>
@@ -120,8 +120,8 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <View style={st.stat}>
-      <Text style={st.statLabel}>{label}</Text>
-      <Text style={st.statValue}>{value}</Text>
+      <Text allowFontScaling={false} style={st.statLabel}>{label}</Text>
+      <Text allowFontScaling={false} style={st.statValue}>{value}</Text>
     </View>
   );
 }
@@ -136,24 +136,24 @@ const st = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   tabOn: { backgroundColor: colors.gold },
   tabText: { color: colors.fog, fontWeight: "800", fontSize: 12 },
-  card: { alignSelf: "center", width: 300, height: 375, borderRadius: 14, overflow: "hidden", padding: 16, justifyContent: "flex-start", borderWidth: 1, borderColor: colors.line },
+  card: { alignSelf: "center", width: 300, height: 375, borderRadius: 14, overflow: "hidden", padding: 14, justifyContent: "flex-start", borderWidth: 1, borderColor: colors.line },
   cardTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  brand: { color: colors.snow, fontWeight: "900", fontSize: 17, letterSpacing: 0.6 },
+  brand: { color: colors.snow, fontWeight: "900", fontSize: 17, lineHeight: 20, letterSpacing: 0.6 },
   brandSub: { color: colors.gold, fontSize: 9.5, fontWeight: "700" },
   period: { color: colors.snow, fontWeight: "800", fontSize: 10.5 },
   periodSub: { color: colors.fog, fontSize: 9 },
-  kicker: { color: colors.fog, fontSize: 9, fontWeight: "800", letterSpacing: 1.5, textAlign: "center", marginTop: 16 },
-  big: { fontSize: 58, fontWeight: "900", textAlign: "center", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 },
+  kicker: { color: colors.fog, fontSize: 9, fontWeight: "800", letterSpacing: 1.5, textAlign: "center", marginTop: 10 },
+  big: { fontSize: 52, lineHeight: 60, fontWeight: "900", textAlign: "center", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 },
   chart: { backgroundColor: "rgba(16,23,32,0.85)", borderRadius: 10, borderWidth: 1, borderColor: colors.line, padding: 8, marginTop: 4 },
   stats: { flexDirection: "row", gap: 6, marginTop: 8 },
-  stat: { flex: 1, backgroundColor: "rgba(16,23,32,0.85)", borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingVertical: 6, alignItems: "center" },
-  statLabel: { color: colors.fog, fontSize: 7.5, fontWeight: "800", letterSpacing: 0.8 },
-  statValue: { color: colors.snow, fontSize: 17, fontWeight: "900", marginTop: 1 },
-  cta: { color: colors.snow, fontSize: 10.5, fontWeight: "800", textAlign: "center", marginTop: 10 },
-  badge: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#000", borderWidth: 1, borderColor: "#a6a6a6", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, marginTop: 6 },
-  badgeTop: { color: "#fff", fontSize: 5.5, fontWeight: "700", letterSpacing: 0.4 },
-  badgeMain: { color: "#fff", fontSize: 13, fontWeight: "700", marginTop: -1 },
-  legal: { color: colors.dim, fontSize: 6.5, textAlign: "center", marginTop: 4 },
+  stat: { flex: 1, backgroundColor: "rgba(16,23,32,0.85)", borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingVertical: 4, alignItems: "center" },
+  statLabel: { color: colors.fog, fontSize: 7.5, lineHeight: 10, fontWeight: "800", letterSpacing: 0.8 },
+  statValue: { color: colors.snow, fontSize: 17, lineHeight: 21, fontWeight: "900", marginTop: 1 },
+  cta: { color: colors.snow, fontSize: 10.5, lineHeight: 14, fontWeight: "800", textAlign: "center", marginTop: 7 },
+  badge: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#000", borderWidth: 1, borderColor: "#a6a6a6", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, marginTop: 5 },
+  badgeTop: { color: "#fff", fontSize: 5.5, lineHeight: 8, fontWeight: "700", letterSpacing: 0.4 },
+  badgeMain: { color: "#fff", fontSize: 13, lineHeight: 16, fontWeight: "700", marginTop: -1 },
+  legal: { color: colors.dim, fontSize: 6.5, lineHeight: 9, textAlign: "center", marginTop: 4 },
   shareBtn: { backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 14 },
   shareText: { color: colors.ink, fontWeight: "900", fontSize: 14 },
   note: { color: colors.dim, fontSize: 10.5, textAlign: "center", marginTop: 8 },
