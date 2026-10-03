@@ -1080,3 +1080,91 @@ export function signalShareMessage(t: Trade): string {
 
 /** Enlace que abre WhatsApp con el texto ya escrito, para elegir el contacto o grupo. */
 export const whatsappShareUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;
+
+// ─── Panel «Tu día» y avance hacia TP/SL ────────────────────────────────────
+
+export interface TodayOverview {
+  r: number; // R neto de lo cerrado hoy
+  closed: number;
+  wins: number;
+  losses: number;
+  open: number; // señales abiertas (de cualquier día)
+  activeStreak: number; // días seguidos con actividad
+  greenStreak: number; // días seguidos cerrando en verde
+}
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Resumen del día en la zona horaria del navegador, con las mismas rachas que el resumen diario por Telegram. */
+export function todayOverview(trades: Trade[], now = new Date()): TodayOverview {
+  const opened = new Set<string>();
+  const closedN = new Map<string, number>();
+  const closedR = new Map<string, number>();
+  let open = 0;
+  const today = dayKey(now);
+  const out: TodayOverview = { r: 0, closed: 0, wins: 0, losses: 0, open: 0, activeStreak: 0, greenStreak: 0 };
+  for (const t of trades) {
+    opened.add(dayKey(new Date(t.date)));
+    if (t.outcome === "ABIERTA") {
+      open++;
+      continue;
+    }
+    const day = dayKey(new Date(t.closedAt ?? t.date));
+    const r = resultR(t) ?? 0;
+    closedN.set(day, (closedN.get(day) ?? 0) + 1);
+    closedR.set(day, (closedR.get(day) ?? 0) + r);
+    if (day === today) {
+      out.r += r;
+      out.closed++;
+      if (r > 0) out.wins++;
+      else if (r < 0) out.losses++;
+    }
+  }
+  out.open = open;
+  const back = (i: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    return dayKey(d);
+  };
+  for (let i = 0; i < 60; i++) {
+    const d = back(i);
+    if (!opened.has(d) && !closedN.has(d)) break;
+    out.activeStreak++;
+  }
+  for (let i = 0; i < 60; i++) {
+    const d = back(i);
+    if (!((closedN.get(d) ?? 0) > 0 && (closedR.get(d) ?? 0) > 0)) break;
+    out.greenStreak++;
+  }
+  return out;
+}
+
+/**
+ * Qué tan cerca está el precio del TP: 0 = en el SL, 1 = en el TP (sirve igual para LONG y SHORT).
+ * `entry` es la posición de la entrada en esa misma escala. `r` es el resultado en R si se cerrara ahora.
+ */
+export function levelProgress(t: Pick<Trade, "direction" | "entry" | "tp" | "sl">, price: number) {
+  const span = t.tp - t.sl;
+  if (!span || !isFinite(price)) return null;
+  const clamp = (n: number) => Math.min(1, Math.max(0, n));
+  const risk = Math.abs(t.entry - t.sl);
+  const dir = t.direction === "LONG" ? 1 : -1;
+  return {
+    pos: clamp((price - t.sl) / span),
+    entry: clamp((t.entry - t.sl) / span),
+    r: risk > 0 ? (dir * (price - t.entry)) / risk : 0,
+  };
+}
+
+const NOT_CRYPTO = new Set(["EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD", "XAU", "XAG", "SPX", "NAS", "US", "DXY"]);
+
+/** "BTCUSDT", "BINANCE:SOLUSDT.P", "ETH/USDT" → símbolo de Binance y si es de futuros; null si no es cripto. */
+export function binanceSymbol(raw: string): { symbol: string; perp: boolean } | null {
+  let s = raw.toUpperCase().trim();
+  if (s.includes(":")) s = s.split(":").pop()!;
+  const perp = /\.P$|PERP$/.test(s);
+  s = s.replace(/\.P$|PERP$/, "").replace(/[-_/]/g, "");
+  const m = s.match(/^([A-Z0-9]{2,15}?)(USDT|USDC|BUSD|USD)$/);
+  if (!m || NOT_CRYPTO.has(m[1])) return null;
+  return { symbol: `${m[1]}${m[2] === "USDC" ? "USDC" : "USDT"}`, perp };
+}

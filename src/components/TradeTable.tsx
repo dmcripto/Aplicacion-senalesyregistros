@@ -9,6 +9,7 @@ import {
   IconTrash,
   IconUndo,
   IconX,
+  LevelBar,
   OutcomeBadge,
 } from "../ui";
 import { t } from "../lib";
@@ -26,9 +27,11 @@ interface Props {
   onReopen: (id: string) => void;
   onNotes: (t: Trade) => void;
   onLoadSample: () => void;
+  /** Precio actual por id de señal abierta (opcional). */
+  prices?: Record<string, number>;
 }
 
-export default function TradeTable({ trades, flashId, onMark, onManual, onDelete, onReopen, onNotes, onLoadSample }: Props) {
+export default function TradeTable({ trades, flashId, onMark, onManual, onDelete, onReopen, onNotes, onLoadSample, prices }: Props) {
   const [q, setQ] = useState("");
   const [dirF, setDirF] = useState<"all" | "LONG" | "SHORT">("all");
   const [estado, setEstado] = useState<EstadoF>("all");
@@ -236,6 +239,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     <td className="num px-3 py-3 text-right text-fog">1:{rr.toFixed(2)}</td>
                     <td className="px-3 py-3">
                       <OutcomeBadge trade={tr} />
+                      {abierta && <LevelBar trade={tr} price={prices?.[tr.id]} className="mt-2 max-w-[150px]" />}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex justify-end gap-1.5">

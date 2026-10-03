@@ -133,8 +133,12 @@ function EquityBody({ trades }: { trades: Trade[] }) {
             pathLength={1}
             strokeDasharray={1}
             strokeDashoffset={inView ? 0 : 1}
-            style={{ transition: "stroke-dashoffset 1.3s cubic-bezier(.4,0,.2,1) .15s" }}
+            className="eq-glow"
+            style={{ color: stroke, transition: "stroke-dashoffset 1.3s cubic-bezier(.4,0,.2,1) .15s" }}
           />
+
+          {/* último punto con pulso */}
+          <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="4" fill={stroke} className="live-dot eq-glow" style={{ color: stroke }} />
 
           {/* puntos */}
           {pts.map((p, i) => (

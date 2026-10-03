@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import { fetchTrades, rowToTrade } from "./tradesApi";
+import { binanceSymbol } from "./lib";
 import type { Trade } from "./lib";
 
 export function useSession() {
@@ -82,11 +83,11 @@ export function useNow(intervalMs = 1000) {
 }
 
 export function useInView<T extends HTMLElement>(threshold = 0.18) {
-  const ref = useRef<T | null>(null);
+  // Ref con función: si el elemento aparece o cambia después (por ejemplo, cuando llegan los datos), se vuelve a observar.
+  const [el, setEl] = useState<T | null>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    if (!el || inView) return;
     if (typeof IntersectionObserver === "undefined") {
       setInView(true);
       return;
@@ -102,8 +103,8 @@ export function useInView<T extends HTMLElement>(threshold = 0.18) {
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [threshold]);
-  return [ref, inView] as const;
+  }, [el, threshold, inView]);
+  return [setEl, inView] as const;
 }
 
 /** Anima un número desde su valor previo hasta el nuevo (ease-out). */
@@ -143,4 +144,80 @@ export function useFlashId() {
   }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   return [flashId, flash] as const;
+}
+
+/**
+ * Precio actual de las señales abiertas (criptomonedas, datos públicos de Binance), para mostrar qué tan cerca están del TP o del SL.
+ * Se actualiza cada 20 s y solo con la pestaña visible. Si no hay conexión o el activo no existe, simplemente no hay barra.
+ */
+export function usePrices(trades: Trade[]) {
+  const [prices, setPrices] = useState<Record<string, number>>({});
+  const key = trades
+    .filter((t) => t.outcome === "ABIERTA")
+    .map((t) => t.id + "=" + t.symbol)
+    .sort()
+    .join("|");
+
+  useEffect(() => {
+    const open = key ? key.split("|").map((x) => x.split("=")) : [];
+    const targets = new Map<string, { symbol: string; perp: boolean }>();
+    for (const [, sym] of open) {
+      const b = binanceSymbol(sym);
+      if (b) targets.set(sym, b);
+    }
+    if (!targets.size) {
+      setPrices({});
+      return;
+    }
+    let stop = false;
+    const load = async () => {
+      if (document.hidden) return;
+      const bySymbol: Record<string, number> = {};
+      await Promise.all(
+        [...targets.entries()].slice(0, 12).map(async ([raw, b]) => {
+          try {
+            const base = b.perp ? "https://fapi.binance.com/fapi/v1" : "https://api.binance.com/api/v3";
+            const res = await fetch(`${base}/ticker/price?symbol=${b.symbol}`, { signal: AbortSignal.timeout(6000) });
+            if (!res.ok) return;
+            const price = Number((await res.json()).price);
+            if (price > 0) bySymbol[raw] = price;
+          } catch {
+            /* sin precio: no se muestra la barra */
+          }
+        }),
+      );
+      if (stop) return;
+      const byId: Record<string, number> = {};
+      for (const [id, sym] of open) if (bySymbol[sym] != null) byId[id] = bySymbol[sym];
+      setPrices(byId);
+    };
+    void load();
+    const timer = window.setInterval(load, 20_000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [key]);
+
+  return prices;
+}
+
+/** Avisa cuando una señal pasa de abierta a TP mientras mirás la pantalla (a mano o por el cierre automático). */
+export function useTpCelebration(trades: Trade[]) {
+  const [hit, setHit] = useState<{ id: string; symbol: string; token: number } | null>(null);
+  const prev = useRef<Map<string, string> | null>(null);
+  useEffect(() => {
+    const now = new Map(trades.map((t) => [t.id, t.outcome]));
+    const before = prev.current;
+    prev.current = now;
+    if (!before) return;
+    for (const t of trades) {
+      if (t.outcome === "TP" && before.get(t.id) === "ABIERTA") {
+        setHit({ id: t.id, symbol: t.symbol, token: Date.now() });
+        break;
+      }
+    }
+  }, [trades]);
+  const clear = useCallback(() => setHit(null), []);
+  return [hit, clear] as const;
 }
