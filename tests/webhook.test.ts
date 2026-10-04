@@ -8,7 +8,7 @@ let token: string | undefined = "TOKEN";
 
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => (({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y" } as Record<string, string | undefined>)[k] ?? (k === "TELEGRAM_BOT_TOKEN" ? token : undefined)) },
+    env: { get: (k: string) => (({ SIGNAL_IMAGES: "off", SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y" } as Record<string, string | undefined>)[k] ?? (k === "TELEGRAM_BOT_TOKEN" ? token : undefined)) },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/tradingview-webhook/index");

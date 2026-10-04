@@ -7,6 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { detectHit, fetchCandles, parseMarketSymbol, rOfHit } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
+import { resultCardImage } from "../_shared/card.ts";
 import { communityResultMessage, publishToCommunities, resultCardHtml } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
@@ -116,7 +117,7 @@ Deno.serve(async () => {
 
     const r = rOfHit(trade, hit.outcome);
     await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: lang === "en" ? "Auto-close" : "Cierre automático" }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
-    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang));
+    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang));
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {
       // Idioma del usuario (columna opcional: si todavía no existe, se usa español).

@@ -19,6 +19,8 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@resvg/resvg-wasm": "^2.6.2",
     "@tailwindcss/vite": "^4.1.7",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
