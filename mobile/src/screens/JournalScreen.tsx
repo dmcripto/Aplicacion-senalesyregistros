@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { resultR } from "@dmcripto/core";
+import { FEATURES, resultR } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { AnalysisBlock, Empty, EquityBars, MonthlyList, StatsGrid, TagList, TradeCard } from "../components";
 import ShareCardModal from "../ShareCardModal";
@@ -48,7 +48,7 @@ export default function JournalScreen({
           <EquityBars trades={trades} />
           <MonthlyList trades={trades} />
           <AnalysisBlock trades={trades} />
-          <CoachCard closedCount={closed.length} />
+          {FEATURES.coach && <CoachCard closedCount={closed.length} />}
           <TagList trades={trades} />
           <Text style={s.title}>{t("HISTORIAL")}</Text>
           <View style={s.chips}>
