@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
 import type { TelegramCommunity, TelegramLink } from "../lib";
 import Panel from "./Panel";
-import { fetchCommunities, fetchDailySummary, fetchTelegramLink, fetchWhatsappButton, removeCommunity, setDailySummary, setWhatsappButton, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
+import { fetchCommunities, fetchDailySummary, fetchPartialAlerts, fetchTelegramLink, fetchWhatsappButton, removeCommunity, setDailySummary, setPartialAlerts, setWhatsappButton, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
 import type { CommunityStart, TelegramStart } from "../tradesApi";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -17,6 +17,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   const [armed, setArmed] = useState(false);
   const [daily, setDaily] = useState(true);
   const [wa, setWa] = useState(false);
+  const [partial, setPartial] = useState(true);
   const [communities, setCommunities] = useState<TelegramCommunity[]>([]);
   const [cStart, setCStart] = useState<CommunityStart | null>(null);
   const [cBusy, setCBusy] = useState(false);
@@ -39,6 +40,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
     void reload();
     fetchDailySummary(userId).then(setDaily).catch(() => {});
     fetchWhatsappButton(userId).then(setWa).catch(() => {});
+    fetchPartialAlerts(userId).then(setPartial).catch(() => {});
     void fetchCommunities().then(setCommunities);
     return () => {
       stopPolling();
@@ -100,6 +102,18 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
       notify(next ? t("Resumen diario activado.") : t("Resumen diario desactivado."));
     } catch (err) {
       setDaily(!next);
+      notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
+    }
+  };
+
+  const togglePartial = async () => {
+    const next = !partial;
+    setPartial(next);
+    try {
+      await setPartialAlerts(userId, next);
+      notify(next ? t("Aviso de Target 1 activado.") : t("Aviso de Target 1 desactivado."));
+    } catch (err) {
+      setPartial(!next);
       notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
     }
   };
@@ -192,6 +206,13 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
               <span>
                 <b className="text-snow">{t("Resumen diario:")}</b>{" "}
                 {t("cada noche a las 21:00 te mandamos cómo te fue en el día, con tus rachas. Si no operaste, no te molestamos.")}
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
+              <input type="checkbox" checked={partial} onChange={togglePartial} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
+              <span>
+                <b className="text-snow">{t("Aviso de Target 1:")}</b>{" "}
+                {t("cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.")}
               </span>
             </label>
             <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">

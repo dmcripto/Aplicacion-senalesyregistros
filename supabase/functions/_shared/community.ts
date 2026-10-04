@@ -59,6 +59,25 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
 
 export const communitySignalMessage = (t: CommunityTrade, lang: Lang) => signalCardHtml(t, lang, { header: "📢" });
 
+/** Porcentaje de movimiento del precio a favor entre la entrada y `price` (según la dirección). */
+export const favorPct = (t: Pick<CommunityTrade, "direction" | "entry">, price: number) => (t.entry ? (((t.direction === "LONG" ? 1 : -1) * (price - t.entry)) / t.entry) * 100 : 0);
+
+/** Aviso de Target 1: el precio avanzó a favor; se sugiere tomar parcial y mover el SL a break-even. */
+export function partialCardHtml(t: CommunityTrade, level: number, r: number, lang: Lang, opts: { header?: string; disclaimer?: boolean } = {}): string {
+  const en = lang === "en";
+  const lines = [
+    `${opts.header ?? "🎯"} <b>${en ? "TARGET 1 HIT" : "TARGET 1 ALCANZADO"}</b>`,
+    "",
+    `⏳ <b>${esc(prettyPair(t.symbol))}</b> ( ${t.direction === "LONG" ? "LONG 🟢" : "SHORT 🔴"} )`,
+    "",
+    `💰 Profit <b>${PCT(favorPct(t, level))}</b>  <i>(${R_OF(r)})</i>`,
+    "",
+    en ? "💡 <b>Suggested management:</b> close 50% and move the SL to break-even" : "💡 <b>Gestión sugerida:</b> cerrar 50% y mover el SL a break-even",
+  ];
+  if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
+  return lines.join("\n");
+}
+
 /** Resultado de una operación al tocar TP o SL. */
 export function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string } = {}): string {
   const en = lang === "en";

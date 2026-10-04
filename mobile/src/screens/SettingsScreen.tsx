@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
 import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchPartialAlerts, setPartialAlerts, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
@@ -41,6 +41,7 @@ export default function SettingsScreen({
   const [autoClose, setAutoCloseState] = useState(true);
   const [dailySummary, setDailySummaryState] = useState(true);
   const [waButton, setWaButtonState] = useState(false);
+  const [partialAlerts, setPartialAlertsState] = useState(true);
   const [lossStr, setLossStr] = useState("");
   const [tradesStr, setTradesStr] = useState("");
 
@@ -113,12 +114,21 @@ export default function SettingsScreen({
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
     fetchDailySummary(userId).then(setDailySummaryState).catch(() => {});
     fetchWhatsappButton(userId).then(setWaButtonState).catch(() => {});
+    fetchPartialAlerts(userId).then(setPartialAlertsState).catch(() => {});
   }, [userId]);
 
   const toggleDailySummary = (value: boolean) => {
     setDailySummaryState(value);
     setDailySummary(userId, value).catch((e) => {
       setDailySummaryState(!value);
+      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
+    });
+  };
+
+  const togglePartialAlerts = (value: boolean) => {
+    setPartialAlertsState(value);
+    setPartialAlerts(userId, value).catch((e) => {
+      setPartialAlertsState(!value);
       Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
     });
   };
@@ -321,6 +331,21 @@ export default function SettingsScreen({
           <Switch
             value={dailySummary}
             onValueChange={toggleDailySummary}
+            trackColor={{ false: colors.line2, true: colors.gold }}
+            thumbColor={colors.snow}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("AVISO DE TARGET 1")}</Text>
+      <View style={styles.card}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Text style={[styles.hint, { flex: 1 }]}>
+            {t("Cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.")}
+          </Text>
+          <Switch
+            value={partialAlerts}
+            onValueChange={togglePartialAlerts}
             trackColor={{ false: colors.line2, true: colors.gold }}
             thumbColor={colors.snow}
           />

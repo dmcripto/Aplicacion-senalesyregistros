@@ -4,7 +4,7 @@
 
 import { esc } from "./telegram.ts";
 import type { Lang } from "./telegram.ts";
-import { prettyPair } from "./community.ts";
+import { favorPct, prettyPair } from "./community.ts";
 import type { CommunityTrade } from "./community.ts";
 
 const CARD_SITE = "https://veltrix-trading.vercel.app";
@@ -42,6 +42,11 @@ const CARD_T = {
     sl: "SL ALCANZADO",
     disclaimer: "Información para registro personal · No es asesoramiento financiero",
     res: "Resultado",
+    t1: "TARGET 1",
+    t1hit: "TARGET 1 ALCANZADO",
+    profit: "PROFIT",
+    manage: "GESTIÓN SUGERIDA",
+    manageText: "Cerrar 50% y mover el SL a break-even",
   },
   en: {
     brand: "TRADING SIGNAL",
@@ -57,6 +62,11 @@ const CARD_T = {
     sl: "SL HIT",
     disclaimer: "For personal record-keeping · Not financial advice",
     res: "Result",
+    t1: "TARGET 1",
+    t1hit: "TARGET 1 HIT",
+    profit: "PROFIT",
+    manage: "SUGGESTED MANAGEMENT",
+    manageText: "Close 50% and move the SL to break-even",
   },
 };
 
@@ -146,6 +156,25 @@ export function resultCardSvg(symbol: string, outcome: "TP" | "SL", r: number, l
   <text x="540" y="900" font-size="${cardFit(rr, 250, 900)}" font-weight="700" text-anchor="middle" fill="${col}">${esc(rr)}</text>
   <text x="540" y="968" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc((opts.label ?? tx.res).toUpperCase())}</text>`;
   return cardFrame(lang, tx.result, logo, body);
+}
+
+/** Aviso de Target 1: ganancia a favor y la gestión sugerida (tomar parcial y mover el SL a break-even). */
+export function partialCardSvg(t: CommunityTrade, level: number, r: number, lang: Lang, logo: string | null = null): string {
+  const tx = CARD_T[lang];
+  const long = t.direction === "LONG";
+  const pair = `${prettyPair(t.symbol)} · ${long ? "LONG" : "SHORT"}`;
+  const profit = cardPct(favorPct(t, level));
+  const body = `
+  <g fill="none" stroke="${CARD_C.bull}" stroke-width="9"><circle cx="540" cy="318" r="112" fill="${CARD_C.bull}" fill-opacity="0.12"/><circle cx="540" cy="318" r="70"/></g>
+  <circle cx="540" cy="318" r="24" fill="${CARD_C.bull}"/>
+  <text x="540" y="548" font-size="${cardFit(tx.t1hit, 92, 940)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(tx.t1hit)}</text>
+  <text x="540" y="634" font-size="${cardFit(pair, 64, 940)}" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(pair)}</text>
+  <text x="540" y="830" font-size="${cardFit(profit, 210, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
+  <text x="540" y="884" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
+  <rect x="60" y="906" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
+  <text x="96" y="944" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
+  <text x="96" y="990" font-size="${cardFit(tx.manageText, 32, 890)}" font-weight="700" fill="#ffffff">${esc(tx.manageText)}</text>`;
+  return cardFrame(lang, tx.t1, logo, body);
 }
 
 // ─── De SVG a PNG ───────────────────────────────────────────────────────────
@@ -280,4 +309,11 @@ export function runInBackground(task: Promise<unknown>): Promise<unknown> | void
     return;
   }
   return task;
+}
+
+export async function partialCardImage(t: CommunityTrade, level: number, r: number, lang: Lang): Promise<CardImage | null> {
+  if (!cardsEnabled()) return null;
+  const png = await svgToPng(partialCardSvg(t, level, r, lang, await cardLoadLogo()));
+  if (!png) return null;
+  return { png, caption: `<i>${CARD_NOTE[lang]}</i>\n<a href="${CARD_SITE}">VELTRIX</a>` };
 }

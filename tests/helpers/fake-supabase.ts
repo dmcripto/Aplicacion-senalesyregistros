@@ -45,6 +45,7 @@ class Query {
   neq(k: string, v: any) { this.filters.push((r) => r[k] !== v); return this; }
   gte(k: string, v: any) { this.filters.push((r) => r[k] != null && r[k] >= v); return this; }
   lt(k: string, v: any) { this.filters.push((r) => r[k] != null && r[k] < v); return this; }
+  is(k: string, v: any) { this.filters.push((r) => (r[k] ?? null) === v); return this; }
   in(k: string, vs: any[]) { this.filters.push((r) => vs.includes(r[k])); return this; }
   order(col: string, o: { ascending?: boolean } = {}) { this.orderBy = { col, asc: o.ascending !== false }; return this; }
   limit(n: number) { this.max = n; return this; }

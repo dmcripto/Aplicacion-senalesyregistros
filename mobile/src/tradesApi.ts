@@ -356,6 +356,17 @@ export async function setDailySummary(userId: string, enabled: boolean) {
   if (error) throw error;
 }
 
+export async function fetchPartialAlerts(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.from("profiles").select("partial_alerts").eq("id", userId).single();
+  if (error) throw error;
+  return data.partial_alerts !== false;
+}
+
+export async function setPartialAlerts(userId: string, enabled: boolean) {
+  const { error } = await supabase.from("profiles").update({ partial_alerts: enabled }).eq("id", userId);
+  if (error) throw error;
+}
+
 // ─── Coach con IA ───────────────────────────────────────────────────────────
 
 export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;

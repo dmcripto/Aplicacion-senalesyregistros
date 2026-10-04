@@ -57,6 +57,36 @@ export function detectHit(
   return null;
 }
 
+/** El «Target 1»: cuando la ganancia llega a este múltiplo de lo arriesgado (R) se avisa para tomar beneficios parciales y mover el SL a break-even. */
+export const PARTIAL_R = 1;
+
+/**
+ * Precio del Target 1, o null si no corresponde: solo si el TP queda bastante más lejos (a 1,5 veces ese nivel o más),
+ * porque si el TP está cerca el aviso del TP alcanza.
+ */
+export function partialLevel(t: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl">): number | null {
+  const risk = Math.abs(t.entry - t.sl);
+  if (!(risk > 0)) return null;
+  const dir = t.direction === "LONG" ? 1 : -1;
+  const tpR = (dir * (t.tp - t.entry)) / risk;
+  if (!(tpR >= PARTIAL_R * 1.5)) return null;
+  return t.entry + dir * PARTIAL_R * risk;
+}
+
+/** Primera vela que llegó al Target 1 antes de tocar el SL (si una misma vela toca ambos, se descarta). Devuelve su hora o null. */
+export function detectPartial(trade: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl" | "date">, candles: Candle[]): number | null {
+  const level = partialLevel(trade);
+  if (level == null) return null;
+  const opened = new Date(trade.date).getTime();
+  const long = trade.direction === "LONG";
+  for (const c of candles) {
+    if (c.t < opened) continue;
+    if (long ? c.l <= trade.sl : c.h >= trade.sl) return null;
+    if (long ? c.h >= level : c.l <= level) return c.t;
+  }
+  return null;
+}
+
 export const rOfHit = (t: Pick<OpenTrade, "entry" | "tp" | "sl">, outcome: "TP" | "SL") => {
   if (outcome === "SL") return -1;
   const risk = Math.abs(t.entry - t.sl);
