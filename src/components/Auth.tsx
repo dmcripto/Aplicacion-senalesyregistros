@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "../supabaseClient";
 import { COMMUNITY_URL, cx } from "../lib";
-import { IconAlert, ShieldLogo } from "../ui";
+import { IconAlert, IconTelegram, ShieldLogo } from "../ui";
 import { LangSwitch, legalUrl } from "../lang";
 import { getLang, t, welcomeContent } from "../lib";
 import LiveDemo from "./LiveDemo";
+import { trackGlow } from "../glowTracking";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -17,6 +18,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const welcome = welcomeContent();
+  useEffect(() => trackGlow(), []);
   const lang = getLang();
   const goForm = (m: "login" | "signup") => {
     setMode(m);
@@ -135,15 +137,20 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         </div>
       </section>
 
-      <div id="acceso" className="w-full max-w-sm scroll-mt-4 self-start justify-self-center rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-w-md lg:justify-self-end">
+      <div id="acceso" data-tilt="soft" className="glass glow-card auth-card rise-in w-full max-w-sm scroll-mt-4 self-start justify-self-center rounded-lg shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-w-md lg:justify-self-end">
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
-          <div className="mb-1 flex gap-1 rounded-lg border border-line bg-ink p-1">
+          <div className="relative mb-1 flex gap-1 rounded-lg border border-line bg-ink p-1">
+            <span
+              aria-hidden
+              className="tab-slider absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md bg-gold"
+              style={{ transform: mode === "login" ? "translateX(0)" : "translateX(calc(100% + 4px))" }}
+            />
             <button
               type="button"
               onClick={() => setMode("login")}
               className={cx(
-                "flex-1 rounded-md px-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] transition-all",
-                mode === "login" ? "bg-gold text-ink" : "text-fog hover:text-snow",
+                "relative flex-1 rounded-md px-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] transition-colors duration-300",
+                mode === "login" ? "text-ink" : "text-fog hover:text-snow",
               )}
             >
               {t("Ingresar")}
@@ -152,8 +159,8 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               type="button"
               onClick={() => setMode("signup")}
               className={cx(
-                "flex-1 rounded-md px-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] transition-all",
-                mode === "signup" ? "bg-gold text-ink" : "text-fog hover:text-snow",
+                "relative flex-1 rounded-md px-3 py-2 text-[12px] font-bold uppercase tracking-[0.12em] transition-colors duration-300",
+                mode === "signup" ? "text-ink" : "text-fog hover:text-snow",
               )}
             >
               {t("Crear cuenta")}
@@ -250,7 +257,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-md bg-gold px-4 py-2.5 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn-shine w-full rounded-md bg-gold px-4 py-2.5 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? t("Un momento…") : mode === "login" ? t("Ingresar") : t("Crear cuenta")}
           </button>
@@ -259,9 +266,10 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           href={COMMUNITY_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="block border-t border-line px-6 py-3 text-center text-[12px] font-semibold text-cyan transition-colors hover:bg-cyan/10"
+          className="flex items-center justify-center gap-2 border-t border-line px-6 py-3 text-center text-[12px] font-semibold text-cyan transition-colors hover:bg-cyan/10"
         >
-          {t("✈ Unite a la comunidad de VELTRIX en Telegram")}
+          <IconTelegram className="h-4 w-4 shrink-0" />
+          {t("Unite a la comunidad de VELTRIX en Telegram")}
         </a>
         <p className="border-t border-line px-6 py-4 text-[10.5px] leading-relaxed text-dim">
           {t("VELTRIX no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}
