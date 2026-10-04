@@ -57,7 +57,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
     setBusy(true);
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://aplicacion-senalesyregistros.vercel.app/",
+        redirectTo: "https://veltrix-trading.vercel.app/",
       });
       if (err) throw err;
       setNotice(
