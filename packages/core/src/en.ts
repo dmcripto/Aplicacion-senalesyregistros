@@ -721,6 +721,7 @@ export const EN: Record<string, string> = {
   "Unite a la comunidad de VELTRIX en Telegram": "Join the VELTRIX community on Telegram",
   "Ocultar guía de inicio": "Hide the getting-started guide",
   "Ver guía de inicio": "Show the getting-started guide",
+  "O explorá la app con datos de ejemplo; después las borrás cuando quieras.": "Or explore the app with sample data; you can delete it whenever you like.",
   "No se pudo enviar el código.": "The code couldn't be sent.",
   "Te mandamos un código por WhatsApp.": "We sent you a code on WhatsApp.",
   "No se pudo confirmar el código.": "The code couldn't be confirmed.",

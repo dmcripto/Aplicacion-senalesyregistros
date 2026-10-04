@@ -347,7 +347,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
 // ─── Bienvenida ─────────────────────────────────────────────────────────────
 
-function WelcomeCard() {
+function WelcomeCard({ onLoadSample }: { onLoadSample?: () => void }) {
   const steps = [
     ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram o WhatsApp en \"Registrar operación\", o cargala a mano.")],
     ["2", t("Conectá tu fuente"), t("Abajo, en \"Conectá tu fuente de señales\", copiá tu URL personal para TradingView u otras herramientas.")],
@@ -374,6 +374,18 @@ function WelcomeCard() {
           </li>
         ))}
       </ol>
+      {onLoadSample && (
+        <div className="mt-5 text-center">
+          <button
+            type="button"
+            onClick={onLoadSample}
+            className="rounded-md bg-gold px-5 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98]"
+          >
+            {t("Cargar operaciones de ejemplo")}
+          </button>
+          <p className="mt-1.5 text-[11px] text-dim">{t("O explorá la app con datos de ejemplo; después las borrás cuando quieras.")}</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -386,6 +398,8 @@ function Dashboard({ userId }: { userId: string }) {
   const { trades, loading, removeLocal, restoreLocal } = useTrades(userId);
   // La guía de inicio se muestra mientras no hay operaciones; después se puede volver a abrir desde el pie.
   const [guide, setGuide] = useState(false);
+  // Con el diario vacío se esconden las secciones que no tendrían nada que mostrar; aparecen solas al haber operaciones.
+  const empty = !loading && trades.length === 0;
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
@@ -712,14 +726,18 @@ function Dashboard({ userId }: { userId: string }) {
 
       {/* Contenido */}
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-5 lg:px-8">
-        {!loading && (trades.length === 0 || guide) && <WelcomeCard />}
+        {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
         <LimitBanner status={limitStatus} />
-        <Reveal>
-          <TodayCard trades={trades} prices={prices} now={now} />
-        </Reveal>
-        <Reveal delay={90}>
-          <StatsBand trades={trades} />
-        </Reveal>
+        {!empty && (
+          <>
+            <Reveal>
+              <TodayCard trades={trades} prices={prices} now={now} />
+            </Reveal>
+            <Reveal delay={90}>
+              <StatsBand trades={trades} />
+            </Reveal>
+          </>
+        )}
 
         {/* Atajos a cada sección y abrir/cerrar todo */}
         <nav className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden" aria-label={t("Secciones")}>
@@ -731,7 +749,9 @@ function Dashboard({ userId }: { userId: string }) {
               ["liqmap", t("Mapa")],
               ["telegram", t("Conexiones")],
             ] as const
-          ).map(([id, label]) => (
+          )
+            .filter(([id]) => !empty || (id !== "journal" && id !== "analysis"))
+            .map(([id, label]) => (
             <button
               key={id}
               type="button"
@@ -762,13 +782,16 @@ function Dashboard({ userId }: { userId: string }) {
         {/* Panel principal: curva | registrar; libro a todo el ancho; análisis | herramientas.
             Cada sección se abre y se cierra; las columnas son independientes para no dejar huecos. */}
         <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-          <Reveal delay={70} className="min-w-0 max-lg:order-5">
-            <EquityChart trades={trades} />
-          </Reveal>
-          <Reveal delay={110} className="max-lg:order-2">
+          {!empty && (
+            <Reveal delay={70} className="min-w-0 max-lg:order-5">
+              <EquityChart trades={trades} />
+            </Reveal>
+          )}
+          <Reveal delay={110} className={cx("max-lg:order-2", empty && "lg:col-span-2")}>
             <TradeForm onAdd={addTrades} notify={notify} />
           </Reveal>
 
+          {(loading || !empty) && (
           <Reveal delay={140} className="min-w-0 max-lg:order-1 lg:col-span-2">
             {loading ? (
               <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
@@ -788,7 +811,9 @@ function Dashboard({ userId }: { userId: string }) {
               />
             )}
           </Reveal>
+          )}
 
+          {!empty && (
           <div className="min-w-0 space-y-5 max-lg:contents">
             <Reveal delay={160} className="max-lg:order-6">
               <Analysis trades={trades} />
@@ -804,7 +829,8 @@ function Dashboard({ userId }: { userId: string }) {
               </Reveal>
             )}
           </div>
-          <div className="space-y-5 max-lg:contents">
+          )}
+          <div className={cx("space-y-5 max-lg:contents", empty && "lg:col-span-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0")}>
             <Reveal delay={130} className="max-lg:order-3">
               <RiskCalculator notify={notify} />
             </Reveal>
