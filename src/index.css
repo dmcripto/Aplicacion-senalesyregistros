@@ -272,7 +272,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease;
-  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(46, 196, 241, 0.1), transparent 60%);
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(46, 196, 241, 0.17), transparent 60%);
 }
 .glow-card:hover {
   border-color: var(--color-line2);
@@ -422,6 +422,14 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 }
 
 /* ─── Marca con vida: el logo flota y brilla, VELTRIX tiene un destello propio ─── */
+@property --ang {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes borderSpin {
+  to { --ang: 360deg; }
+}
 @keyframes logoFloat {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-3px) rotate(-2deg); }
@@ -501,19 +509,101 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     box-shadow: inset 3px 0 0 var(--color-cyan, #2ec4f1);
   }
 
-  /* Paneles grandes: no se mueven (evita saltos), pero se iluminan y sobresalen con la sombra */
+  /* Paneles: se inclinan en 3D hacia donde está el mouse, suben y se les enciende un borde de luz que gira */
+  .glow-card {
+    transition:
+      transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 0.25s ease,
+      box-shadow 0.35s ease;
+  }
   .glow-card:hover {
+    transition:
+      transform 0.14s ease-out,
+      border-color 0.25s ease,
+      box-shadow 0.35s ease;
+    transform: perspective(1100px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) translateY(-3px) scale(1.008);
+    z-index: 3;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.06),
-      0 0 0 1px rgba(46, 196, 241, 0.2),
-      0 26px 60px -28px rgba(46, 196, 241, 0.35);
+      inset 0 1px 0 rgba(255, 255, 255, 0.07),
+      0 0 0 1px rgba(46, 196, 241, 0.22),
+      0 30px 70px -26px rgba(46, 196, 241, 0.42),
+      0 14px 30px -18px rgba(22, 217, 138, 0.28);
+  }
+  /* Si hay una ventana emergente dentro del panel, no se inclina (rompería su posición) */
+  .glow-card:has(.fixed) {
+    transform: none !important;
+  }
+  .glow-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1.5px;
+    pointer-events: none;
+    background: conic-gradient(from var(--ang), transparent 0 55%, rgba(46, 196, 241, 0.95) 78%, rgba(22, 217, 138, 0.9) 90%, transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    animation: borderSpin 3.2s linear infinite;
+    animation-play-state: paused;
+  }
+  .glow-card:hover::before {
+    opacity: 1;
+    animation-play-state: running;
+  }
+
+  /* Título y flecha de cada panel reaccionan */
+  .glow-card h2 > button > span:first-child > span:first-child {
+    display: inline-block;
+    transition: transform 0.3s cubic-bezier(0.3, 1.5, 0.5, 1), color 0.25s ease, text-shadow 0.25s ease;
+    transform-origin: left center;
+  }
+  .glow-card:hover h2 > button > span:first-child > span:first-child {
+    transform: translateX(5px);
+    color: #aeeaff;
+    text-shadow: 0 0 18px rgba(46, 196, 241, 0.55);
+  }
+  .glow-card h2 > button > span[aria-hidden] {
+    display: inline-block;
+    transition: transform 0.3s cubic-bezier(0.3, 1.6, 0.5, 1), color 0.25s ease;
+  }
+  .glow-card:hover h2 > button > span[aria-hidden] {
+    transform: scale(1.35) translateX(2px);
+    color: var(--color-cyan, #2ec4f1);
+  }
+
+  /* Botones, casillas y campos dentro de la página responden al pasar el mouse */
+  main :is(button, a[href]):not(:disabled):not(h2 > button) {
+    transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  main :is(button, a[href]):not(:disabled):not(h2 > button):hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 10px 22px -10px color-mix(in srgb, currentColor 55%, transparent);
+  }
+  main label:has(input[type="checkbox"]) {
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  main label:has(input[type="checkbox"]):hover {
+    transform: translateX(5px);
+    background-color: rgba(46, 196, 241, 0.07);
+    border-color: rgba(46, 196, 241, 0.45);
+    box-shadow: -4px 0 0 0 rgba(46, 196, 241, 0.7);
+  }
+  main :is(input, select, textarea).field:hover,
+  main select:hover {
+    border-color: rgba(46, 196, 241, 0.55);
+    box-shadow: 0 0 0 3px rgba(46, 196, 241, 0.1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .brand-logo > svg,
   .brand-logo > img,
-  .brand-word {
+  .brand-word,
+  .glow-card::before {
     animation: none;
   }
 }
