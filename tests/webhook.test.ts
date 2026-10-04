@@ -47,7 +47,7 @@ describe("webhook de TradingView", () => {
     expect(tg).toHaveLength(1);
     expect(tg[0].body).toMatchObject({ chat_id: 555, parse_mode: "HTML" });
     expect(tg[0].body.text).toMatch(/NUEVA SEÑAL/);
-    expect(tg[0].body.text).toMatch(/BTCUSDT/);
+    expect(tg[0].body.text).toMatch(/BTC\/USDT/);
   });
 
   it("publica la señal en la comunidad conectada, además del aviso privado", async () => {
@@ -80,7 +80,7 @@ describe("webhook de TradingView", () => {
     db.tables.profiles[0].lang = "en";
     await post("VELTRIX|ETHUSDT|VENTA|3000|2900|3050");
     expect(telegramCalls()[0].body.text).toMatch(/NEW SIGNAL/);
-    expect(telegramCalls()[0].body.text).toMatch(/SELL/);
+    expect(telegramCalls()[0].body.text).toMatch(/SHORT/);
   });
 
   it("sin chat vinculado o sin bot configurado no envía nada y la señal igual se guarda", async () => {

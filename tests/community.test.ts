@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { communityResultMessage, communitySignalMessage, publishToCommunities, resultCardHtml, signalCardHtml } from "../supabase/functions/_shared/community";
+import { communityResultMessage, communitySignalMessage, prettyPair, publishToCommunities, resultCardHtml, signalCardHtml } from "../supabase/functions/_shared/community";
 import { db, resetDb } from "./helpers/fake-supabase";
 
 let handler: (req: Request) => Promise<Response>;
@@ -152,7 +152,7 @@ describe("publicación", () => {
     await update({ update_id: ++uid, callback_query: { id: "cb", data: `ok:${pending.id}`, from: { id: 555 }, message: { message_id: 7, chat: { id: 555, type: "private" } } } });
     const posted = sent.filter((s) => s.method === "sendMessage" && s.payload.chat_id === GROUP);
     expect(posted).toHaveLength(1);
-    expect(posted[0].payload.text).toContain("BTCUSDT");
+    expect(posted[0].payload.text).toContain("BTC/USDT");
     expect(posted[0].payload.text).toContain("65000");
     expect(posted[0].payload.text).toMatch(/no es asesoramiento financiero/);
     expect(posted[0].payload.text).not.toMatch(/u1|555/);
@@ -191,22 +191,29 @@ describe("mensajes y errores de la comunidad", () => {
   it("la señal incluye activo, niveles, R:R y el aviso legal; en inglés también", () => {
     const es = communitySignalMessage(trade, "es");
     expect(es).toContain("NUEVA SEÑAL");
-    expect(es).toContain("VENTA");
+    expect(es).toContain("SHORT");
     expect(es).toContain("1 : 2.0");
     expect(communitySignalMessage(trade, "en")).toContain("not financial advice");
   });
 
-  it("la tarjeta muestra los niveles alineados con su distancia en % (a favor y en contra según la dirección)", () => {
+  it("la señal muestra par, dirección, entrada, objetivo y stop con su distancia en % y el R:R", () => {
     const long = communitySignalMessage({ symbol: "XAUUSD", direction: "LONG", entry: 2000, tp: 2100, sl: 1950 }, "es");
-    expect(long).toContain("🟢");
-    expect(long).toContain("ENTRADA  2000");
-    expect(long).toContain("TP       2100  +5.00%");
-    expect(long).toContain("SL       1950  −2.50%");
+    expect(long).toContain("XAU/USD"); // par legible
+    expect(long).toContain("LONG 🟢");
+    expect(long).toContain("Entrada ➡️ <b>2000</b>");
+    expect(long).toContain("Target :- <b>2100</b>  <i>(+5.00%)</i>");
+    expect(long).toContain("Stoploss = <b>1950</b>  <i>(−2.50%)</i>");
+    expect(long).toContain("1 : 2.0");
     const short = communitySignalMessage(trade, "es"); // SHORT 3000 → TP 2900, SL 3050
-    expect(short).toContain("🔴");
+    expect(short).toContain("SHORT 🔴");
     expect(short).toContain("+3.33%"); // TP a favor
     expect(short).toContain("−1.67%"); // SL en contra
-    expect(short).toContain("<pre>"); // alineado con letra de ancho fijo
+  });
+
+  it("el nombre del par se arma con barra y respeta lo que no reconoce", () => {
+    expect(prettyPair("BTCUSDT")).toBe("BTC/USDT");
+    expect(prettyPair("solusdt.p")).toBe("SOL/USDT.P");
+    expect(prettyPair("AAPL")).toBe("AAPL");
   });
 
   it("un activo con símbolos raros no rompe el formato HTML", () => {
