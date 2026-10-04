@@ -152,6 +152,7 @@ describe("Bitunix", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ externalId: "BTCUSDT:p1", direction: "LONG", qty: 0.5, entry: 65000, exit: 66000, closedAt: 1712720865566, openedAt: 1712717265566 });
     expect(rows[0].pnl).toBeCloseTo(498); // 500 − 1,5 − 0,5
+    expect(ex.toTradeRow(rows[0], "bitunix", 10).notes).toMatch(/Bitunix informó: realizedPNL 500 · fee 1.5 · funding -0.5/);
     expect(rows[1]).toMatchObject({ direction: "SHORT" });
     expect(rows[1].pnl).toBeCloseTo(-101);
   });
