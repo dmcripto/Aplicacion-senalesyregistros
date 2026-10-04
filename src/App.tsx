@@ -375,7 +375,7 @@ function WelcomeCard() {
     <section className="rounded-lg border border-gold/40 bg-golddeep/30 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("BIENVENIDO A VELTRIX")}</h2>
+          <h2 className="step-title font-display text-2xl font-bold tracking-wide text-snow">{t("BIENVENIDO A VELTRIX")}</h2>
           <p className="text-[12px] text-fog">{t("Empezá en tres pasos.")}</p>
         </div>
         <button
@@ -386,8 +386,8 @@ function WelcomeCard() {
         </button>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
-        {steps.map(([n, title, text]) => (
-          <li key={n} className="flex gap-3 rounded-md border border-line bg-panel/70 p-3.5">
+        {steps.map(([n, title, text], i) => (
+          <li key={n} className="step-card flex gap-3 rounded-md border border-line bg-panel/70 p-3.5" style={{ ["--i" as string]: i } as React.CSSProperties}>
             <span className="num flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold text-[13px] font-bold text-ink">
               {n}
             </span>
