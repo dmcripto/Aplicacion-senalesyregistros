@@ -415,8 +415,9 @@ export function parseBitunixClosed(list: any[]): ClosedPosition[] {
       qty,
       entry,
       exit,
-      // realizedPNL no incluye comisiones ni funding: se restan las comisiones y se suma el funding (con su signo).
-      pnl: num(r.realizedPNL) - Math.abs(num(r.fee)) + num(r.funding),
+      // Aunque la documentación diga lo contrario, realizedPNL ya viene con las comisiones descontadas
+      // (comprobado con una operación real: precio −0,2088 − comisiones 0,1555 = realizedPNL −0,3643).
+      pnl: num(r.realizedPNL),
       openedAt: Number(r.ctime ?? closedAt),
       closedAt,
       raw: `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}`,

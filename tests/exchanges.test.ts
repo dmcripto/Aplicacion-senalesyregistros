@@ -147,14 +147,19 @@ describe("Bitunix", () => {
     { positionId: "p3", symbol: "XRPUSDT", maxQty: "0", entryPrice: "1", closePrice: "1", side: "LONG", realizedPNL: "0", mtime: "1" },
   ];
 
-  it("interpreta las posiciones cerradas con comisiones y funding", () => {
+  it("toma el realizedPNL tal cual, que ya viene neto de comisiones", () => {
     const rows = ex.parseBitunixClosed(list);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ externalId: "BTCUSDT:p1", direction: "LONG", qty: 0.5, entry: 65000, exit: 66000, closedAt: 1712720865566, openedAt: 1712717265566 });
-    expect(rows[0].pnl).toBeCloseTo(498); // 500 − 1,5 − 0,5
+    expect(rows[0]).toMatchObject({ externalId: "BTCUSDT:p1", direction: "LONG", qty: 0.5, entry: 65000, exit: 66000, pnl: 500, closedAt: 1712720865566, openedAt: 1712717265566 });
+    expect(rows[1]).toMatchObject({ direction: "SHORT", pnl: -100 });
     expect(ex.toTradeRow(rows[0], "bitunix", 10).notes).toMatch(/Bitunix informó: realizedPNL 500 · fee 1.5 · funding -0.5/);
-    expect(rows[1]).toMatchObject({ direction: "SHORT" });
-    expect(rows[1].pnl).toBeCloseTo(-101);
+  });
+
+  it("operación real de Bitunix: precio −0,2088 y comisiones 0,1555 dan −0,3643", () => {
+    const [p] = ex.parseBitunixClosed([{ positionId: "r1", symbol: "BTCUSDT", maxQty: "0.0015", entryPrice: "86318.1", closePrice: "86457.3", side: "SHORT", fee: "0.15549786", funding: "0", realizedPNL: "-0.36429786", ctime: "1759604928000", mtime: "1759608520000" }]);
+    expect(p.pnl).toBeCloseTo(-0.36429786, 8);
+    // coincide con el dinero real: −(86457,3 − 86318,1) × 0,0015 − comisiones
+    expect(p.pnl).toBeCloseTo(-(86457.3 - 86318.1) * 0.0015 - 0.15549786, 6);
   });
 
   it("verifica la clave, pide por páginas y avisa que no puede confirmar permisos", async () => {
