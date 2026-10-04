@@ -103,6 +103,7 @@ export default function ExchangeSection() {
             <Text style={s.hint}>
               {c.lastSyncAt ? t("Última sincronización: {when} · {n} nuevas", { when: fmtDateTime(c.lastSyncAt), n: c.lastImportCount }) : t("Todavía sin sincronizar")}
             </Text>
+            {c.status === "active" ? <Text style={s.hint}>{t("Se actualiza sola cada ~10 minutos, aunque no abras la app.")}</Text> : null}
             {c.status === "error" && c.lastError ? <Text style={s.error}>{c.lastError}</Text> : null}
             <TouchableOpacity onPress={() => disconnect(c)} style={{ alignSelf: "flex-end" }}>
               <Text style={s.link}>{t("Desconectar")}</Text>
