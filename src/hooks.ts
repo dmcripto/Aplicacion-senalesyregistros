@@ -70,7 +70,14 @@ export function useTrades(userId: string | undefined) {
     };
   }, [userId]);
 
-  return { trades, loading };
+  // El aviso de borrado en tiempo real no llega cuando la suscripción filtra por usuario, así que la lista se actualiza acá mismo.
+  const removeLocal = useCallback((ids: string[] | "all") => setTrades((prev) => (ids === "all" ? [] : prev.filter((x) => !ids.includes(x.id)))), []);
+  const restoreLocal = useCallback(
+    (t: Trade) => setTrades((prev) => (prev.some((x) => x.id === t.id) ? prev : [t, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()))),
+    [],
+  );
+
+  return { trades, loading, removeLocal, restoreLocal };
 }
 
 export function useNow(intervalMs = 1000) {

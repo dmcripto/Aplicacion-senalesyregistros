@@ -337,6 +337,8 @@ export interface ToastData {
   id: string;
   msg: string;
   kind: "ok" | "err" | "info";
+  /** Botón dentro del aviso (por ejemplo «Deshacer»). */
+  action?: { label: string; onClick: () => void };
 }
 
 export function ToastStack({
@@ -349,34 +351,46 @@ export function ToastStack({
   return (
     <div className="pointer-events-none fixed bottom-5 right-5 z-[90] flex w-[min(92vw,360px)] flex-col gap-2">
       {toasts.map((t) => (
-        <button
+        <div
           key={t.id}
-          onClick={() => onDismiss(t.id)}
           className={cx(
-            "toast-in pointer-events-auto flex items-start gap-2.5 rounded-md border bg-panel/95 px-3.5 py-3 text-left text-[13px] font-medium shadow-[0_12px_32px_rgba(0,0,0,.5)] backdrop-blur-sm transition-transform hover:scale-[1.015]",
+            "toast-in pointer-events-auto flex items-center gap-2.5 rounded-md border bg-panel/95 px-3.5 py-3 text-left text-[13px] font-medium shadow-[0_12px_32px_rgba(0,0,0,.5)] backdrop-blur-sm",
             t.kind === "ok" && "border-bull/40",
             t.kind === "err" && "border-bear/40",
             t.kind === "info" && "border-cyan/40",
           )}
         >
-          <span
-            className={cx(
-              "mt-0.5 shrink-0",
-              t.kind === "ok" && "text-bull",
-              t.kind === "err" && "text-bear",
-              t.kind === "info" && "text-cyan",
-            )}
-          >
-            {t.kind === "ok" ? (
-              <IconCheck className="h-4 w-4" />
-            ) : t.kind === "err" ? (
-              <IconAlert className="h-4 w-4" />
-            ) : (
-              <IconClipboard className="h-4 w-4" />
-            )}
-          </span>
-          <span className="leading-snug text-snow">{t.msg}</span>
-        </button>
+          <button onClick={() => onDismiss(t.id)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+            <span
+              className={cx(
+                "mt-0.5 shrink-0",
+                t.kind === "ok" && "text-bull",
+                t.kind === "err" && "text-bear",
+                t.kind === "info" && "text-cyan",
+              )}
+            >
+              {t.kind === "ok" ? (
+                <IconCheck className="h-4 w-4" />
+              ) : t.kind === "err" ? (
+                <IconAlert className="h-4 w-4" />
+              ) : (
+                <IconClipboard className="h-4 w-4" />
+              )}
+            </span>
+            <span className="leading-snug text-snow">{t.msg}</span>
+          </button>
+          {t.action && (
+            <button
+              onClick={() => {
+                t.action!.onClick();
+                onDismiss(t.id);
+              }}
+              className="shrink-0 rounded border border-cyan/50 bg-cyan/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/20"
+            >
+              {t.action.label}
+            </button>
+          )}
+        </div>
       ))}
     </div>
   );

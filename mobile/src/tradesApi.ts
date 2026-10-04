@@ -83,9 +83,18 @@ export async function reopenTradeById(id: string) {
   if (error) throw error;
 }
 
+/** Avisos de borrado hechos desde esta misma app: el aviso en tiempo real de borrado no llega con filtro por usuario. */
+type DeleteListener = (ids: string[] | "all") => void;
+const deleteListeners = new Set<DeleteListener>();
+export const onLocalDelete = (fn: DeleteListener) => {
+  deleteListeners.add(fn);
+  return () => void deleteListeners.delete(fn);
+};
+
 export async function deleteTradeById(id: string) {
   const { error } = await supabase.from("trades").delete().eq("id", id);
   if (error) throw error;
+  deleteListeners.forEach((fn) => fn([id]));
 }
 
 export async function fetchWebhookUrl(userId: string): Promise<string> {
@@ -129,6 +138,7 @@ export async function closeTradeManually(id: string, exit: number) {
 export async function deleteAllTrades(userId: string) {
   const { error } = await supabase.from("trades").delete().eq("user_id", userId);
   if (error) throw error;
+  deleteListeners.forEach((fn) => fn("all"));
 }
 
 export async function regenerateWebhookUrl(): Promise<string> {

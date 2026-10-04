@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   COMMUNITY_URL,
   computeStats,
@@ -405,7 +405,7 @@ function WelcomeCard() {
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
 function Dashboard({ userId }: { userId: string }) {
-  const { trades, loading } = useTrades(userId);
+  const { trades, loading, removeLocal, restoreLocal } = useTrades(userId);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
@@ -544,17 +544,59 @@ function Dashboard({ userId }: { userId: string }) {
     [notify],
   );
 
+  // Borrar es de un solo toque: la operación sale de la lista en el momento y durante 6 segundos se puede deshacer.
+  // Recién pasado ese tiempo se borra de verdad; si se cierra la página antes, se borra al salir.
+  const pendingDeletes = useRef(new Map<string, number>());
   const deleteTrade = useCallback(
-    async (id: string) => {
-      try {
-        await deleteTradeById(id);
-        notify(t("Operación eliminada del diario."), "info");
-      } catch (err) {
-        notify(err instanceof Error ? err.message : t("No se pudo eliminar la operación."), "err");
-      }
+    (id: string) => {
+      const tr = trades.find((x) => x.id === id);
+      if (!tr || pendingDeletes.current.has(id)) return;
+      removeLocal([id]);
+      const toastId = crypto.randomUUID();
+      const drop = () => setToasts((list) => list.filter((x) => x.id !== toastId));
+      const timer = window.setTimeout(async () => {
+        pendingDeletes.current.delete(id);
+        drop();
+        try {
+          await deleteTradeById(id);
+        } catch (err) {
+          restoreLocal(tr);
+          notify(err instanceof Error ? err.message : t("No se pudo eliminar la operación."), "err");
+        }
+      }, 6000);
+      pendingDeletes.current.set(id, timer);
+      setToasts((list) => [
+        ...list.slice(-3),
+        {
+          id: toastId,
+          msg: t("Operación eliminada: {sym}", { sym: tr.symbol }),
+          kind: "info",
+          action: {
+            label: t("Deshacer"),
+            onClick: () => {
+              window.clearTimeout(timer);
+              pendingDeletes.current.delete(id);
+              restoreLocal(tr);
+            },
+          },
+        },
+      ]);
     },
-    [notify],
+    [trades, removeLocal, restoreLocal, notify],
   );
+
+  // Si se cierra la pestaña con borrados pendientes, se terminan de borrar.
+  useEffect(() => {
+    const flush = () => {
+      for (const [id, timer] of pendingDeletes.current) {
+        window.clearTimeout(timer);
+        void deleteTradeById(id).catch(() => {});
+      }
+      pendingDeletes.current.clear();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
 
   const saveNotes = useCallback(
     async (notes: string, tags: string[]) => {
@@ -612,13 +654,14 @@ function Dashboard({ userId }: { userId: string }) {
   const clearAll = useCallback(async () => {
     try {
       await deleteAllTrades(userId);
+      removeLocal("all");
       notify(t("Diario borrado por completo."), "info");
     } catch (err) {
       notify(err instanceof Error ? err.message : t("No se pudo borrar el diario."), "err");
     } finally {
       setClearArmed(false);
     }
-  }, [userId, notify]);
+  }, [userId, notify, removeLocal]);
 
   return (
     <MoneyContext.Provider value={moneyCtx}>

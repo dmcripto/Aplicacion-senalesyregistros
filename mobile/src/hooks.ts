@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { Trade } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
-import { fetchTrades, rowToTrade } from "./tradesApi";
+import { fetchTrades, onLocalDelete, rowToTrade } from "./tradesApi";
 
 export function useSession() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -72,8 +72,11 @@ export function useTrades(userId: string | undefined) {
       )
       .subscribe();
 
+    const offLocalDelete = onLocalDelete((ids) => setTrades((prev) => (ids === "all" ? [] : prev.filter((x) => !ids.includes(x.id)))));
+
     return () => {
       cancelled = true;
+      offLocalDelete();
       supabase.removeChannel(channel);
     };
   }, [userId]);
