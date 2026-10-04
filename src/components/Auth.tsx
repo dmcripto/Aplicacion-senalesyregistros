@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 import { COMMUNITY_URL, cx } from "../lib";
 import { IconAlert, ShieldLogo } from "../ui";
 import { LangSwitch, legalUrl } from "../lang";
-import { t } from "../lib";
+import { t, welcomeContent } from "../lib";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -15,6 +15,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
+  const welcome = welcomeContent();
 
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
@@ -78,21 +79,22 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="mx-auto grid min-h-screen w-full max-w-5xl content-center gap-8 px-4 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-8">
       <div className="fixed right-3 top-3 z-10"><LangSwitch /></div>
-      <div className="w-full max-w-sm rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)]">
-        <div className="flex flex-col items-center gap-3 border-b border-line px-6 py-7">
-          <ShieldLogo className="h-20 w-20 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
-          <div className="text-center">
-            <h1 className="font-display text-3xl font-extrabold tracking-[0.04em] text-snow">
-              VELTRIX
-            </h1>
-            <p className="mt-1 text-[10.5px] font-semibold uppercase tracking-[0.28em] text-fog">
-              {t("Diario de trading · En vivo")}
-            </p>
-          </div>
-        </div>
 
+      <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
+        <ShieldLogo className="h-20 w-20 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
+        <h1 className="mt-3 font-display text-3xl font-extrabold tracking-[0.04em] text-snow">VELTRIX</h1>
+        <p className="mt-3 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
+        <p className="mt-3 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
+          {welcome.chips.map((c) => (
+            <span key={c} className="rounded-full border border-cyan/35 bg-cyan/10 px-3 py-1 text-[12px] font-bold text-cyan">{c}</span>
+          ))}
+        </div>
+      </section>
+
+      <div className="w-full max-w-sm self-start justify-self-center rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:row-span-2 lg:max-w-md lg:justify-self-end">
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
           <div className="mb-1 flex gap-1 rounded-lg border border-line bg-ink p-1">
             <button
@@ -221,9 +223,24 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           {t("✈ Unite a la comunidad de VELTRIX en Telegram")}
         </a>
         <p className="border-t border-line px-6 py-4 text-[10.5px] leading-relaxed text-dim">
-          {t("VELTRIX es una herramienta de registro, no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}
+          {t("VELTRIX no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}
         </p>
       </div>
+
+      <section className="lg:col-start-1 lg:row-start-2">
+        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {welcome.features.map((f) => (
+            <div key={f.title} className="flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan/25 bg-cyan/10 text-[22px]">{f.icon}</span>
+              <div>
+                <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
+                <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

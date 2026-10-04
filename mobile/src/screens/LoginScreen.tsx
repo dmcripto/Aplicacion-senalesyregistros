@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,7 +15,7 @@ import { Logo } from "../ui";
 import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 import { LangSwitch } from "../lang";
-import { t } from "@dmcripto/core";
+import { t, welcomeContent } from "@dmcripto/core";
 
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -25,6 +26,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
+  const welcome = welcomeContent();
 
   const submit = async () => {
     setError(null);
@@ -91,21 +93,29 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={{ alignItems: "center", marginBottom: 12 }}>
         <LangSwitch />
       </View>
-      <View style={styles.card}>
-        <View style={{ alignItems: "center", marginBottom: 10 }}>
-          <Logo size={96} />
-        </View>
-        <Text style={styles.title}>
-          VELTRIX
-        </Text>
-        <Text style={styles.subtitle}>{t("DIARIO DE TRADING · EN VIVO")}</Text>
 
+      <View style={styles.hero}>
+        <Logo size={84} />
+        <Text style={styles.title}>VELTRIX</Text>
+        <Text style={styles.headline}>{welcome.headline}</Text>
+        <Text style={styles.lead}>{welcome.lead}</Text>
+        <View style={styles.chips}>
+          {welcome.chips.map((c) => (
+            <View key={c} style={styles.chip}>
+              <Text style={styles.chipText}>{c}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.card}>
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, mode === "login" && styles.tabActive]}
@@ -190,14 +200,29 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
             <Text style={styles.submitText}>{mode === "login" ? t("Ingresar") : t("Crear cuenta")}</Text>
           )}
         </TouchableOpacity>
-        <Text style={styles.disclaimer}>{disclaimer()}</Text>
       </View>
+
+      <Text style={styles.sectionTitle}>{t("QUÉ PODÉS HACER CON VELTRIX")}</Text>
+      {welcome.features.map((f) => (
+        <View key={f.title} style={styles.feature}>
+          <View style={styles.featureIcon}>
+            <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.featureTitle}>{f.title}</Text>
+            <Text style={styles.featureText}>{f.text}</Text>
+          </View>
+        </View>
+      ))}
+
+      <Text style={styles.disclaimer}>{disclaimer()}</Text>
+     </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, justifyContent: "center", padding: 20 },
+  screen: { flexGrow: 1, justifyContent: "center", padding: 20, paddingBottom: 28 },
   card: {
     backgroundColor: "rgba(16,23,32,0.92)",
     borderRadius: 12,
@@ -205,16 +230,28 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     padding: 24,
   },
-  title: { color: colors.snow, fontSize: 30, fontWeight: "800", textAlign: "center", letterSpacing: 1 },
-  subtitle: {
-    color: colors.fog,
-    fontSize: 10.5,
-    fontWeight: "700",
-    letterSpacing: 2,
-    textAlign: "center",
-    marginTop: 6,
-    marginBottom: 20,
+  hero: { alignItems: "center", marginBottom: 18 },
+  title: { color: colors.snow, fontSize: 30, fontWeight: "800", textAlign: "center", letterSpacing: 1, marginTop: 6 },
+  headline: { color: colors.gold, fontSize: 21, fontWeight: "800", textAlign: "center", marginTop: 10, lineHeight: 27 },
+  lead: { color: colors.fog, fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8, paddingHorizontal: 6 },
+  chips: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 14 },
+  chip: { borderWidth: 1, borderColor: "rgba(46,196,241,0.35)", backgroundColor: "rgba(46,196,241,0.08)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText: { color: colors.cyan, fontSize: 12, fontWeight: "700" },
+  sectionTitle: { color: colors.fog, fontSize: 11, fontWeight: "800", letterSpacing: 2, textAlign: "center", marginTop: 28, marginBottom: 14 },
+  feature: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+    backgroundColor: "rgba(16,23,32,0.85)",
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
   },
+  featureIcon: { width: 46, height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(46,196,241,0.1)", borderWidth: 1, borderColor: "rgba(46,196,241,0.25)" },
+  featureTitle: { color: colors.snow, fontSize: 15, fontWeight: "800" },
+  featureText: { color: colors.fog, fontSize: 12.5, lineHeight: 18, marginTop: 3 },
   tabs: {
     flexDirection: "row",
     backgroundColor: colors.ink,
@@ -257,7 +294,7 @@ const styles = StyleSheet.create({
   checkMark: { color: colors.ink, fontSize: 13, fontWeight: "900" },
   acceptText: { flex: 1, color: colors.fog, fontSize: 12, lineHeight: 18 },
   acceptLink: { color: colors.gold, fontWeight: "700", textDecorationLine: "underline" },
-  disclaimer: { color: colors.dim, fontSize: 10, lineHeight: 15, marginTop: 16, textAlign: "center" },
+  disclaimer: { color: colors.dim, fontSize: 10, lineHeight: 15, marginTop: 18, textAlign: "center" },
   error: { color: colors.bear, fontSize: 12, marginTop: 12 },
   notice: { color: colors.cyan, fontSize: 12, marginTop: 12 },
   submit: {

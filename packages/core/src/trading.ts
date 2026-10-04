@@ -1113,6 +1113,31 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
 
 // ─── Compartir una señal (WhatsApp, etc.) ───────────────────────────────────
 
+// ─── Pantalla de bienvenida (login): qué es VELTRIX ─────────────────────────
+
+export interface WelcomeFeature {
+  icon: string;
+  title: string;
+  text: string;
+}
+
+/** Lo que se muestra antes del formulario de ingreso, igual en la web y en la app. Solo promete lo que la app ya hace. */
+export function welcomeContent(): { headline: string; lead: string; chips: string[]; features: WelcomeFeature[] } {
+  return {
+    headline: tr("Tu centro de trading en vivo"),
+    lead: tr("Recibí las señales de TradingView en tu celular, seguí cada operación al instante y mejorá con datos reales."),
+    chips: [`📡 ${tr("Señales")}`, `🎯 ${tr("Targets")}`, `📒 ${tr("Diario")}`, `🛡️ ${tr("Riesgo")}`, `🗺️ ${tr("Mapa")}`],
+    features: [
+      { icon: "📡", title: tr("Señales en vivo"), text: tr("Conectá tus alertas de TradingView: cada señal llega sola a tu celular y a Telegram, con una tarjeta lista para compartir.") },
+      { icon: "🎯", title: tr("Targets y cierre automático"), text: tr("TP1, TP2, TP3: te avisamos cada vez que el precio toca un target, y cerramos solas tus operaciones cripto en el TP o el SL.") },
+      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance y Bybit.") },
+      { icon: "🛡️", title: tr("Control de riesgo"), text: tr("Calculá cuánto arriesgar en cada operación y poné límites diarios para cuidar tu capital.") },
+      { icon: "🗺️", title: tr("Mapa de liquidaciones"), text: tr("Mirá dónde se concentran las liquidaciones del mercado para leer mejor el precio.") },
+      { icon: "👥", title: tr("Tu comunidad"), text: tr("Publicá tus señales y resultados en tu grupo o canal de Telegram, sin copiar y pegar.") },
+    ],
+  };
+}
+
 /** Texto listo para mandar a un contacto o grupo. No incluye dinero ni datos de la cuenta. */
 export function signalShareMessage(t: Trade): string {
   const risk = Math.abs(t.entry - t.sl);
