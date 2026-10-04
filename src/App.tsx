@@ -354,12 +354,12 @@ function WelcomeCard() {
     ["3", t("Mirá tus resultados"), t("VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático.")],
   ];
   return (
-    <section className="rounded-lg border border-gold/40 bg-golddeep/30 p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="step-title font-display text-2xl font-bold tracking-wide text-snow">{t("BIENVENIDO A VELTRIX")}</h2>
-          <p className="text-[12px] text-fog">{t("Empezá en tres pasos.")}</p>
-        </div>
+    <section className="glass glow-card welcome-card rounded-lg border-gold/40 bg-golddeep/30 p-5" data-tilt="soft">
+      <div className="text-center">
+        <h2 className="font-display text-2xl font-bold tracking-wide text-snow sm:text-3xl">
+          <span className="brand-word">{t("BIENVENIDO A VELTRIX")}</span>
+        </h2>
+        <p className="mt-0.5 text-[12px] text-fog sm:text-[13px]">{t("Empezá en tres pasos.")}</p>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
         {steps.map(([n, title, text], i) => (
