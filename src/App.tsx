@@ -347,25 +347,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
 // ─── Bienvenida ─────────────────────────────────────────────────────────────
 
-const WELCOME_KEY = "veltrix_welcome_v1";
-
 function WelcomeCard() {
-  const [visible, setVisible] = useState(() => {
-    try {
-      return localStorage.getItem(WELCOME_KEY) !== "done";
-    } catch {
-      return false;
-    }
-  });
-  if (!visible) return null;
-  const close = () => {
-    setVisible(false);
-    try {
-      localStorage.setItem(WELCOME_KEY, "done");
-    } catch {
-      /* sin almacenamiento */
-    }
-  };
   const steps = [
     ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram o WhatsApp en \"Registrar operación\", o cargala a mano.")],
     ["2", t("Conectá tu fuente"), t("Abajo, en \"Conectá tu fuente de señales\", copiá tu URL personal para TradingView u otras herramientas.")],
@@ -378,12 +360,6 @@ function WelcomeCard() {
           <h2 className="step-title font-display text-2xl font-bold tracking-wide text-snow">{t("BIENVENIDO A VELTRIX")}</h2>
           <p className="text-[12px] text-fog">{t("Empezá en tres pasos.")}</p>
         </div>
-        <button
-          onClick={close}
-          className="shrink-0 rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
-        >
-          {t("Entendido")}
-        </button>
       </div>
       <ol className="mt-4 grid gap-3 md:grid-cols-3">
         {steps.map(([n, title, text], i) => (
