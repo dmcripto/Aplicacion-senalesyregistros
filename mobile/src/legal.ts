@@ -1,7 +1,7 @@
 import { Linking } from "react-native";
 import { getLang, t } from "@dmcripto/core";
 
-const WEB = "https://aplicacion-senalesyregistros.vercel.app";
+const WEB = "https://veltrix-trading.vercel.app";
 const page = (name: string) => `${WEB}/${name}${getLang() === "en" ? "-en" : ""}.html`;
 /** Páginas legales en el idioma activo (getters: se leen al tocar, no al importar). */
 export const LEGAL_LINKS = {

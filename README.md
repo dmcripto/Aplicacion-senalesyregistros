@@ -13,6 +13,13 @@ Diario de trading con señales: web (React + Vite), app Android (Expo) y backend
 | `supabase/functions/` | Funciones del servidor: `tradingview-webhook`, `telegram-bot`, `auto-close`, `exchanges`, `liquidation-map`, `coach` |
 | `tests/` | Pruebas automáticas (`npm test`) |
 
+## Direcciones de la web
+
+- `https://veltrix-trading.vercel.app`: la que se comparte.
+- `https://aplicacion-senalesyregistros.vercel.app`: la original; sigue funcionando.
+
+En Supabase → Authentication → URL Configuration, las dos tienen que estar en *Redirect URLs*.
+
 ## Desarrollo
 
 ```bash
