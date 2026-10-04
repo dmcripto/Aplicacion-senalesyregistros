@@ -10,6 +10,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
+import { runInBackground, signalCardImage } from "../_shared/card.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, sendMessage, tgApi } from "../_shared/telegram.ts";
 import type { Lang } from "../_shared/telegram.ts";
@@ -246,7 +247,7 @@ async function handleCallback(cb: any) {
     const { error } = await admin.from("trades").insert({ user_id: link.user_id, symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp, sl: t.sl, date: new Date().toISOString() });
     if (!error) {
       saved++;
-      await publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l));
+      await runInBackground(publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l), (l) => signalCardImage(t, l)));
     }
   }
   return edit(T[lang].registered(saved, dup));

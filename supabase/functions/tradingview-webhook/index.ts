@@ -9,6 +9,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
+import { runInBackground, signalCardImage } from "../_shared/card.ts";
 import { communitySignalMessage, publishToCommunities, signalCardHtml } from "../_shared/community.ts";
 import { botToken, notifyTelegram } from "../_shared/telegram.ts";
 import { waSignalText } from "../_shared/whatsapp.ts";
@@ -144,9 +145,11 @@ Deno.serve(async (req) => {
   // Aviso por Telegram (si el usuario vinculó su chat).
   await notifyTelegram(supabase, profile.id, (lang) => signalCardHtml({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang, { header: "🔔", disclaimer: false }), (lang) => waSignalText({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang));
 
-  // Publicación en la comunidad de Telegram (si el usuario conectó una).
-  await publishToCommunities(supabase, botToken(), profile.id, (lang) =>
-    communitySignalMessage({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang),
+  // Publicación en la comunidad de Telegram (si el usuario conectó una): imagen tarjeta, o texto si no se puede dibujar.
+  // Corre después de contestar para que TradingView no espere (su límite es de pocos segundos).
+  const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl };
+  await runInBackground(
+    publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
   );
 
   return new Response(JSON.stringify({ ok: true, trade }), {

@@ -29,6 +29,22 @@ export async function tgApi(token: string, method: string, payload: Record<strin
 export const sendMessage = (token: string, chatId: number, html: string, extra: Record<string, unknown> = {}) =>
   tgApi(token, "sendMessage", { chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
 
+/** Manda una imagen PNG (con texto opcional abajo). Si Telegram la rechaza, devuelve el error igual que sendMessage. */
+export async function sendPhoto(token: string, chatId: number, png: Uint8Array, caption: string, extra: Record<string, string | number> = {}): Promise<any> {
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    form.append("caption", caption.slice(0, 1000));
+    form.append("parse_mode", "HTML");
+    for (const [k, v] of Object.entries(extra)) form.append(k, String(v));
+    form.append("photo", new Blob([png], { type: "image/png" }), "veltrix.png");
+    const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(15000) });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
 /**
  * Avisa por Telegram al usuario si tiene el chat vinculado. `build` arma el texto en su idioma.
  * Nunca lanza errores: un fallo de Telegram no debe romper el registro de la señal.

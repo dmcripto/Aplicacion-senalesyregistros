@@ -8,7 +8,7 @@ let sent: Array<{ method: string; payload: any }> = [];
 
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", TELEGRAM_BOT_TOKEN: "TOKEN", TELEGRAM_WEBHOOK_SECRET: "SECRET" } as Record<string, string>)[k] },
+    env: { get: (k: string) => ({ SIGNAL_IMAGES: "off", SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", TELEGRAM_BOT_TOKEN: "TOKEN", TELEGRAM_WEBHOOK_SECRET: "SECRET" } as Record<string, string>)[k] },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/telegram-bot/index");
