@@ -869,7 +869,7 @@ function Dashboard({ userId }: { userId: string }) {
               </Reveal>
               <WhatsAppCard notify={notify} />
               <Reveal delay={158}>
-                <ExchangeCard money={money} notify={notify} />
+                <ExchangeCard money={money} notify={notify} onSaveMoney={persistMoney} />
               </Reveal>
               <Reveal delay={165}>
                 <MoneyCard money={money} trades={trades} onSave={persistMoney} />

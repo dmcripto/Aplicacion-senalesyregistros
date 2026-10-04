@@ -251,7 +251,7 @@ export default function SettingsScreen({
       <WhatsAppSection />
 
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
-      <ExchangeSection />
+      <ExchangeSection onSaveMoney={onSaveMoney} />
 
       <Text style={styles.sectionTitle}>{t("LÍMITES DIARIOS")}</Text>
       <View style={styles.card}>
