@@ -420,3 +420,100 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
     display: none;
   }
 }
+
+/* ─── Marca con vida: el logo flota y brilla, VELTRIX tiene un destello propio ─── */
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-2deg); }
+}
+@keyframes logoGlow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(46, 196, 241, 0.28)); }
+  50% { filter: drop-shadow(0 0 22px rgba(46, 196, 241, 0.7)); }
+}
+@keyframes brandSheen {
+  0% { background-position: 130% 0; }
+  45%, 100% { background-position: -130% 0; }
+}
+.brand-logo {
+  display: inline-block;
+  line-height: 0;
+  transition: transform 0.4s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.brand-logo > svg,
+.brand-logo > img {
+  animation: logoFloat 5.5s ease-in-out infinite, logoGlow 3.8s ease-in-out infinite;
+}
+.brand-word {
+  display: inline-block;
+  background: linear-gradient(100deg, var(--color-snow, #e8eef6) 0%, var(--color-snow, #e8eef6) 40%, #8be3ff 50%, var(--color-snow, #e8eef6) 60%, var(--color-snow, #e8eef6) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: brandSheen 7s ease-in-out infinite;
+  transition: letter-spacing 0.35s ease, filter 0.35s ease;
+}
+
+/* Al pasar el mouse los elementos «saltan» un poco hacia adelante (solo con mouse; sin movimiento reducido) */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .brand-logo:hover { transform: scale(1.14) rotate(-8deg); }
+  .brand-word:hover { letter-spacing: 0.1em; filter: drop-shadow(0 0 12px rgba(46, 196, 241, 0.55)); }
+
+  .lift {
+    position: relative;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  }
+  .lift:hover {
+    z-index: 2;
+    transform: translateY(-4px) scale(1.015);
+    border-color: rgba(46, 196, 241, 0.5);
+    box-shadow: 0 20px 40px -16px rgba(46, 196, 241, 0.4), 0 0 0 1px rgba(46, 196, 241, 0.25);
+  }
+
+  /* Botones de la cabecera y atajos: suben y brillan con su propio color */
+  header :is(a, button):not(:disabled),
+  nav[aria-label] :is(a, button):not(:disabled) {
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  }
+  header :is(a, button):not(:disabled):hover,
+  nav[aria-label] :is(a, button):not(:disabled):hover {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 10px 24px -8px color-mix(in srgb, currentColor 55%, transparent);
+  }
+
+  /* Números de las estadísticas: crecen al pasar el mouse */
+  .stat-cell > p:nth-of-type(2) {
+    transform-origin: left center;
+    transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1), text-shadow 0.25s ease;
+  }
+  .stat-cell:hover > p:nth-of-type(2) {
+    transform: scale(1.1);
+    text-shadow: 0 0 22px currentColor;
+  }
+
+  /* Filas de la tabla de operaciones */
+  tbody tr {
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  tbody tr:hover {
+    background-color: rgba(46, 196, 241, 0.06);
+    box-shadow: inset 3px 0 0 var(--color-cyan, #2ec4f1);
+  }
+
+  /* Paneles grandes: no se mueven (evita saltos), pero se iluminan y sobresalen con la sombra */
+  .glow-card:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 0 0 1px rgba(46, 196, 241, 0.2),
+      0 26px 60px -28px rgba(46, 196, 241, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo > svg,
+  .brand-logo > img,
+  .brand-word {
+    animation: none;
+  }
+}
