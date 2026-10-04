@@ -153,6 +153,7 @@ export default function TelegramSection({ userId }: { userId: string }) {
                   <Text style={s.noticeText}>{cStart.command} · {t("Tocá para copiar")}</Text>
                 </TouchableOpacity>
                 <Text style={s.hint}>{t("Esto se completa solo en unos segundos. El código dura 10 minutos.")}</Text>
+                <Text style={s.hint}>{t("Si el bot no responde: hacelo administrador del grupo. En un grupo con temas, escribí el mensaje dentro del tema donde querés las señales.")}</Text>
               </View>
             ) : (
               <TouchableOpacity style={s.outline} onPress={connectCommunity} disabled={busy}>

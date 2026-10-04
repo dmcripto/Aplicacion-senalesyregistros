@@ -53,7 +53,7 @@ describe("conectar la comunidad", () => {
     const r = await newCode();
     expect(r.ok).toBe(true);
     expect(r.code).toMatch(/^[A-Z2-9]{8}$/);
-    expect(r.command).toBe(`/comunidad ${r.code}`);
+    expect(r.command).toBe(`/comunidad@veltrix_bot ${r.code}`);
     expect(r.addToGroupUrl).toBe("https://t.me/veltrix_bot?startgroup=true");
     expect(r.addToChannelUrl).toContain("startchannel=true");
     expect(db.tables.telegram_link_codes[0]).toMatchObject({ kind: "community", user_id: "u1" });

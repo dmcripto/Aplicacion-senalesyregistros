@@ -398,7 +398,7 @@ async function handleClient(req: Request, body: Record<string, unknown>) {
       ok: true,
       code,
       botUsername: username,
-      command: `/comunidad ${code}`,
+      command: `/comunidad@${username} ${code}`,
       addToGroupUrl: `https://t.me/${username}?startgroup=true`,
       addToChannelUrl: `https://t.me/${username}?startchannel=true&admin=post_messages`,
     });
