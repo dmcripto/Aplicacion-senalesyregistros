@@ -99,17 +99,17 @@ function cardFrame(lang: Lang, pill: string, logo: string | null, body: string):
 function cardLevel(y: number, color: string, label: string, value: string, right: string, h = 112): string {
   const frame = `<rect x="60" y="${y}" width="960" height="${h}" rx="${Math.round(Math.min(22, h / 3))}" fill="${CARD_C.panel}" stroke="${CARD_C.line}" stroke-width="2"/>
   <rect x="60" y="${y}" width="12" height="${h}" rx="6" fill="${color}"/>`;
-  if (h < 90) {
-    // Fila compacta (muchos targets): nombre, precio y % en una sola línea.
-    const base = Math.round(y + h / 2 + h * 0.18);
+  if (h < 100) {
+    // Fila compacta (muchos targets): nombre, precio y % en una sola línea, con letra grande para leerse de un vistazo en el celular.
+    const base = Math.round(y + h / 2 + h * 0.23);
     return `${frame}
-  <text x="104" y="${Math.round(y + h / 2 + 7)}" font-size="20" font-weight="700" letter-spacing="3" fill="${color}">${esc(label)}</text>
-  <text x="360" y="${base}" font-size="${cardFit(value, Math.round(h * 0.6), 360)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
-  <text x="990" y="${base}" font-size="${Math.round(h * 0.5)}" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
+  <text x="104" y="${Math.round(y + h / 2 + 9)}" font-size="26" font-weight="700" letter-spacing="3" fill="${color}">${esc(label)}</text>
+  <text x="400" y="${base}" font-size="${cardFit(value, Math.round(h * 0.68), 340)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
+  <text x="990" y="${base}" font-size="${Math.round(h * 0.56)}" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
   }
   const k = h / 112;
   return `${frame}
-  <text x="104" y="${Math.round(y + 37 * k)}" font-size="${Math.round(21 * Math.max(k, 0.85))}" font-weight="700" letter-spacing="4" fill="${color}">${esc(label)}</text>
+  <text x="104" y="${Math.round(y + 37 * k)}" font-size="${Math.round(25 * Math.max(k, 0.9))}" font-weight="700" letter-spacing="4" fill="${color}">${esc(label)}</text>
   <text x="104" y="${Math.round(y + 95 * k)}" font-size="${cardFit(value, Math.round(54 * k), 560)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
   <text x="990" y="${Math.round(y + 80 * k)}" font-size="${Math.round(46 * k)}" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
 }
@@ -135,16 +135,19 @@ export function signalCardSvg(t: CommunityTrade, lang: Lang, logo: string | null
   const [entryRow, stopRow] = rowsData.slice(levels.length);
   const ordered = long ? [...targetRows.reverse(), entryRow, stopRow] : [stopRow, entryRow, ...targetRows];
   const n = ordered.length;
-  const gap = n > 3 ? 12 : 22;
-  const top = n > 3 ? 436 : 470;
+  const compact = n > 3; // con varios targets el encabezado se achica para darles lugar a las filas
+  const gap = compact ? 10 : 22;
+  const top = compact ? 372 : 470;
   const avail = 868 - top;
   const h = Math.min(112, Math.floor((avail - gap * (n - 1)) / n));
   const rows = ordered.map((r, i) => cardLevel(top + i * (h + gap), r.color, r.label, r.value, r.pct == null ? "" : cardPct(r.pct), h));
   const body = `
-  <text x="60" y="${290}" font-size="${cardFit(pair, 128, 960)}" font-weight="700" fill="#ffffff">${esc(pair)}</text>
+  <text x="60" y="${compact ? 262 : 290}" font-size="${cardFit(pair, compact ? 104 : 128, 960)}" font-weight="700" fill="#ffffff">${esc(pair)}</text>
+  <g transform="translate(0 ${compact ? -42 : 0})">
   <rect x="60" y="318" width="${label.length * 20 + 110}" height="74" rx="37" fill="${col}" fill-opacity="0.14" stroke="${col}" stroke-width="3"/>
   <path d="${long ? "M96 372 L114 340 L132 372 Z" : "M96 340 L114 372 L132 340 Z"}" fill="${col}"/>
   <text x="152" y="368" font-size="30" font-weight="700" letter-spacing="2" fill="${col}">${esc(label)}</text>
+  </g>
   ${rows.join("\n  ")}
   <rect x="60" y="886" width="960" height="104" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
   <text x="104" y="948" font-size="23" font-weight="700" letter-spacing="3" fill="${CARD_C.muted}">${esc(tx.rr)}</text>
@@ -189,11 +192,11 @@ export function partialCardSvg(t: CommunityTrade, level: number, r: number, lang
   <circle cx="540" cy="318" r="24" fill="${CARD_C.bull}"/>
   <text x="540" y="548" font-size="${cardFit(title, 92, 940)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(title)}</text>
   <text x="540" y="634" font-size="${cardFit(pair, 64, 940)}" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(pair)}</text>
-  <text x="540" y="830" font-size="${cardFit(profit, 210, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
-  <text x="540" y="884" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
-  <rect x="60" y="906" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
-  <text x="96" y="944" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
-  <text x="96" y="990" font-size="${cardFit(advice, 32, 890)}" font-weight="700" fill="#ffffff">${esc(advice)}</text>`;
+  <text x="540" y="816" font-size="${cardFit(profit, 196, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
+  <text x="540" y="866" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
+  <rect x="60" y="886" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
+  <text x="96" y="924" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
+  <text x="96" y="970" font-size="${cardFit(advice, 32, 890)}" font-weight="700" fill="#ffffff">${esc(advice)}</text>`;
   return cardFrame(lang, `${tx.target} ${n}`, logo, body);
 }
 
