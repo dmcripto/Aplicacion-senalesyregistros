@@ -232,6 +232,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
                     </button>
                   </li>
                   <li>{t("Esto se completa solo en unos segundos. El código dura 10 minutos.")}</li>
+                  <li>{t("Si el bot no responde: hacelo administrador del grupo. En un grupo con temas, escribí el mensaje dentro del tema donde querés las señales.")}</li>
                 </ol>
               ) : (
                 <button

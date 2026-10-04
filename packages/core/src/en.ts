@@ -687,6 +687,7 @@ export const EN: Record<string, string> = {
   "más en el libro de operaciones": "more in the trade book",
   "Precio ahora": "Price now",
   "¡TP alcanzado!": "TP hit!",
+  "Si el bot no responde: hacelo administrador del grupo. En un grupo con temas, escribí el mensaje dentro del tema donde querés las señales.": "If the bot doesn't answer: make it an admin of the group. In a group with topics, write the message inside the topic where you want the signals.",
   "Etiqueta propia": "Custom tag",
   "Cierre manual": "Manual close",
   "Confirmar cierre": "Confirm close",
