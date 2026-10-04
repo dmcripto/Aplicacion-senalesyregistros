@@ -1,7 +1,7 @@
-// Conexión de solo lectura con exchanges (Binance, Bybit).
+// Conexión de solo lectura con exchanges (Binance, Bybit, Bitunix, MEXC).
 //
 //   POST /functions/v1/exchanges   (con la sesión del usuario en Authorization)
-//   { "action": "connect", "exchange": "binance" | "bybit", "apiKey": "...", "apiSecret": "..." }
+//   { "action": "connect", "exchange": "binance" | "bybit" | "bitunix" | "mexc", "apiKey": "...", "apiSecret": "..." }
 //   { "action": "sync" }
 //
 // Sincronización en segundo plano: pg_cron llama cada 10 minutos con el encabezado x-cron-secret

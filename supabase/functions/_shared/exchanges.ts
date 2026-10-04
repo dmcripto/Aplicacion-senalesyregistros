@@ -1,10 +1,11 @@
 // ─── VELTRIX · Conexión de solo lectura con exchanges ─────────────────────
-// Binance (futuros USDⓈ-M) y Bybit (perpetuos lineales). Solo se hacen pedidos
+// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix y MEXC (futuros). Solo se hacen pedidos
 // GET de lectura: VELTRIX nunca opera ni mueve fondos.
 // Sin dependencias de Deno ni de Node: solo fetch y WebCrypto, para poder probarlo en local.
 
-export type ExchangeId = "binance" | "bybit";
-export const EXCHANGES: ExchangeId[] = ["binance", "bybit"];
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc";
+export const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc"];
+export const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC" };
 
 export interface ClosedPosition {
   externalId: string;
@@ -345,13 +346,200 @@ export async function bybitFetchClosed(key: string, secret: string, since: numbe
   return all;
 }
 
+// ─── Bitunix (futuros) ──────────────────────────────────────────────────────
+
+const BITUNIX = "https://fapi.bitunix.com";
+
+const sha256Hex = async (text: string) => toHex(await crypto.subtle.digest("SHA-256", enc.encode(text)));
+
+/**
+ * Firma de Bitunix: sha256( sha256(nonce + timestamp + apiKey + parámetros ordenados por nombre y pegados como clave+valor) + secreta ).
+ * Los pedidos de VELTRIX son GET, así que no hay cuerpo.
+ */
+export async function bitunixSign(nonce: string, timestamp: string, apiKey: string, params: Record<string, string | number>, secret: string) {
+  const sorted = Object.keys(params).sort().map((k) => k + params[k]).join("");
+  return sha256Hex((await sha256Hex(nonce + timestamp + apiKey + sorted)) + secret);
+}
+
+async function bitunixGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const nonce = toHex(crypto.getRandomValues(new Uint8Array(16)).buffer);
+  const ts = String(Date.now());
+  const sign = await bitunixSign(nonce, ts, key, params, secret);
+  const query = qs(params);
+  const r = await getJson(
+    fetchFn,
+    `${BITUNIX}${path}${query ? `?${query}` : ""}`,
+    { "api-key": key, nonce, timestamp: ts, sign, "Content-Type": "application/json", language: "en-US" },
+    "Bitunix",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (c === 10003 || c === 10007) throw new ExchangeError("Bitunix no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 10004) throw new ExchangeError("La clave de Bitunix tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === 10005 || c === 10006) throw new ExchangeError("Bitunix limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    if (r.status === 401) throw new ExchangeError("Bitunix no aceptó la clave. Revisá que esté bien copiada y que tenga permiso de lectura.");
+    throw new ExchangeError(`Bitunix respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function bitunixCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await bitunixGet(fetchFn, "/api/v1/futures/position/get_history_positions", { limit: 1 }, key, secret);
+    // Bitunix no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Bitunix no nos deja confirmar los permisos de la clave. Verificá en Bitunix que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+export function parseBitunixClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toUpperCase();
+    const direction = side === "LONG" || side === "BUY" ? "LONG" : side === "SHORT" || side === "SELL" ? "SHORT" : null;
+    const entry = num(r.entryPrice), exit = num(r.closePrice);
+    // Tamaño máximo de la posición; si falta, se deduce del resultado bruto y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const qty = num(r.maxQty) > 0 ? num(r.maxQty) : move > 0 ? Math.abs(num(r.realizedPNL)) / move : 0;
+    const closedAt = Number(r.mtime ?? r.ctime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      exit,
+      // realizedPNL no incluye comisiones ni funding: se restan las comisiones y se suma el funding (con su signo).
+      pnl: num(r.realizedPNL) - Math.abs(num(r.fee)) + num(r.funding),
+      openedAt: Number(r.ctime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+export async function bitunixFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let skip = 0, page = 0; page < 30; page++, skip += 100) {
+      const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_history_positions", { startTime: s, endTime: e, skip, limit: 100 }, key, secret);
+      const list: any[] = data?.positionList ?? [];
+      all.push(...parseBitunixClosed(list));
+      if (list.length < 100) break;
+    }
+  }
+  return all;
+}
+
+// ─── MEXC (futuros) ─────────────────────────────────────────────────────────
+
+const MEXC = "https://contract.mexc.com";
+
+/** Firma de MEXC: HMAC-SHA256 (hex) de apiKey + timestamp + parámetros ordenados (clave=valor&...). */
+export async function mexcSign(apiKey: string, timestamp: string, query: string, secret: string) {
+  return hmacHex(secret, apiKey + timestamp + query);
+}
+
+async function mexcGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const sorted = Object.fromEntries(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const query = qs(sorted);
+  const ts = String(Date.now());
+  const sig = await mexcSign(key, ts, query, secret);
+  const r = await getJson(
+    fetchFn,
+    `${MEXC}${path}${query ? `?${query}` : ""}`,
+    { ApiKey: key, "Request-Time": ts, Signature: sig, "Content-Type": "application/json" },
+    "MEXC",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || r.body?.success === false || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (c === 602 || c === 10072) throw new ExchangeError("MEXC no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 10073 || c === 700003) throw new ExchangeError("El reloj del servidor no coincide con el de MEXC. Probá de nuevo.");
+    if (c === 401 || c === 403 || r.status === 401) throw new ExchangeError("La clave de MEXC no tiene permiso para leer Futuros. Activá la lectura de \"Futuros\" y volvé a intentar.");
+    throw new ExchangeError(`MEXC respondió con un error${r.body?.message || r.body?.msg ? `: ${r.body.message ?? r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function mexcCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await mexcGet(fetchFn, "/api/v1/private/position/list/history_positions", { page_num: 1, page_size: 1 }, key, secret);
+    // MEXC no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "MEXC no nos deja confirmar los permisos de la clave. Verificá en MEXC que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** MEXC informa el tamaño en contratos: se multiplica por lo que vale cada contrato en la moneda base. */
+export function parseMexcClosed(list: any[], contractSizes: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    if (Number(r.state) !== 3) continue; // 1 y 2 = posición todavía abierta
+    const direction = Number(r.positionType) === 1 ? "LONG" : Number(r.positionType) === 2 ? "SHORT" : null;
+    const entry = num(r.openAvgPrice ?? r.holdAvgPrice), exit = num(r.closeAvgPrice);
+    const size = contractSizes[String(r.symbol)];
+    // Sin el valor del contrato se deduce el tamaño del resultado bruto y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const qty = size > 0 ? num(r.closeVol) * size : move > 0 ? Math.abs(num(r.closeProfitLoss)) / move : 0;
+    const closedAt = Number(r.updateTime ?? r.createTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol).replace(/_/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl: num(r.realised), // resultado final ya descontadas las comisiones
+      openedAt: Number(r.createTime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+async function mexcContractSize(fetchFn: FetchFn, symbol: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${MEXC}/api/v1/contract/detail?symbol=${encodeURIComponent(symbol)}`, {}, "MEXC");
+    return num(r.body?.data?.contractSize);
+  } catch {
+    return 0;
+  }
+}
+
+export async function mexcFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  // El historial viene sin filtro de fechas: se pide por páginas hasta pasar el período buscado.
+  for (let page = 1; page <= 30; page++) {
+    const list: any[] = (await mexcGet(fetchFn, "/api/v1/private/position/list/history_positions", { page_num: page, page_size: 100 }, key, secret)) ?? [];
+    raw.push(...list.filter((r) => Number(r.updateTime ?? r.createTime) >= since && Number(r.updateTime ?? r.createTime) <= now));
+    if (list.length < 100) break;
+    const oldest = Math.min(...list.map((r) => Number(r.updateTime ?? r.createTime)));
+    if (oldest < since) break;
+  }
+  const sizes: Record<string, number> = {};
+  for (const symbol of new Set(raw.map((r) => String(r.symbol)))) sizes[symbol] = await mexcContractSize(fetchFn, symbol);
+  return parseMexcClosed(raw, sizes);
+}
+
 // ─── Común ──────────────────────────────────────────────────────────────────
 
 export const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: FetchFn) =>
-  ex === "binance" ? binanceCheck(key, secret, fetchFn) : bybitCheck(key, secret, fetchFn);
+  ex === "binance" ? binanceCheck(key, secret, fetchFn)
+  : ex === "bybit" ? bybitCheck(key, secret, fetchFn)
+  : ex === "bitunix" ? bitunixCheck(key, secret, fetchFn)
+  : mexcCheck(key, secret, fetchFn);
 
 export const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: number, now?: number, fetchFn?: FetchFn) =>
-  ex === "binance" ? binanceFetchClosed(key, secret, since, now, fetchFn) : bybitFetchClosed(key, secret, since, now, fetchFn);
+  ex === "binance" ? binanceFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bybit" ? bybitFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bitunix" ? bitunixFetchClosed(key, secret, since, now, fetchFn)
+  : mexcFetchClosed(key, secret, since, now, fetchFn);
 
 export interface TradeRow {
   symbol: string;
@@ -381,7 +569,7 @@ export function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number
   const slDist = unit / p.qty;
   const exitNet = p.entry + (dir * p.pnl) / p.qty;
   const tpDist = p.pnl > 0 ? Math.abs(exitNet - p.entry) : slDist;
-  const name = exchange === "binance" ? "Binance" : "Bybit";
+  const name = EXCHANGE_NAMES[exchange];
   return {
     symbol: p.symbol.toUpperCase(),
     direction: p.direction,
