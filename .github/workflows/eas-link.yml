@@ -1,0 +1,28 @@
+name: EAS latest link
+
+# Muestra el enlace directo (APK) del último build de Android terminado, sin compilar nada.
+# Requiere el mismo secret EXPO_TOKEN que "EAS Build".
+
+on:
+  workflow_dispatch:
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Show the direct APK link
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build:list --platform android --limit 3 --status finished --json --non-interactive > /tmp/latest.json
+          node -e "for (const b of JSON.parse(require('fs').readFileSync('/tmp/latest.json','utf8'))) console.log('BUILD_ID=' + b.id + ' | ' + b.createdAt + ' | profile=' + b.buildProfile + ' | APK_URL=' + ((b.artifacts&&b.artifacts.buildUrl)||''));"

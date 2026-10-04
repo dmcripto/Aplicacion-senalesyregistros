@@ -52,3 +52,12 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive
+
+      - name: Show the direct APK link
+        if: success() && inputs.platform != 'ios'
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build:list --platform android --limit 1 --status finished --json --non-interactive > /tmp/latest.json
+          node -e "const b=JSON.parse(require('fs').readFileSync('/tmp/latest.json','utf8'))[0]||{}; console.log('APK_URL=' + ((b.artifacts&&b.artifacts.buildUrl)||'')); console.log('BUILD_ID=' + (b.id||''));"
