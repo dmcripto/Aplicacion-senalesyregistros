@@ -71,6 +71,7 @@ import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
 import CoachCard from "./components/CoachCard";
+import WhatsAppCard from "./components/WhatsAppCard";
 import TodayCard from "./components/TodayCard";
 import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
@@ -871,6 +872,7 @@ function Dashboard({ userId }: { userId: string }) {
               <Reveal delay={154}>
                 <TelegramCard userId={userId} notify={notify} />
               </Reveal>
+              <WhatsAppCard notify={notify} />
               <Reveal delay={158}>
                 <ExchangeCard money={money} notify={notify} />
               </Reveal>

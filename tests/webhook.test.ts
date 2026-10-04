@@ -8,7 +8,7 @@ let token: string | undefined = "TOKEN";
 
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => (({ SIGNAL_IMAGES: "off", SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y" } as Record<string, string | undefined>)[k] ?? (k === "TELEGRAM_BOT_TOKEN" ? token : undefined)) },
+    env: { get: (k: string) => (({ SIGNAL_IMAGES: "off", SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", WHATSAPP_TOKEN: "WT", WHATSAPP_PHONE_ID: "WP" } as Record<string, string | undefined>)[k] ?? (k === "TELEGRAM_BOT_TOKEN" ? token : undefined)) },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/tradingview-webhook/index");
@@ -74,6 +74,23 @@ describe("webhook de TradingView", () => {
     const priv = telegramCalls().find((c) => c.body.chat_id === 555)!;
     expect(priv.body.reply_markup.inline_keyboard[0][0].url).toMatch(/^https:\/\/wa\.me\/\?text=/);
     expect(telegramCalls().find((c) => c.body.chat_id === -1001)!.body.reply_markup).toBeUndefined();
+  });
+
+  it("avisa por WhatsApp a quien vinculó su número, y a nadie más", async () => {
+    await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500");
+    expect(calls.filter((c) => c.url.includes("graph.facebook.com"))).toHaveLength(0); // sin número vinculado
+
+    db.tables.whatsapp_links = [{ user_id: "u1", phone: "5491155550000", enabled: true }];
+    await post("VELTRIX|ETHUSDT|VENTA|3000|2900|3050");
+    const wa = calls.filter((c) => c.url.includes("graph.facebook.com"));
+    expect(wa).toHaveLength(1);
+    expect(wa[0].url).toContain("/WP/messages");
+    expect(wa[0].body).toMatchObject({ to: "5491155550000", type: "template", template: { name: "veltrix_senal" } });
+    expect(wa[0].body.template.components[0].parameters.map((p: any) => p.text)).toEqual(["ETH/USDT", "VENTA (SHORT)", "3000", "2900", "3050", "2.0"]);
+
+    db.tables.whatsapp_links[0].enabled = false; // pausado
+    await post("VELTRIX|SOLUSDT|COMPRA|150|160|145");
+    expect(calls.filter((c) => c.url.includes("graph.facebook.com"))).toHaveLength(1);
   });
 
   it("avisa en el idioma del usuario", async () => {

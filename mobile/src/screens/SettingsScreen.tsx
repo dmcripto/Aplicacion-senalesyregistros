@@ -14,6 +14,7 @@ import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
 import TelegramSection from "../TelegramSection";
+import WhatsAppSection from "../WhatsAppSection";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
 
@@ -237,6 +238,7 @@ export default function SettingsScreen({
 
       <Text style={styles.sectionTitle}>{t("BOT DE TELEGRAM")}</Text>
       <TelegramSection userId={userId} />
+      <WhatsAppSection />
 
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection />

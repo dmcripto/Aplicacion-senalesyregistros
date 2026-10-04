@@ -5,7 +5,7 @@
 
 import { LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -395,3 +395,17 @@ export async function removeCommunity(id: string) {
   const { error } = await supabase.from("telegram_communities").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ─── Señales por WhatsApp (API oficial: la persona vincula su número con un código) ─
+
+type WaReply = { ok: boolean; error?: string };
+
+/** Si el servidor todavía no tiene WhatsApp (o no responde), se devuelve «no configurado» y la pantalla no muestra nada. */
+export async function fetchWhatsApp(): Promise<WhatsAppState> {
+  const r = await callFunction<WaReply & Partial<WhatsAppState>>("whatsapp", { action: "status" });
+  return r.ok ? { configured: !!r.configured, link: r.link ?? null } : { configured: false, link: null };
+}
+export const startWhatsApp = (phone: string) => callFunction<WaReply & { minutes?: number }>("whatsapp", { action: "start", phone });
+export const verifyWhatsApp = (code: string) => callFunction<WaReply & { link?: { phone: string; enabled: boolean } }>("whatsapp", { action: "verify", code });
+export const toggleWhatsApp = (enabled: boolean) => callFunction<WaReply>("whatsapp", { action: "toggle", enabled });
+export const unlinkWhatsApp = () => callFunction<WaReply>("whatsapp", { action: "unlink" });
