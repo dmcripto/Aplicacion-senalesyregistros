@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Descargar VELTRIX para Android</title>
+  <meta name="description" content="Descargá la app de VELTRIX para Android: señales de TradingView en tu celular, avisos de cada target, diario con estadísticas y control de riesgo." />
+  <meta property="og:title" content="VELTRIX · Descargá la app para Android" />
+  <meta property="og:description" content="Señales en vivo, avisos de cada target, diario con estadísticas y control de riesgo en tu celular." />
+  <meta property="og:image" content="https://veltrix-trading.vercel.app/og-image.png" />
+  <meta property="og:url" content="https://veltrix-trading.vercel.app/app" />
+  <meta name="theme-color" content="#070b11" />
+  <link rel="icon" href="/favicon.png" />
+  <style>
+    :root { --bg:#070b11; --panel:#0f161f; --line:#1c2836; --snow:#e8eef6; --fog:#8fa3b8; --cyan:#2ec4f1; --bull:#16d98a; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px 16px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--snow);
+      background: radial-gradient(900px 500px at 15% -10%, rgba(22,217,138,.18), transparent 60%), radial-gradient(800px 500px at 100% 0%, rgba(46,196,241,.2), transparent 60%), var(--bg); }
+    main { width:100%; max-width:420px; text-align:center; }
+    .logo { width:96px; height:96px; filter: drop-shadow(0 0 22px rgba(46,196,241,.45)); animation: float 5s ease-in-out infinite; }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+    h1 { margin:10px 0 0; font-size:30px; letter-spacing:.06em; font-weight:800; }
+    .tag { margin:6px 0 0; color:var(--cyan); font-weight:700; font-size:17px; }
+    p.lead { color:var(--fog); line-height:1.55; margin:12px 6px 0; font-size:15px; }
+    .btn { display:block; margin:22px 0 0; padding:17px 20px; border-radius:12px; background:var(--cyan); color:#04202b; font-weight:800; font-size:17px;
+      letter-spacing:.04em; text-decoration:none; text-transform:uppercase; position:relative; overflow:hidden; box-shadow:0 14px 40px -14px rgba(46,196,241,.7); }
+    .btn::after { content:""; position:absolute; inset:0 auto 0 0; width:40%; background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent); animation: shine 3.4s ease-in-out infinite; }
+    @keyframes shine { 0% { transform: translateX(-130%) skewX(-20deg); } 40%,100% { transform: translateX(300%) skewX(-20deg); } }
+    .card { margin-top:22px; text-align:left; background:rgba(15,22,31,.88); border:1px solid var(--line); border-radius:14px; padding:6px 16px; }
+    .step { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); font-size:14px; line-height:1.45; color:var(--fog); }
+    .step:last-child { border-bottom:0; }
+    .step b { color:var(--snow); }
+    .n { flex:none; width:26px; height:26px; border-radius:50%; background:var(--cyan); color:#04202b; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; }
+    .note { margin-top:16px; font-size:13px; color:var(--fog); line-height:1.5; }
+    .note a { color:var(--cyan); }
+    .chip { display:inline-block; margin-top:14px; padding:5px 12px; border:1px solid rgba(22,217,138,.4); background:rgba(22,217,138,.1); color:var(--bull); border-radius:999px; font-size:12px; font-weight:700; }
+    footer { margin-top:22px; font-size:11px; color:#5d7186; line-height:1.5; }
+    .lang { position:fixed; top:12px; right:12px; display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .lang button { background:transparent; border:0; color:var(--fog); padding:6px 10px; font-weight:700; font-size:12px; cursor:pointer; }
+    .lang button.on { background:var(--cyan); color:#04202b; }
+    @media (prefers-reduced-motion: reduce) { .logo, .btn::after { animation:none; } }
+  </style>
+</head>
+<body>
+  <div class="lang" role="group" aria-label="Idioma"><button id="es" class="on">ES</button><button id="en">EN</button></div>
+  <main>
+    <img class="logo" src="/logo.png" alt="VELTRIX" />
+    <h1>VELTRIX</h1>
+    <div class="tag" data-es="Tu centro de trading en vivo" data-en="Your live trading hub"></div>
+    <p class="lead" data-es="Recibí las señales de TradingView en tu celular, seguí cada operación al instante y mejorá con datos reales." data-en="Get TradingView signals on your phone, follow every trade instantly and improve with real data."></p>
+
+    <a id="download" class="btn" href="https://expo.dev/accounts/dmcriptos-team/projects/dmcripto-senales/builds/13d4c791-aaae-4526-8202-d72e7084d128" data-es="Descargar para Android" data-en="Download for Android"></a>
+    <span class="chip" data-es="✓ Versión para Android" data-en="✓ Android version"></span>
+
+    <section class="card">
+      <div class="step"><span class="n">1</span><span data-es="<b>Abrí este enlace desde tu celular Android</b> y tocá el botón de arriba." data-en="<b>Open this link on your Android phone</b> and tap the button above."></span></div>
+      <div class="step"><span class="n">2</span><span data-es="Tocá <b>Instalar</b>. Si Android te avisa, permití <b>instalar apps de esta fuente</b> (es normal en apps que todavía no están en Google Play)." data-en="Tap <b>Install</b>. If Android warns you, allow <b>installing apps from this source</b> (normal for apps not yet on Google Play)."></span></div>
+      <div class="step"><span class="n">3</span><span data-es="Abrí <b>VELTRIX</b>, creá tu cuenta y listo." data-en="Open <b>VELTRIX</b>, create your account and you're set."></span></div>
+    </section>
+
+    <p class="note" data-es='¿Tenés iPhone o preferís la computadora? Usá la versión web: <a href="/">veltrix-trading.vercel.app</a>. En el celular podés agregarla a la pantalla de inicio.' data-en='Have an iPhone or prefer a computer? Use the web version: <a href="/">veltrix-trading.vercel.app</a>. On your phone you can add it to the home screen.'></p>
+    <footer data-es="VELTRIX no constituye asesoramiento financiero ni recomendación de inversión. Operar implica riesgo de pérdida. No está afiliado a TradingView." data-en="VELTRIX is not financial advice or an investment recommendation. Trading involves risk of loss. Not affiliated with TradingView."></footer>
+  </main>
+  <script>
+    function setLang(l) {
+      document.documentElement.lang = l;
+      document.querySelectorAll("[data-" + l + "]").forEach(function (el) { el.innerHTML = el.getAttribute("data-" + l); });
+      document.getElementById("es").className = l === "es" ? "on" : "";
+      document.getElementById("en").className = l === "en" ? "on" : "";
+      try { localStorage.setItem("veltrix_lang", l); } catch (e) {}
+    }
+    var saved = null;
+    try { saved = localStorage.getItem("veltrix_lang"); } catch (e) {}
+    setLang(saved === "en" || saved === "es" ? saved : (navigator.language || "es").toLowerCase().indexOf("es") === 0 ? "es" : "en");
+    document.getElementById("es").onclick = function () { setLang("es"); };
+    document.getElementById("en").onclick = function () { setLang("en"); };
+  </script>
+</body>
+</html>
