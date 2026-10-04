@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -9,6 +11,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { supabase } from "../supabaseClient";
@@ -26,6 +29,30 @@ const CARDS = {
 };
 const CARD_CAPTIONS = ["1 · Llega la señal", "2 · Aviso de cada target", "3 · Resultado al cerrar"];
 
+/**
+ * Tarjeta de función que entra mientras se desplaza la pantalla: aparece desde un costado (alternando izquierda y derecha)
+ * con un fundido, y su ícono «salta» al llegar. Va atada al dedo, así que también se revierte al subir.
+ */
+function FeatureCard({ f, i, scrollY, vh }: { f: { icon: string; title: string; text: string }; i: number; scrollY: Animated.Value; vh: number }) {
+  const [y, setY] = useState<number | null>(null);
+  const start = (y ?? 100000) - vh + 70; // empieza cuando la tarjeta asoma por abajo
+  const range = [start, start + 170];
+  const opacity = scrollY.interpolate({ inputRange: range, outputRange: [0, 1], extrapolate: "clamp" });
+  const dx = scrollY.interpolate({ inputRange: range, outputRange: [i % 2 ? 70 : -70, 0], extrapolate: "clamp" });
+  const iconScale = scrollY.interpolate({ inputRange: [start + 30, start + 210], outputRange: [0.3, 1], extrapolate: "clamp", easing: Easing.out(Easing.back(3)) });
+  return (
+    <Animated.View onLayout={(e) => setY(e.nativeEvent.layout.y)} style={[styles.feature, { opacity, transform: [{ translateX: dx }] }]}>
+      <Animated.View style={[styles.featureIcon, { transform: [{ scale: iconScale }] }]}>
+        <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+      </Animated.View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.featureTitle}>{f.title}</Text>
+        <Text style={styles.featureText}>{f.text}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -36,7 +63,9 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const welcome = welcomeContent();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<any>(null);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const { height: vh } = useWindowDimensions();
   const formY = useRef(0);
   const goForm = (m: "login" | "signup") => {
     setMode(m);
@@ -111,7 +140,14 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-     <ScrollView ref={scrollRef} contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+     <Animated.ScrollView
+      ref={scrollRef}
+      contentContainerStyle={styles.screen}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+     >
       <View style={{ alignItems: "center", marginBottom: 12 }}>
         <LangSwitch />
       </View>
@@ -145,16 +181,8 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       </ScrollView>
 
       <Text style={styles.sectionTitle}>{t("QUÉ PODÉS HACER CON VELTRIX")}</Text>
-      {welcome.features.map((f) => (
-        <View key={f.title} style={styles.feature}>
-          <View style={styles.featureIcon}>
-            <Text style={{ fontSize: 22 }}>{f.icon}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.featureTitle}>{f.title}</Text>
-            <Text style={styles.featureText}>{f.text}</Text>
-          </View>
-        </View>
+      {welcome.features.map((f, i) => (
+        <FeatureCard key={f.title} f={f} i={i} scrollY={scrollY} vh={vh} />
       ))}
 
       <View style={styles.card} onLayout={(e) => { formY.current = e.nativeEvent.layout.y; }}>
@@ -245,7 +273,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       </View>
 
       <Text style={styles.disclaimer}>{disclaimer()}</Text>
-     </ScrollView>
+     </Animated.ScrollView>
     </KeyboardAvoidingView>
   );
 }
