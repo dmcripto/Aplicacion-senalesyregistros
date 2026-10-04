@@ -37,13 +37,6 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
   const [estado, setEstado] = useState<EstadoF>("all");
   const [mes, setMes] = useState("all");
   const [sort, setSort] = useState<SortMode>("recientes");
-  const [armedId, setArmedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!armedId) return;
-    const id = window.setTimeout(() => setArmedId(null), 2600);
-    return () => window.clearTimeout(id);
-  }, [armedId]);
 
   const months = useMemo(() => {
     const set = new Map<string, string>();
@@ -166,25 +159,14 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
             <IconUndo className="h-3.5 w-3.5" />
           </button>
         )}
-        {armedId === tr.id ? (
-          <button
-            onClick={() => {
-              setArmedId(null);
-              onDelete(tr.id);
-            }}
-            className={cx("num flex items-center rounded border border-bear bg-bear/20 text-[10px] font-bold text-bear transition-colors hover:bg-bear/35", big ? "h-9 px-3" : "h-7 px-2")}
-          >
-            {t("¿Borrar?")}
-          </button>
-        ) : (
-          <button
-            onClick={() => setArmedId(tr.id)}
-            title={t("Eliminar")}
-            className={cx(btn, "hover:border-bear/50 hover:bg-bear/10 hover:text-bear")}
-          >
-            <IconTrash className="h-3.5 w-3.5" />
-          </button>
-        )}
+        <button
+          onClick={() => onDelete(tr.id)}
+          title={t("Eliminar")}
+          aria-label={t("Eliminar")}
+          className={cx(btn, "hover:border-bear/50 hover:bg-bear/10 hover:text-bear")}
+        >
+          <IconTrash className="h-3.5 w-3.5" />
+        </button>
       </div>
     );
   };
