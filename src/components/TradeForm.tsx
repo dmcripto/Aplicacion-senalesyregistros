@@ -178,7 +178,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
                       </span>
                     </span>
                     <span className="num text-[11px] text-fog">
-                      {v.entry} → TP {v.tp} · SL {v.sl}
+                      {v.entry} → TP {[...(v.targets ?? []), v.tp].join(" / ")} · SL {v.sl}
                     </span>
                   </div>
                 ))}

@@ -14,8 +14,9 @@ export interface Trade {
   symbol: string;
   direction: Direction;
   entry: number;
-  tp: number;
+  tp: number; // TP final (el último target)
   sl: number;
+  targets?: number[]; // targets parciales (TP1, TP2…) antes del TP final, del más cercano al más lejano
   date: string; // ISO — apertura
   outcome: Outcome;
   exit?: number;
@@ -195,6 +196,24 @@ const normKey = (k: string) =>
 
 const toNum = (v: unknown) => Number(String(v ?? "").trim().replace(",", "."));
 
+/** Máximo de niveles de take profit por señal (el último es el TP final; los anteriores son targets parciales). */
+export const MAX_TARGETS = 5;
+
+/**
+ * Separa una lista de take profits en el TP final (el más lejano a favor) y los targets parciales (los demás, del más cercano al más lejano).
+ * Ignora los niveles del lado equivocado o repetidos. Con un solo nivel válido no hay targets parciales.
+ */
+export function splitTargets(direction: Direction, entry: number, levels: number[]): { tp: number; targets?: number[] } | null {
+  const dir = direction === "LONG" ? 1 : -1;
+  const good = [...new Set(levels.filter((n) => Number.isFinite(n) && n > 0 && dir * (n - entry) > 0))].sort((a, b) => dir * (a - b)).slice(0, MAX_TARGETS);
+  if (!good.length) return null;
+  const tp = good[good.length - 1];
+  return good.length > 1 ? { tp, targets: good.slice(0, -1) } : { tp };
+}
+
+
+const EXTRA_TP_KEYS = ["tp2", "tp3", "tp4", "tp5", "target2", "target3", "target4", "target5", "objetivo2", "objetivo3"];
+
 /** Interpreta un objeto con campos de una alerta (JSON o clave=valor), con nombres alternativos. */
 function tradeFromFields(fields: Record<string, unknown>, label: string): { value?: NewTrade; error?: string } {
   const byKey = new Map<string, unknown>();
@@ -216,12 +235,24 @@ function tradeFromFields(fields: Record<string, unknown>, label: string): { valu
   if (!direction) return { error: tr("«{label}» — dirección «{dir}» no reconocida (usá COMPRA/VENTA, BUY/SELL o LONG/SHORT).", { label, dir: dirRaw }) };
 
   const entry = toNum(get("entry"));
-  const tp = toNum(get("tp"));
+  // El TP puede traer varios niveles («66000/67000», una lista de JSON o tp1, tp2, tp3…): el más lejano es el TP final.
+  const levels: number[] = [];
+  const addLevel = (v: unknown) => {
+    if (Array.isArray(v)) return v.forEach(addLevel);
+    for (const part of String(v ?? "").split(/[\/;]/)) {
+      const n = toNum(part);
+      if (part.trim() && Number.isFinite(n) && n > 0) levels.push(n);
+    }
+  };
+  addLevel(get("tp"));
+  for (const k of EXTRA_TP_KEYS) addLevel(byKey.get(k));
   const sl = toNum(get("sl"));
+  const split = Number.isFinite(entry) && entry > 0 ? splitTargets(direction, entry, levels) : null;
+  const tp = split?.tp ?? levels[0] ?? NaN;
   if (![entry, tp, sl].every((n) => Number.isFinite(n) && n > 0)) {
     return { error: tr("«{label}» — entrada, TP y SL deben ser números válidos.", { label }) };
   }
-  return { value: { symbol: norm(symbol), direction, entry, tp, sl, date: new Date().toISOString() } };
+  return { value: { symbol: norm(symbol), direction, entry, tp, sl, ...(split?.targets ? { targets: split.targets } : {}), date: new Date().toISOString() } };
 }
 
 
@@ -273,6 +304,19 @@ const levelValue = (r: { a: string; b?: string; range: boolean }, dotThousands: 
   const b = r.b ? toNumber(r.b, dotThousands) : NaN;
   return r.range && Number.isFinite(b) && b > 0 ? (a + b) / 2 : a;
 };
+
+const TP_LABELS = "TAKE PROFITS|TAKE PROFIT|TAKEPROFIT|TARGETS|TARGET|TPS|TP|OBJETIVOS|OBJETIVO";
+const NUMN = "\\d[\\d.,]*\\d|\\d";
+
+/** Niveles de TP crudos de un texto: «TP1 65000 · TP2 66000», «Targets: 65000, 66000» o «TP: 65000/66000». Vacío si hay uno solo o ninguno. */
+function rawTargets(text: string): string[] {
+  const labeled = new Map<number, string>();
+  const byIndex = new RegExp(`(?:^|[^A-Z0-9])(?:${TP_LABELS})\\s*([1-9])(?!\\d)\\s*[:=\\-@]*\\s*\\$?\\s*(${NUMN})`, "g");
+  for (const m of text.matchAll(byIndex)) if (!labeled.has(Number(m[1]))) labeled.set(Number(m[1]), m[2]);
+  if (labeled.size >= 2) return [...labeled.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1]);
+  const list = text.match(new RegExp(`(?:^|[^A-Z0-9])(?:${TP_LABELS})\\s*[:=\\-@]*\\s*\\$?\\s*(?:${NUMN})(?:\\s*[,/;]\\s*\\$?\\s*(?:${NUMN})){1,${MAX_TARGETS - 1}}`));
+  return list ? (list[0].match(new RegExp(NUMN, "g")) ?? []) : [];
+}
 
 export function parseFreeText(input: string): { value?: NewTrade; error?: string } {
   const text = norm(
@@ -328,10 +372,12 @@ export function parseFreeText(input: string): { value?: NewTrade; error?: string
     dir === "LONG" ? tp > e && sl < e : dir === "SHORT" ? tp < e && sl > e : tp > e !== sl > e;
   // Un punto seguido de 3 cifras ("3.020") puede ser decimal o miles: se elige la lectura coherente.
   let entry = levelValue(rEntry, false), tp = levelValue(rTp, false), sl = levelValue(rSl, false);
+  let dotThousands = false;
   if (!coherent(direction, entry, tp, sl)) {
     const e2 = levelValue(rEntry, true), t2 = levelValue(rTp, true), s2 = levelValue(rSl, true);
     if (coherent(direction, e2, t2, s2)) {
       [entry, tp, sl] = [e2, t2, s2];
+      dotThousands = true;
     }
   }
   if (!direction) direction = tp > entry && sl < entry ? "LONG" : tp < entry && sl > entry ? "SHORT" : null;
@@ -343,7 +389,10 @@ export function parseFreeText(input: string): { value?: NewTrade; error?: string
       error: direction === "LONG" ? tr("Los niveles no coinciden con una compra (TP arriba y SL abajo). Revisá el mensaje.") : tr("Los niveles no coinciden con una venta (TP abajo y SL arriba). Revisá el mensaje."),
     };
   }
-  return { value: { symbol: perp ? `${base}.P` : base, direction, entry, tp, sl, date: new Date().toISOString() } };
+  // Varios targets (TP1, TP2, TP3…): el más lejano es el TP final y los demás quedan como targets parciales.
+  const split = splitTargets(direction, entry, [tp, ...rawTargets(text).map((r) => toNumber(r, dotThousands))]);
+  if (split) tp = split.tp;
+  return { value: { symbol: perp ? `${base}.P` : base, direction, entry, tp, sl, ...(split?.targets ? { targets: split.targets } : {}), date: new Date().toISOString() } };
 }
 
 const short = (s: string) => `${s.slice(0, 42)}${s.length > 42 ? "…" : ""}`;

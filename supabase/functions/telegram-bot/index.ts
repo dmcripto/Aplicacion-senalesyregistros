@@ -209,7 +209,8 @@ async function handleSignal(chatId: number, link: Link, lang: Lang, text: string
   if (!pending) return;
   const lines = trades.map((t) => {
     const rr = Math.abs(t.entry - t.sl) > 0 ? Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl) : 0;
-    return `${arrow(t.direction)} <b>${esc(t.symbol)}</b> ${sideWord(lang, t.direction)} · ${T[lang].entry} ${t.entry} · TP ${t.tp} · SL ${t.sl} · R:R 1:${rr.toFixed(1)}`;
+    const tps = t.targets?.length ? [...t.targets, t.tp].join(" / ") : t.tp;
+    return `${arrow(t.direction)} <b>${esc(t.symbol)}</b> ${sideWord(lang, t.direction)} · ${T[lang].entry} ${t.entry} · TP ${tps} · SL ${t.sl} · R:R 1:${rr.toFixed(1)}`;
   });
   return say(chatId, `${T[lang].understood(trades.length)}\n\n${lines.join("\n")}`, {
     reply_markup: { inline_keyboard: [[{ text: T[lang].register(trades.length), callback_data: `ok:${pending.id}` }, { text: T[lang].cancel, callback_data: `no:${pending.id}` }]] },
@@ -240,11 +241,14 @@ async function handleCallback(cb: any) {
   if ((count ?? 0) >= MAX_PER_MINUTE) return edit(T[lang].tooMany);
 
   let saved = 0, dup = 0;
-  for (const t of pending.trades as Array<{ symbol: string; direction: string; entry: number; tp: number; sl: number }>) {
+  for (const t of pending.trades as Array<{ symbol: string; direction: string; entry: number; tp: number; sl: number; targets?: number[] }>) {
     const { data: same } = await admin
       .from("trades").select("id").eq("user_id", link.user_id).eq("symbol", t.symbol).eq("direction", t.direction).eq("entry", t.entry).gte("created_at", iso(60_000)).limit(1);
     if (same?.length) { dup++; continue; }
-    const { error } = await admin.from("trades").insert({ user_id: link.user_id, symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp, sl: t.sl, date: new Date().toISOString() });
+    const row = { user_id: link.user_id, symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp, sl: t.sl, date: new Date().toISOString() };
+    let { error } = await admin.from("trades").insert(t.targets?.length ? { ...row, targets: t.targets } : row);
+    // Si todavía no se corrió el SQL de los targets, se guarda igual (solo con el TP final).
+    if (error && t.targets?.length) ({ error } = await admin.from("trades").insert(row));
     if (!error) {
       saved++;
       await runInBackground(publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l), (l) => signalCardImage(t, l)));

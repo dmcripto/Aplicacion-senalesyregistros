@@ -9,8 +9,10 @@ export interface CommunityTrade {
   symbol: string;
   direction: string; // LONG | SHORT
   entry: number;
-  tp: number;
+  tp: number; // TP final
   sl: number;
+  /** Targets parciales (TP1, TP2…) antes del TP final, del más cercano al más lejano. */
+  targets?: number[] | null;
 }
 
 const DISCLAIMER = {
@@ -28,6 +30,38 @@ export function prettyPair(symbol: string): string {
   return m ? `${m[1]}/${m[2]}${m[3] ?? ""}` : String(symbol);
 }
 
+/** Los targets de la señal con su distancia en %: «Target» si hay uno solo, «Target 1», «Target 2»… si hay varios. El último es el TP final. */
+function targetLines(t: CommunityTrade, dir: number): string[] {
+  const levels = [...(t.targets ?? []), t.tp];
+  const out: string[] = [];
+  levels.forEach((n, i) => {
+    const pct = t.entry ? ((dir * (n - t.entry)) / t.entry) * 100 : 0;
+    out.push(`💠 Target${levels.length > 1 ? ` ${i + 1}` : ""} :- <b>${n}</b>  <i>(${PCT(pct)})</i>`, "");
+  });
+  return out;
+}
+
+/** Qué se sugiere hacer al tocar el target número `n` (1 = el primero). */
+export const targetAdvice = (n: number, lang: Lang): string =>
+  n <= 1
+    ? lang === "en" ? "Close 50% and move the SL to break-even" : "Cerrar 50% y mover el SL a break-even"
+    : lang === "en" ? `Lock in profit: move the SL to Target ${n - 1}` : `Asegurar ganancias: mover el SL al Target ${n - 1}`;
+
+/**
+ * Aviso extra del resultado según cómo llegó el precio: `reached` = cuántos targets parciales (de `total`) se tocaron antes del cierre.
+ * Devuelve null si la operación no tenía targets o no hay nada que aclarar.
+ */
+export function resultNote(outcome: "TP" | "SL", reached: number, total: number, lang: Lang): string | null {
+  if (total <= 0) return null;
+  const en = lang === "en";
+  if (outcome === "SL") {
+    if (reached === 0) return en ? "SL hit before Target 1" : "SL tocado antes del Target 1";
+    return en ? `Target ${reached} was reached before the SL` : `Había llegado al Target ${reached} antes del SL`;
+  }
+  if (reached === 0) return total === 1 ? (en ? "Straight to TP, skipping Target 1" : "Directo al TP, sin pasar por el Target 1") : en ? "Straight to TP, skipping the targets" : "Directo al TP, sin pasar por los targets";
+  return null;
+}
+
 /**
  * Señal en texto de Telegram, con un emoji por línea y cada dato bien separado: par y dirección, entrada, objetivo (TP) y stop,
  * con su distancia en % y el R:R. `header` es el emoji de arriba (📢 comunidad, 🔔 aviso privado). Sin datos personales ni dinero.
@@ -38,7 +72,6 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
   const risk = Math.abs(t.entry - t.sl);
   const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
   const dir = long ? 1 : -1;
-  const tpPct = t.entry ? ((dir * (t.tp - t.entry)) / t.entry) * 100 : 0;
   const slPct = t.entry ? ((dir * (t.sl - t.entry)) / t.entry) * 100 : 0;
   const lines = [
     `${opts.header ?? "📢"} <b>${en ? "NEW SIGNAL" : "NUEVA SEÑAL"}</b>`,
@@ -47,8 +80,7 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
     "",
     `⛩ ${en ? "Entry" : "Entrada"} ➡️ <b>${t.entry}</b>`,
     "",
-    `💠 Target :- <b>${t.tp}</b>  <i>(${PCT(tpPct)})</i>`,
-    "",
+    ...targetLines(t, dir),
     `🛑 Stoploss = <b>${t.sl}</b>  <i>(${PCT(slPct)})</i>`,
     "",
     `⚖️ R:R <b>1 : ${rr.toFixed(1)}</b>`,
@@ -62,24 +94,25 @@ export const communitySignalMessage = (t: CommunityTrade, lang: Lang) => signalC
 /** Porcentaje de movimiento del precio a favor entre la entrada y `price` (según la dirección). */
 export const favorPct = (t: Pick<CommunityTrade, "direction" | "entry">, price: number) => (t.entry ? (((t.direction === "LONG" ? 1 : -1) * (price - t.entry)) / t.entry) * 100 : 0);
 
-/** Aviso de Target 1: el precio avanzó a favor; se sugiere tomar parcial y mover el SL a break-even. */
-export function partialCardHtml(t: CommunityTrade, level: number, r: number, lang: Lang, opts: { header?: string; disclaimer?: boolean } = {}): string {
+/** Aviso de target: el precio avanzó a favor; se sugiere tomar parcial / asegurar ganancias. `opts.n` es el número de target (1 por defecto). */
+export function partialCardHtml(t: CommunityTrade, level: number, r: number, lang: Lang, opts: { header?: string; disclaimer?: boolean; n?: number } = {}): string {
   const en = lang === "en";
+  const n = opts.n ?? 1;
   const lines = [
-    `${opts.header ?? "🎯"} <b>${en ? "TARGET 1 HIT" : "TARGET 1 ALCANZADO"}</b>`,
+    `${opts.header ?? "🎯"} <b>${en ? `TARGET ${n} HIT` : `TARGET ${n} ALCANZADO`}</b>`,
     "",
     `⏳ <b>${esc(prettyPair(t.symbol))}</b> ( ${t.direction === "LONG" ? "LONG 🟢" : "SHORT 🔴"} )`,
     "",
     `💰 Profit <b>${PCT(favorPct(t, level))}</b>  <i>(${R_OF(r)})</i>`,
     "",
-    en ? "💡 <b>Suggested management:</b> close 50% and move the SL to break-even" : "💡 <b>Gestión sugerida:</b> cerrar 50% y mover el SL a break-even",
+    `💡 <b>${en ? "Suggested management:" : "Gestión sugerida:"}</b> ${targetAdvice(n, lang).replace(/^./, (c) => c.toLowerCase())}`,
   ];
   if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
   return lines.join("\n");
 }
 
 /** Resultado de una operación al tocar TP o SL. */
-export function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string } = {}): string {
+export function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string; note?: string | null } = {}): string {
   const en = lang === "en";
   const ok = outcome === "TP";
   const title = ok ? (en ? "TP HIT" : "TP ALCANZADO") : en ? "SL HIT" : "SL ALCANZADO";
@@ -90,10 +123,11 @@ export function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, 
     `⏳ <b>${esc(prettyPair(symbol))}</b>`,
     "",
     `${ok ? "🏆" : "📉"} ${label}: <b>${R_OF(r)}</b>`,
+    ...(opts.note ? ["", `${ok ? "⚡" : "⚠️"} <i>${esc(opts.note)}</i>`] : []),
   ].join("\n");
 }
 
-export const communityResultMessage = (symbol: string, outcome: "TP" | "SL", r: number, lang: Lang) => resultCardHtml(symbol, outcome, r, lang);
+export const communityResultMessage = (symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, note?: string | null) => resultCardHtml(symbol, outcome, r, lang, { note });
 
 /**
  * Publica en todas las comunidades conectadas de esa cuenta. Nunca lanza errores: un fallo de Telegram

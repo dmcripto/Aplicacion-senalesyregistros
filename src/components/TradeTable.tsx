@@ -266,7 +266,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                   </div>
                   <dl className="num grid grid-cols-4 gap-2 rounded-md border border-line/70 bg-ink/40 px-3 py-2 text-center text-[12px]">
                     <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">{t("Entrada")}</dt><dd className="font-semibold text-snow">{fmtPrice(tr.entry)}</dd></div>
-                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">TP</dt><dd className="text-bull/90">{fmtPrice(tr.tp)}</dd></div>
+                    <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">TP</dt><dd className="text-bull/90">{fmtPrice(tr.tp)}{!!tr.targets?.length && <div className="text-[10px] font-normal text-dim">{tr.targets.map((n, i) => `T${i + 1} ${fmtPrice(n)}`).join(" · ")}</div>}</dd></div>
                     <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">SL</dt><dd className="text-bear/90">{fmtPrice(tr.sl)}</dd></div>
                     <div><dt className="text-[9.5px] uppercase tracking-wider text-dim">R:R</dt><dd className="text-fog">1:{rrOf(tr).toFixed(1)}</dd></div>
                   </dl>
@@ -334,7 +334,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                       <DirBadge dir={tr.direction} />
                     </td>
                     <td className="num px-3 py-3 text-right font-semibold text-snow">{fmtPrice(tr.entry)}</td>
-                    <td className="num px-3 py-3 text-right text-bull/90">{fmtPrice(tr.tp)}</td>
+                    <td className="num px-3 py-3 text-right text-bull/90">{fmtPrice(tr.tp)}{!!tr.targets?.length && <div className="text-[10px] font-normal text-dim">{tr.targets.map((n, i) => `T${i + 1} ${fmtPrice(n)}`).join(" · ")}</div>}</td>
                     <td className="num px-3 py-3 text-right text-bear/90">{fmtPrice(tr.sl)}</td>
                     <td className="num px-3 py-3 text-right text-fog">1:{rr.toFixed(2)}</td>
                     <td className="px-3 py-3">

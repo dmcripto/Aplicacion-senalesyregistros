@@ -4,7 +4,7 @@
 
 import { esc } from "./telegram.ts";
 import type { Lang } from "./telegram.ts";
-import { favorPct, prettyPair } from "./community.ts";
+import { favorPct, prettyPair, targetAdvice } from "./community.ts";
 import type { CommunityTrade } from "./community.ts";
 
 const CARD_SITE = "https://veltrix-trading.vercel.app";
@@ -42,11 +42,8 @@ const CARD_T = {
     sl: "SL ALCANZADO",
     disclaimer: "Información para registro personal · No es asesoramiento financiero",
     res: "Resultado",
-    t1: "TARGET 1",
-    t1hit: "TARGET 1 ALCANZADO",
     profit: "PROFIT",
     manage: "GESTIÓN SUGERIDA",
-    manageText: "Cerrar 50% y mover el SL a break-even",
   },
   en: {
     brand: "TRADING SIGNAL",
@@ -62,11 +59,8 @@ const CARD_T = {
     sl: "SL HIT",
     disclaimer: "For personal record-keeping · Not financial advice",
     res: "Result",
-    t1: "TARGET 1",
-    t1hit: "TARGET 1 HIT",
     profit: "PROFIT",
     manage: "SUGGESTED MANAGEMENT",
-    manageText: "Close 50% and move the SL to break-even",
   },
 };
 
@@ -101,13 +95,23 @@ function cardFrame(lang: Lang, pill: string, logo: string | null, body: string):
 </svg>`;
 }
 
-/** Una fila de nivel: barra de color, nombre, precio y distancia en %. */
-function cardLevel(y: number, color: string, label: string, value: string, right: string): string {
-  return `<rect x="60" y="${y}" width="960" height="112" rx="22" fill="${CARD_C.panel}" stroke="${CARD_C.line}" stroke-width="2"/>
-  <rect x="60" y="${y}" width="12" height="112" rx="6" fill="${color}"/>
-  <text x="104" y="${y + 37}" font-size="21" font-weight="700" letter-spacing="4" fill="${color}">${esc(label)}</text>
-  <text x="104" y="${y + 95}" font-size="${cardFit(value, 54, 560)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
-  <text x="990" y="${y + 80}" font-size="46" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
+/** Una fila de nivel: barra de color, nombre, precio y distancia en %. `h` es el alto (112 cuando hay pocas filas, menos si hay muchos targets). */
+function cardLevel(y: number, color: string, label: string, value: string, right: string, h = 112): string {
+  const frame = `<rect x="60" y="${y}" width="960" height="${h}" rx="${Math.round(Math.min(22, h / 3))}" fill="${CARD_C.panel}" stroke="${CARD_C.line}" stroke-width="2"/>
+  <rect x="60" y="${y}" width="12" height="${h}" rx="6" fill="${color}"/>`;
+  if (h < 90) {
+    // Fila compacta (muchos targets): nombre, precio y % en una sola línea.
+    const base = Math.round(y + h / 2 + h * 0.18);
+    return `${frame}
+  <text x="104" y="${Math.round(y + h / 2 + 7)}" font-size="20" font-weight="700" letter-spacing="3" fill="${color}">${esc(label)}</text>
+  <text x="360" y="${base}" font-size="${cardFit(value, Math.round(h * 0.6), 360)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
+  <text x="990" y="${base}" font-size="${Math.round(h * 0.5)}" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
+  }
+  const k = h / 112;
+  return `${frame}
+  <text x="104" y="${Math.round(y + 37 * k)}" font-size="${Math.round(21 * Math.max(k, 0.85))}" font-weight="700" letter-spacing="4" fill="${color}">${esc(label)}</text>
+  <text x="104" y="${Math.round(y + 95 * k)}" font-size="${cardFit(value, Math.round(54 * k), 560)}" font-weight="700" fill="#ffffff">${esc(value)}</text>
+  <text x="990" y="${Math.round(y + 80 * k)}" font-size="${Math.round(46 * k)}" font-weight="700" text-anchor="end" fill="${color}">${esc(right)}</text>`;
 }
 
 export function signalCardSvg(t: CommunityTrade, lang: Lang, logo: string | null = null): string {
@@ -116,65 +120,81 @@ export function signalCardSvg(t: CommunityTrade, lang: Lang, logo: string | null
   const dir = long ? 1 : -1;
   const risk = Math.abs(t.entry - t.sl);
   const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
-  const tpPct = t.entry ? ((dir * (t.tp - t.entry)) / t.entry) * 100 : 0;
   const slPct = t.entry ? ((dir * (t.sl - t.entry)) / t.entry) * 100 : 0;
   const pair = prettyPair(t.symbol);
   const col = long ? CARD_C.bull : CARD_C.bear;
   const label = long ? tx.long : tx.short;
-  const rows = [
-    { y: 0, svg: (y: number) => cardLevel(y, CARD_C.bull, tx.target, String(t.tp), cardPct(tpPct)) },
-    { y: 0, svg: (y: number) => cardLevel(y, CARD_C.cyan, tx.entry, String(t.entry), "") },
-    { y: 0, svg: (y: number) => cardLevel(y, CARD_C.bear, tx.stop, String(t.sl), cardPct(slPct)) },
+  // Filas de arriba hacia abajo en orden de precio: en una compra los targets quedan arriba (el más lejano primero) y el stop abajo; en una venta, al revés.
+  const levels = [...(t.targets ?? []), t.tp];
+  const rowsData = [
+    ...levels.map((n, i) => ({ color: CARD_C.bull, label: levels.length > 1 ? `${tx.target} ${i + 1}` : tx.target, value: String(n), pct: t.entry ? ((dir * (n - t.entry)) / t.entry) * 100 : 0 })),
+    { color: CARD_C.cyan, label: tx.entry, value: String(t.entry), pct: null as number | null },
+    { color: CARD_C.bear, label: tx.stop, value: String(t.sl), pct: slPct },
   ];
-  // De arriba hacia abajo en orden de precio: en una compra el TP queda arriba; en una venta, el stop.
-  const ordered = long ? rows : [rows[2], rows[1], rows[0]];
-  const tops = [470, 604, 738];
+  const targetRows = rowsData.slice(0, levels.length);
+  const [entryRow, stopRow] = rowsData.slice(levels.length);
+  const ordered = long ? [...targetRows.reverse(), entryRow, stopRow] : [stopRow, entryRow, ...targetRows];
+  const n = ordered.length;
+  const gap = n > 3 ? 12 : 22;
+  const top = n > 3 ? 436 : 470;
+  const avail = 868 - top;
+  const h = Math.min(112, Math.floor((avail - gap * (n - 1)) / n));
+  const rows = ordered.map((r, i) => cardLevel(top + i * (h + gap), r.color, r.label, r.value, r.pct == null ? "" : cardPct(r.pct), h));
   const body = `
   <text x="60" y="${290}" font-size="${cardFit(pair, 128, 960)}" font-weight="700" fill="#ffffff">${esc(pair)}</text>
   <rect x="60" y="318" width="${label.length * 20 + 110}" height="74" rx="37" fill="${col}" fill-opacity="0.14" stroke="${col}" stroke-width="3"/>
   <path d="${long ? "M96 372 L114 340 L132 372 Z" : "M96 340 L114 372 L132 340 Z"}" fill="${col}"/>
   <text x="152" y="368" font-size="30" font-weight="700" letter-spacing="2" fill="${col}">${esc(label)}</text>
-  ${ordered.map((r, i) => r.svg(tops[i])).join("\n  ")}
+  ${rows.join("\n  ")}
   <rect x="60" y="886" width="960" height="104" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
   <text x="104" y="948" font-size="23" font-weight="700" letter-spacing="3" fill="${CARD_C.muted}">${esc(tx.rr)}</text>
   <text x="990" y="954" font-size="60" font-weight="700" text-anchor="end" fill="${CARD_C.cyan}">1 : ${rr.toFixed(1)}</text>`;
   return cardFrame(lang, tx.signal, logo, body);
 }
 
-export function resultCardSvg(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string } = {}, logo: string | null = null): string {
+export function resultCardSvg(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string; note?: string | null } = {}, logo: string | null = null): string {
   const tx = CARD_T[lang];
   const ok = outcome === "TP";
   const col = ok ? CARD_C.bull : CARD_C.bear;
   const pair = prettyPair(symbol);
   const title = ok ? tx.tp : tx.sl;
   const rr = cardR(r);
+  const note = opts.note ?? null;
+  // Con aviso extra («SL tocado antes del Target 1», «Directo al TP»…) va en una franja bajo el par y el resultado baja un poco.
+  const noteSvg = note
+    ? `<rect x="60" y="704" width="960" height="66" rx="33" fill="${col}" fill-opacity="0.12" stroke="${col}" stroke-opacity="0.7" stroke-width="2"/>
+  <text x="540" y="749" font-size="${cardFit(note, 34, 880)}" font-weight="700" text-anchor="middle" fill="${col}">${esc(note)}</text>`
+    : "";
   const body = `
   <circle cx="540" cy="360" r="118" fill="${col}" fill-opacity="0.14" stroke="${col}" stroke-width="5"/>
   <path d="${ok ? "M488 362 L526 400 L596 322" : "M498 318 L582 402 M582 318 L498 402"}" fill="none" stroke="${col}" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
   <text x="540" y="580" font-size="${cardFit(title, 96, 940)}" font-weight="700" text-anchor="middle" fill="${col}">${esc(title)}</text>
   <text x="540" y="672" font-size="${cardFit(pair, 70, 940)}" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(pair)}</text>
-  <text x="540" y="900" font-size="${cardFit(rr, 250, 900)}" font-weight="700" text-anchor="middle" fill="${col}">${esc(rr)}</text>
-  <text x="540" y="968" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc((opts.label ?? tx.res).toUpperCase())}</text>`;
+  ${noteSvg}
+  <text x="540" y="${note ? 940 : 900}" font-size="${cardFit(rr, note ? 190 : 250, 900)}" font-weight="700" text-anchor="middle" fill="${col}">${esc(rr)}</text>
+  <text x="540" y="${note ? 990 : 968}" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc((opts.label ?? tx.res).toUpperCase())}</text>`;
   return cardFrame(lang, tx.result, logo, body);
 }
 
-/** Aviso de Target 1: ganancia a favor y la gestión sugerida (tomar parcial y mover el SL a break-even). */
-export function partialCardSvg(t: CommunityTrade, level: number, r: number, lang: Lang, logo: string | null = null): string {
+/** Aviso de target (`n` = número de target, 1 el primero): ganancia a favor y la gestión sugerida. */
+export function partialCardSvg(t: CommunityTrade, level: number, r: number, lang: Lang, logo: string | null = null, n = 1): string {
   const tx = CARD_T[lang];
   const long = t.direction === "LONG";
   const pair = `${prettyPair(t.symbol)} · ${long ? "LONG" : "SHORT"}`;
   const profit = cardPct(favorPct(t, level));
+  const title = `${tx.target} ${n} ${lang === "en" ? "HIT" : "ALCANZADO"}`;
+  const advice = targetAdvice(n, lang);
   const body = `
   <g fill="none" stroke="${CARD_C.bull}" stroke-width="9"><circle cx="540" cy="318" r="112" fill="${CARD_C.bull}" fill-opacity="0.12"/><circle cx="540" cy="318" r="70"/></g>
   <circle cx="540" cy="318" r="24" fill="${CARD_C.bull}"/>
-  <text x="540" y="548" font-size="${cardFit(tx.t1hit, 92, 940)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(tx.t1hit)}</text>
+  <text x="540" y="548" font-size="${cardFit(title, 92, 940)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(title)}</text>
   <text x="540" y="634" font-size="${cardFit(pair, 64, 940)}" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(pair)}</text>
   <text x="540" y="830" font-size="${cardFit(profit, 210, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
   <text x="540" y="884" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
   <rect x="60" y="906" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
   <text x="96" y="944" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
-  <text x="96" y="990" font-size="${cardFit(tx.manageText, 32, 890)}" font-weight="700" fill="#ffffff">${esc(tx.manageText)}</text>`;
-  return cardFrame(lang, tx.t1, logo, body);
+  <text x="96" y="990" font-size="${cardFit(advice, 32, 890)}" font-weight="700" fill="#ffffff">${esc(advice)}</text>`;
+  return cardFrame(lang, `${tx.target} ${n}`, logo, body);
 }
 
 // ─── De SVG a PNG ───────────────────────────────────────────────────────────
@@ -290,7 +310,7 @@ export async function signalCardImage(t: CommunityTrade, lang: Lang): Promise<Ca
   return { png, caption };
 }
 
-export async function resultCardImage(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string } = {}): Promise<CardImage | null> {
+export async function resultCardImage(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string; note?: string | null } = {}): Promise<CardImage | null> {
   if (!cardsEnabled()) return null;
   const png = await svgToPng(resultCardSvg(symbol, outcome, r, lang, opts, await cardLoadLogo()));
   if (!png) return null;
@@ -311,9 +331,9 @@ export function runInBackground(task: Promise<unknown>): Promise<unknown> | void
   return task;
 }
 
-export async function partialCardImage(t: CommunityTrade, level: number, r: number, lang: Lang): Promise<CardImage | null> {
+export async function partialCardImage(t: CommunityTrade, level: number, r: number, lang: Lang, n = 1): Promise<CardImage | null> {
   if (!cardsEnabled()) return null;
-  const png = await svgToPng(partialCardSvg(t, level, r, lang, await cardLoadLogo()));
+  const png = await svgToPng(partialCardSvg(t, level, r, lang, await cardLoadLogo(), n));
   if (!png) return null;
   return { png, caption: `<i>${CARD_NOTE[lang]}</i>\n<a href="${CARD_SITE}">VELTRIX</a>` };
 }

@@ -106,22 +106,22 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { data: trade, error: insertError } = await supabase
-    .from("trades")
-    .insert({
-      user_id: profile.id,
-      symbol: alert.symbol,
-      direction: alert.direction,
-      entry: alert.entry,
-      tp: alert.tp,
-      sl: alert.sl,
-      date: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  const row = {
+    user_id: profile.id,
+    symbol: alert.symbol,
+    direction: alert.direction,
+    entry: alert.entry,
+    tp: alert.tp,
+    sl: alert.sl,
+    date: new Date().toISOString(),
+  };
+  const insertRow = (r: Record<string, unknown>) => supabase.from("trades").insert(r).select().single();
+  let { data: trade, error: insertError } = await insertRow(alert.targets?.length ? { ...row, targets: alert.targets } : row);
+  // Si todavía no se corrió el SQL de los targets, la operación se guarda igual (solo con el TP final).
+  if (insertError && alert.targets?.length) ({ data: trade, error: insertError } = await insertRow(row));
 
-  if (insertError) {
-    return new Response(`Error guardando la operación: ${insertError.message}`, { status: 500 });
+  if (insertError || !trade) {
+    return new Response(`Error guardando la operación: ${insertError?.message ?? "sin datos"}`, { status: 500 });
   }
 
   const { data: tokens } = await supabase
@@ -137,18 +137,18 @@ Deno.serve(async (req) => {
       tokens.map((t) => ({
         to: t.expo_push_token,
         title: `${alert.symbol} · ${alert.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA"}`,
-        body: `${en ? "Entry" : "Entrada"} ${alert.entry} · TP ${alert.tp} · SL ${alert.sl}`,
+        body: `${en ? "Entry" : "Entrada"} ${alert.entry} · TP ${alert.targets?.length ? [...alert.targets, alert.tp].join(" / ") : alert.tp} · SL ${alert.sl}`,
         data: { tradeId: trade.id },
       })),
     );
   }
 
   // Aviso por Telegram (si el usuario vinculó su chat).
-  await notifyTelegram(supabase, profile.id, (lang) => signalCardHtml({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang, { header: "🔔", disclaimer: false }), (lang) => waSignalText({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang));
+  await notifyTelegram(supabase, profile.id, (lang) => signalCardHtml({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl, targets: alert.targets }, lang, { header: "🔔", disclaimer: false }), (lang) => waSignalText({ symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl }, lang));
 
   // Publicación en la comunidad de Telegram (si el usuario conectó una): imagen tarjeta, o texto si no se puede dibujar.
   // Corre después de contestar para que TradingView no espere (su límite es de pocos segundos).
-  const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl };
+  const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl, targets: alert.targets };
   await runInBackground(
     Promise.all([
       publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),

@@ -4,12 +4,12 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { PARTIAL_R, detectHit, detectPartial, fetchCandles, parseMarketSymbol, partialLevel, rOfHit } from "../_shared/autoClose.ts";
+import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { partialCardImage, resultCardImage } from "../_shared/card.ts";
 import { notifyWhatsApp, waResultParams } from "../_shared/waCloud.ts";
-import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml } from "../_shared/community.ts";
+import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml, resultNote } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
@@ -20,33 +20,41 @@ const supabase = createClient(
 );
 
 const MIN_GAP_MS = 25_000;
-const PARTIAL_FRESH_MS = 45 * 60_000; // el Target 1 solo se avisa si se tocó hace menos de esto
+const PARTIAL_FRESH_MS = 45 * 60_000; // un target solo se avisa si se tocó hace menos de esto
 const MAX_TRADES = 2000;
 const CONCURRENCY = 8;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-/** Avisa del Target 1 una sola vez por operación. Si el nivel se tocó hace rato (ya estaba así al activar la función), solo se marca. */
-async function partialAlert(trade: OpenTrade, candles: Candle[]) {
+/**
+ * Avisa cada target (Target 1, Target 2…) una sola vez por operación, en orden. Si un target se tocó hace rato
+ * (ya estaba así al activar la función, o la persona tenía los avisos apagados) solo se marca, sin avisar.
+ */
+async function targetAlerts(trade: OpenTrade, candles: Candle[]) {
   try {
-    const at = detectPartial(trade, candles);
-    const level = partialLevel(trade);
-    if (at == null || level == null) return;
-    const { data: marked, error } = await supabase
-      .from("trades")
-      .update({ partial_at: new Date().toISOString() })
-      .eq("id", trade.id)
-      .eq("outcome", "ABIERTA")
-      .is("partial_at", null)
-      .select("id");
-    if (error || !marked?.length) return; // sin columna, o ya la marcó otra corrida
-    if (Date.now() - at > PARTIAL_FRESH_MS) return; // viejo: no avisar
+    const levels = targetLevels(trade);
+    const times = detectTargets(trade, candles);
+    const risk = Math.abs(trade.entry - trade.sl);
     const sig = { symbol: trade.symbol, direction: trade.direction, entry: trade.entry, tp: trade.tp, sl: trade.sl };
-    await notifyTelegram(supabase, trade.user_id, (lang) => partialCardHtml(sig, level, PARTIAL_R, lang, { header: "🔔", disclaimer: false }));
-    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, PARTIAL_R, lang), (lang) => partialCardImage(sig, level, PARTIAL_R, lang));
+    for (let i = trade.targets_hit ?? 0; i < times.length; i++) {
+      const { data: marked, error } = await supabase
+        .from("trades")
+        .update({ targets_hit: i + 1 })
+        .eq("id", trade.id)
+        .eq("outcome", "ABIERTA")
+        .eq("targets_hit", i)
+        .select("id");
+      if (error || !marked?.length) return; // sin columna, o ya lo marcó otra corrida
+      if (Date.now() - times[i] > PARTIAL_FRESH_MS) continue; // viejo: no avisar
+      const level = levels[i];
+      const r = risk > 0 ? Math.abs(level - trade.entry) / risk : 0;
+      const n = i + 1;
+      await notifyTelegram(supabase, trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { header: "🔔", disclaimer: false, n }));
+      await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { n }), (lang) => partialCardImage(sig, level, r, lang, n));
+    }
   } catch (e) {
-    console.error("partial:", e instanceof Error ? e.message : e);
+    console.error("targets:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -78,23 +86,21 @@ Deno.serve(async () => {
   const { data: disabled } = await supabase.from("profiles").select("id").eq("auto_close", false);
   const off = new Set((disabled ?? []).map((p) => p.id as string));
 
-  // Personas que apagaron el aviso de Target 1 (columna opcional: si todavía no existe, el aviso queda para todos).
+  // Personas que apagaron el aviso de targets (columna opcional: si todavía no existe, el aviso queda para todos).
   const { data: noPartial } = await supabase.from("profiles").select("id").eq("partial_alerts", false);
   const partialOff = new Set((noPartial ?? []).map((p) => p.id as string));
 
   const openTrades = (cols: string) => supabase.from("trades").select(cols).eq("outcome", "ABIERTA").order("date", { ascending: false }).limit(MAX_TRADES);
-  let { data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date,partial_at");
-  // Sin la columna partial_at (falta correr el SQL) se sigue como antes, sin avisos de Target 1.
+  let { data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date,targets,targets_hit");
+  // Sin las columnas targets / targets_hit (falta correr el SQL) se sigue como antes, sin avisos de targets.
   if (error) ({ data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date"));
   if (error) return json({ error: error.message }, 500);
 
-  const partialDone = new Map<string, string | null>(); // id → partial_at, para no repetir el aviso
   const trades: Array<{ trade: OpenTrade; sym: MarketSymbol }> = [];
   for (const r of rows ?? []) {
     if (off.has(r.user_id)) continue;
     const sym = parseMarketSymbol(r.symbol);
     if (!sym) continue;
-    if ("partial_at" in r) partialDone.set(r.id, (r as { partial_at: string | null }).partial_at);
     trades.push({
       trade: {
         id: r.id,
@@ -105,6 +111,7 @@ Deno.serve(async () => {
         tp: Number(r.tp),
         sl: Number(r.sl),
         date: r.date,
+        ...("targets_hit" in r ? { targets: (r as { targets?: number[] | null }).targets?.map(Number) ?? null, targets_hit: Number((r as { targets_hit?: number }).targets_hit ?? 0) } : {}),
       },
       sym,
     });
@@ -134,8 +141,8 @@ Deno.serve(async () => {
     if (!candles) continue;
     const hit = detectHit(trade, candles);
     if (!hit) {
-      // Sigue abierta: ¿llegó al Target 1? (solo si existe la columna, la persona no lo apagó y todavía no se avisó)
-      if (partialDone.has(trade.id) && partialDone.get(trade.id) == null && !partialOff.has(trade.user_id)) await partialAlert(trade, candles);
+      // Sigue abierta: ¿llegó a algún target? (solo si existen las columnas y la persona no apagó el aviso)
+      if (trade.targets_hit != null && !partialOff.has(trade.user_id)) await targetAlerts(trade, candles);
       continue;
     }
 
@@ -149,8 +156,12 @@ Deno.serve(async () => {
     closed++;
 
     const r = rOfHit(trade, hit.outcome);
-    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: lang === "en" ? "Auto-close" : "Cierre automático" }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
-    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang));
+    // ¿Cómo llegó el precio? Cuántos targets se habían tocado antes de cerrar → «SL tocado antes del Target 1», «Directo al TP»…
+    const totalTargets = targetLevels(trade).length;
+    const reached = Math.max(detectTargets(trade, candles).filter((at) => at < hit.at).length, trade.targets_hit ?? 0);
+    const note = (lang: "es" | "en") => resultNote(hit.outcome, reached, totalTargets, lang);
+    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: lang === "en" ? "Auto-close" : "Cierre automático", note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
+    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
     await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {
@@ -161,7 +172,7 @@ Deno.serve(async () => {
         tokens.map((t) => ({
           to: t.expo_push_token,
           title: `${hit.outcome === "TP" ? (en ? "✅ TP hit" : "✅ TP alcanzado") : en ? "❌ SL hit" : "❌ SL alcanzado"} · ${trade.symbol}`,
-          body: `${en ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`,
+          body: [`${en ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`, note(en ? "en" : "es")].filter(Boolean).join(" · "),
           data: { tradeId: trade.id },
         })),
       );

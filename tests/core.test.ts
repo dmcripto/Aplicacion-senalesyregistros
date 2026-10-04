@@ -255,3 +255,28 @@ describe("panel «Tu día» y avance hacia TP/SL", () => {
     expect(binanceSymbol("AAPL")).toBeNull();
   });
 });
+
+describe("señales con varios targets (TP1, TP2, TP3…)", () => {
+  const view = (text: string) => {
+    const t = parseAlerts(text).valid[0];
+    return t && { tp: t.tp, targets: t.targets };
+  };
+
+  it("el TP más lejano es el final y los demás quedan como targets parciales, en cualquier formato", () => {
+    const want = { tp: 68000, targets: [66000, 67000] };
+    expect(view("VELTRIX|BTCUSDT|COMPRA|65000|66000/67000/68000|64500")).toEqual(want);
+    expect(view('{"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":[66000,67000,68000],"sl":64500}')).toEqual(want);
+    expect(view("symbol=BTCUSDT side=buy entry=65000 tp1=66000 tp2=67000 tp3=68000 sl=64500")).toEqual(want);
+    expect(view("BTCUSDT LONG\nEntry: 65000\nTP1: 66000\nTP2: 67000\nTP3: 68000\nSL: 64500")).toEqual(want);
+  });
+
+  it("en una venta ordena hacia abajo; ignora niveles del lado equivocado o repetidos", () => {
+    expect(view("BTCUSDT SHORT entrada 65000 targets: 64000, 63000, 62000 sl 66000")).toEqual({ tp: 62000, targets: [64000, 63000] });
+    expect(view("VELTRIX|BTCUSDT|COMPRA|65000|66000/66000/64000|64500")).toEqual({ tp: 66000, targets: undefined });
+  });
+
+  it("con un solo TP no hay targets parciales", () => {
+    expect(view("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).toEqual({ tp: 66500, targets: undefined });
+    expect(view("BTCUSDT LONG entry 65000 tp 66500 sl 64500")).toEqual({ tp: 66500, targets: undefined });
+  });
+});

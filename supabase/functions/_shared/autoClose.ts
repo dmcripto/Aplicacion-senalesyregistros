@@ -10,6 +10,10 @@ export interface OpenTrade {
   entry: number;
   tp: number;
   sl: number;
+  /** Targets parciales declarados en la señal (antes del TP final). */
+  targets?: number[] | null;
+  /** Cuántos targets ya se avisaron. */
+  targets_hit?: number;
   date: string;
 }
 
@@ -73,18 +77,42 @@ export function partialLevel(t: Pick<OpenTrade, "direction" | "entry" | "tp" | "
   return t.entry + dir * PARTIAL_R * risk;
 }
 
-/** Primera vela que llegó al Target 1 antes de tocar el SL (si una misma vela toca ambos, se descarta). Devuelve su hora o null. */
-export function detectPartial(trade: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl" | "date">, candles: Candle[]): number | null {
-  const level = partialLevel(trade);
-  if (level == null) return null;
+/**
+ * Niveles de los targets parciales, del más cercano al más lejano. Si la señal trae sus propios targets se usan esos
+ * (los que queden entre la entrada y el TP); si no, vale el «Target 1» automático de 1R (ver `partialLevel`).
+ */
+export function targetLevels(t: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl" | "targets">): number[] {
+  const dir = t.direction === "LONG" ? 1 : -1;
+  const own = [...new Set((t.targets ?? []).map(Number))]
+    .filter((n) => Number.isFinite(n) && dir * (n - t.entry) > 0 && dir * (n - t.tp) < 0)
+    .sort((a, b) => dir * (a - b));
+  if (own.length) return own;
+  const auto = partialLevel(t);
+  return auto == null ? [] : [auto];
+}
+
+/**
+ * Hora (vela) en que se tocó cada target, en orden, antes de que el precio llegara al SL. Una vela que toca el SL corta la
+ * búsqueda (criterio conservador, igual que `detectHit`). El largo del resultado es cuántos targets se alcanzaron.
+ */
+export function detectTargets(trade: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl" | "targets" | "date">, candles: Candle[]): number[] {
+  const levels = targetLevels(trade);
+  if (!levels.length) return [];
   const opened = new Date(trade.date).getTime();
   const long = trade.direction === "LONG";
+  const times: number[] = [];
   for (const c of candles) {
     if (c.t < opened) continue;
-    if (long ? c.l <= trade.sl : c.h >= trade.sl) return null;
-    if (long ? c.h >= level : c.l <= level) return c.t;
+    if (long ? c.l <= trade.sl : c.h >= trade.sl) break;
+    while (times.length < levels.length && (long ? c.h >= levels[times.length] : c.l <= levels[times.length])) times.push(c.t);
+    if (times.length === levels.length) break;
   }
-  return null;
+  return times;
+}
+
+/** Primera vela que llegó al Target 1 antes de tocar el SL (si una misma vela toca ambos, se descarta). Devuelve su hora o null. */
+export function detectPartial(trade: Pick<OpenTrade, "direction" | "entry" | "tp" | "sl" | "date">, candles: Candle[]): number | null {
+  return detectTargets(trade, candles)[0] ?? null;
 }
 
 export const rOfHit = (t: Pick<OpenTrade, "entry" | "tp" | "sl">, outcome: "TP" | "SL") => {
