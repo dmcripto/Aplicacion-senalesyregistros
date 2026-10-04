@@ -19,6 +19,7 @@ export interface ClosedPosition {
   pnl: number; // resultado neto en USDT (después de comisiones cuando el exchange las informa)
   openedAt: number; // ms
   closedAt: number; // ms
+  raw?: string; // datos tal como los informó el exchange, para verificar (solo exchanges todavía sin comprobar con cuentas reales)
 }
 
 export interface CheckResult {
@@ -418,6 +419,7 @@ export function parseBitunixClosed(list: any[]): ClosedPosition[] {
       pnl: num(r.realizedPNL) - Math.abs(num(r.fee)) + num(r.funding),
       openedAt: Number(r.ctime ?? closedAt),
       closedAt,
+      raw: `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}`,
     });
   }
   return out;
@@ -991,7 +993,7 @@ export function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number
     outcome: "MANUAL",
     exit: round(exitNet),
     closed_at: new Date(p.closedAt).toISOString(),
-    notes: `${name} · cantidad ${round(p.qty)} · salida real ${round(p.exit)} · resultado neto ${p.pnl >= 0 ? "+" : "−"}${Math.abs(p.pnl).toFixed(2)} USDT`,
+    notes: `${name} · cantidad ${round(p.qty)} · salida real ${round(p.exit)} · resultado neto ${p.pnl >= 0 ? "+" : "−"}${Math.abs(p.pnl).toFixed(2)} USDT${p.raw ? ` · ${p.raw}` : ""}`,
     source: exchange,
     external_id: p.externalId,
   };
