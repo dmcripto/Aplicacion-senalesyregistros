@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
+  Animated,
+  PanResponder,
   Platform,
   SafeAreaView,
   StatusBar,
@@ -10,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import { useSession, useTrades } from "./src/hooks";
 import { registerForPushNotifications } from "./src/push";
@@ -50,6 +53,40 @@ const TABS: Array<{ key: Tab; label: string }> = [
 
 function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const [tab, setTab] = useState<Tab>("signals");
+
+  // Deslizar hacia los costados cambia de pestaña (izquierda = la siguiente, derecha = la anterior).
+  // La pantalla entra con un pequeño deslizamiento desde el lado del que viene.
+  const tabRef = useRef<Tab>(tab);
+  tabRef.current = tab;
+  const slide = useRef(new Animated.Value(1)).current;
+  const dirRef = useRef(1);
+  const goTab = (next: Tab) => {
+    const from = TABS.findIndex((x) => x.key === tabRef.current);
+    const to = TABS.findIndex((x) => x.key === next);
+    if (from === to) return;
+    dirRef.current = to > from ? 1 : -1;
+    slide.setValue(0);
+    Animated.timing(slide, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    setTab(next);
+  };
+  const goTabRef = useRef(goTab);
+  goTabRef.current = goTab;
+  const swipe = useRef(
+    PanResponder.create({
+      // Solo toma el gesto si el movimiento es claramente horizontal: así se puede seguir desplazando arriba y abajo,
+      // y los gráficos o listas horizontales (que lo piden antes) siguen funcionando.
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 18 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
+      onPanResponderTerminationRequest: () => true,
+      onPanResponderRelease: (_e, g) => {
+        if (Math.abs(g.dx) < 50 && Math.abs(g.vx) < 0.5) return;
+        const i = TABS.findIndex((x) => x.key === tabRef.current);
+        const next = TABS[i + (g.dx < 0 ? 1 : -1)];
+        if (!next) return;
+        Haptics.selectionAsync().catch(() => {});
+        goTabRef.current(next.key);
+      },
+    }),
+  ).current;
   const { trades, loading, refreshing, refresh } = useTrades(userId);
   const open = trades.filter((t) => t.outcome === "ABIERTA").length;
   const [limits, setLimits] = useState<DailyLimits>({ maxLossR: null, maxTrades: null });
@@ -110,7 +147,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(() => {
-      setTab("signals");
+      goTabRef.current("signals");
       refresh();
     });
     return () => sub.remove();
@@ -132,7 +169,10 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
           <Text style={styles.liveText}>{t("EN VIVO")}{open > 0 ? ` · ${open}` : ""}</Text>
         </View>
       </View>
-      <View style={{ flex: 1 }}>
+      <Animated.View
+        style={{ flex: 1, opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [28 * dirRef.current, 0] }) }] }}
+        {...swipe.panHandlers}
+      >
         {tab === "signals" && <SignalsScreen
             trades={trades}
             loading={loading}
@@ -141,20 +181,20 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             limitStatus={limitStatus}
             onCalculate={(t) => {
               setCalcTrade(t);
-              setTab("risk");
+              goTab("risk");
             }}
           />}
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
-        {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); setTab("signals"); }} />}
+        {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); goTab("signals"); }} />}
         {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
         {tab === "map" && <MapScreen />}
         {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} onSaveMoney={persistMoney} />}
-      </View>
+      </Animated.View>
       <View style={styles.tabBar}>
         {TABS.map((tb) => {
           const on = tab === tb.key;
           return (
-            <TouchableOpacity key={tb.key} style={styles.tabBtn} onPress={() => setTab(tb.key)}>
+            <TouchableOpacity key={tb.key} style={styles.tabBtn} onPress={() => goTab(tb.key)}>
               {on && <View style={styles.tabIndicator} />}
               <View>
                 <TabIcon name={tb.key} color={on ? colors.gold : colors.dim} />
