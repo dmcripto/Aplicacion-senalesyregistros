@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   analyze, balanceInfo, binanceSymbol, levelProgress, todayOverview, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
-  parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv, whatsappShareUrl,
+  demoFrame, parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv, whatsappShareUrl,
 } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
 
@@ -278,5 +278,45 @@ describe("señales con varios targets (TP1, TP2, TP3…)", () => {
   it("con un solo TP no hay targets parciales", () => {
     expect(view("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).toEqual({ tp: 66500, targets: undefined });
     expect(view("BTCUSDT LONG entry 65000 tp 66500 sl 64500")).toEqual({ tp: 66500, targets: undefined });
+  });
+});
+
+describe("demo animada de la bienvenida", () => {
+  it("la señal aparece fila por fila, el precio sube y cada target salta en orden", () => {
+    expect(demoFrame(0).levels.every((l) => !l.shown)).toBe(true);
+    expect(demoFrame(1400).levels.every((l) => l.shown)).toBe(true);
+    const at = (ms: number) => demoFrame(ms);
+    expect(at(1400).price).toBe(65000);
+    expect(at(2400).price).toBeGreaterThan(65000);
+    expect(at(3300).levels.filter((l) => l.reached).map((l) => l.key)).toEqual(["t1"]);
+    expect(at(3300).toast?.title).toBe("TARGET 1 ALCANZADO");
+    expect(at(5600).levels.filter((l) => l.reached).map((l) => l.key).sort()).toEqual(["t1", "t2"]);
+    expect(at(5600).toast?.n).toBe(2);
+    expect(at(5600).toast?.text).toContain("Target 1"); // «mover el SL al Target 1»
+  });
+
+  it("termina en TP alcanzado con +4.0R, se desvanece y vuelve a empezar", () => {
+    const win = demoFrame(9000);
+    expect(win.win?.title).toBe("TP ALCANZADO");
+    expect(win.win?.r).toBe("+4.0R");
+    expect(win.toast).toBeNull();
+    expect(demoFrame(11800).fade).toBeGreaterThan(0.5);
+    expect(demoFrame(12000 + 3300).levels.filter((l) => l.reached)).toHaveLength(1); // segunda vuelta = igual que la primera
+  });
+
+  it("el precio nunca se sale de la entrada y el último target, y el punto queda dentro de las filas", () => {
+    for (let ms = 0; ms < 24000; ms += 100) {
+      const f = demoFrame(ms);
+      expect(f.price).toBeGreaterThanOrEqual(65000);
+      expect(f.price).toBeLessThanOrEqual(67000);
+      expect(f.track).toBeGreaterThanOrEqual(0);
+      expect(f.track).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("en inglés usa los textos en inglés", () => {
+    setLang("en");
+    expect(demoFrame(3300).toast?.title).toBe("TARGET 1 HIT");
+    expect(demoFrame(9000).win?.title).toBe("TP HIT");
   });
 });

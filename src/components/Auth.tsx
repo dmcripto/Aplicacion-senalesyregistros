@@ -4,7 +4,8 @@ import { supabase } from "../supabaseClient";
 import { COMMUNITY_URL, cx } from "../lib";
 import { IconAlert, ShieldLogo } from "../ui";
 import { LangSwitch, legalUrl } from "../lang";
-import { t, welcomeContent } from "../lib";
+import { getLang, t, welcomeContent } from "../lib";
+import LiveDemo from "./LiveDemo";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -16,6 +17,11 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const welcome = welcomeContent();
+  const lang = getLang();
+  const goForm = (m: "login" | "signup") => {
+    setMode(m);
+    document.getElementById("acceso")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
@@ -82,19 +88,54 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
     <div className="mx-auto grid min-h-screen w-full max-w-5xl content-center gap-8 px-4 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-8">
       <div className="fixed right-3 top-3 z-10"><LangSwitch /></div>
 
-      <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-        <ShieldLogo className="h-20 w-20 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
-        <h1 className="mt-3 font-display text-3xl font-extrabold tracking-[0.04em] text-snow">VELTRIX</h1>
-        <p className="mt-3 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
-        <p className="mt-3 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
-        <div className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
-          {welcome.chips.map((c) => (
-            <span key={c} className="rounded-full border border-cyan/35 bg-cyan/10 px-3 py-1 text-[12px] font-bold text-cyan">{c}</span>
+      <section className="flex flex-col items-center text-center lg:col-start-1 lg:items-start lg:text-left">
+        <ShieldLogo className="h-16 w-16 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[0.04em] text-snow">VELTRIX</h1>
+        <p className="mt-2 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
+        <p className="mt-2 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
+      </section>
+
+      <div className="flex justify-center lg:col-start-1 lg:justify-start">
+        <LiveDemo />
+      </div>
+
+      <div className="flex gap-3 lg:hidden">
+        <button type="button" onClick={() => goForm("signup")} className="flex-1 rounded-md bg-gold px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98]">
+          {t("Crear cuenta")}
+        </button>
+        <button type="button" onClick={() => goForm("login")} className="flex-1 rounded-md border border-cyan/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/10">
+          {t("Ya tengo cuenta")}
+        </button>
+      </div>
+
+      <section className="lg:col-start-1">
+        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Así te llegan los avisos")}</h2>
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
+          {([["signal", "1 · Llega la señal"], ["target", "2 · Aviso de cada target"], ["result", "3 · Resultado al cerrar"]] as const).map(([k, cap]) => (
+            <figure key={k} className="w-[68%] shrink-0 snap-center sm:w-[44%] lg:w-auto">
+              <img src={`/welcome/${k}-${lang}.png`} alt={t(cap)} loading="lazy" width={600} height={600} className="w-full rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,.45)]" />
+              <figcaption className="mt-2 text-center text-[11.5px] font-semibold text-fog">{t(cap)}</figcaption>
+            </figure>
           ))}
         </div>
       </section>
 
-      <div className="w-full max-w-sm self-start justify-self-center rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:row-span-2 lg:max-w-md lg:justify-self-end">
+      <section className="lg:col-start-1">
+        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {welcome.features.map((f) => (
+            <div key={f.title} className="flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan/25 bg-cyan/10 text-[22px]">{f.icon}</span>
+              <div>
+                <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
+                <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div id="acceso" className="w-full max-w-sm scroll-mt-4 self-start justify-self-center rounded-lg border border-line bg-panel shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-w-md lg:justify-self-end">
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
           <div className="mb-1 flex gap-1 rounded-lg border border-line bg-ink p-1">
             <button
@@ -227,20 +268,6 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         </p>
       </div>
 
-      <section className="lg:col-start-1 lg:row-start-2">
-        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {welcome.features.map((f) => (
-            <div key={f.title} className="flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan/25 bg-cyan/10 text-[22px]">{f.icon}</span>
-              <div>
-                <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
-                <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
