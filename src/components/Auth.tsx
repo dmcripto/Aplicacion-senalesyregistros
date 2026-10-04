@@ -7,6 +7,7 @@ import { LangSwitch, legalUrl } from "../lang";
 import { getLang, t, welcomeContent } from "../lib";
 import LiveDemo from "./LiveDemo";
 import { trackGlow } from "../glowTracking";
+import { trackSignup } from "../refTracking";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -37,6 +38,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
       } else {
         const { error: err } = await supabase.auth.signUp({ email, password });
         if (err) throw err;
+        trackSignup();
         setNotice(t("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada."));
       }
     } catch (err) {

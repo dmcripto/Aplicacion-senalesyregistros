@@ -1411,3 +1411,13 @@ export interface WhatsAppState {
   /** El número viene enmascarado (+54 ••••••• 0000). */
   link: { phone: string; enabled: boolean } | null;
 }
+
+
+// ─── Enlaces con seguimiento (?ref=) ────────────────────────────────────────
+
+/** Etiqueta de origen válida (minúsculas, números, guion y guion bajo; hasta 40). Devuelve null si no sirve. */
+export function cleanRef(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim().toLowerCase();
+  return /^[a-z0-9_-]{1,40}$/.test(v) ? v : null;
+}
