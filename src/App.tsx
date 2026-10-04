@@ -1,3 +1,4 @@
+import { trackGlow } from "./glowTracking";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   COMMUNITY_URL,
@@ -434,24 +435,7 @@ function Dashboard({ userId }: { userId: string }) {
   const [tpHit, clearTpHit] = useTpCelebration(trades);
 
   // Resplandor e inclinación 3D que siguen al cursor en las tarjetas con la clase glow-card.
-  useEffect(() => {
-    const move = (e: PointerEvent) => {
-      if (e.pointerType === "touch") return;
-      const el = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".glow-card");
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
-      // Cuanto más grande el panel, menos se inclina (si no, los extremos se moverían demasiado).
-      const max = Math.max(0.7, Math.min(3, 900 / Math.max(r.width, r.height)));
-      el.style.setProperty("--mx", `${x}px`);
-      el.style.setProperty("--my", `${y}px`);
-      el.style.setProperty("--tx", `${(-(y / r.height - 0.5) * 2 * max).toFixed(2)}deg`);
-      el.style.setProperty("--ty", `${((x / r.width - 0.5) * 2 * max).toFixed(2)}deg`);
-    };
-    window.addEventListener("pointermove", move, { passive: true });
-    return () => window.removeEventListener("pointermove", move);
-  }, []);
+  useEffect(() => trackGlow(), []);
 
   useEffect(() => {
     if (!deleteArmed) return;
