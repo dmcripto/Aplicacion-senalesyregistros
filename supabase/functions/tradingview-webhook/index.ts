@@ -10,6 +10,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
+import { notifyWhatsApp, waSignalParams } from "../_shared/waCloud.ts";
 import { communitySignalMessage, publishToCommunities, signalCardHtml } from "../_shared/community.ts";
 import { botToken, notifyTelegram } from "../_shared/telegram.ts";
 import { waSignalText } from "../_shared/whatsapp.ts";
@@ -149,7 +150,11 @@ Deno.serve(async (req) => {
   // Corre después de contestar para que TradingView no espere (su límite es de pocos segundos).
   const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl };
   await runInBackground(
-    publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
+    Promise.all([
+      publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
+      // Aviso por WhatsApp (si la persona vinculó su número).
+      notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
+    ]),
   );
 
   return new Response(JSON.stringify({ ok: true, trade }), {

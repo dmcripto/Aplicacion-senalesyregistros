@@ -1177,3 +1177,12 @@ export function binanceSymbol(raw: string): { symbol: string; perp: boolean } | 
  * Mientras esté en false, la tarjeta no se muestra en la web ni en la app. Para prenderlo, cambiar a true.
  */
 export const FEATURES = { coach: false } as const;
+
+// ─── Señales por WhatsApp (API oficial) ─────────────────────────────────────
+
+/** Estado de WhatsApp de la cuenta: `configured` es false mientras el servidor no tenga la conexión con Meta. */
+export interface WhatsAppState {
+  configured: boolean;
+  /** El número viene enmascarado (+54 ••••••• 0000). */
+  link: { phone: string; enabled: boolean } | null;
+}
