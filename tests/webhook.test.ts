@@ -50,6 +50,17 @@ describe("webhook de TradingView", () => {
     expect(tg[0].body.text).toMatch(/BTC\/USDT/);
   });
 
+  it("una señal con varios targets guarda los parciales y los muestra en el aviso", async () => {
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    expect((await post("VELTRIX|BTCUSDT|COMPRA|65000|66000/67000/68000|64500")).status).toBe(201);
+    expect(db.tables.trades[0]).toMatchObject({ tp: 68000, targets: [66000, 67000] });
+    for (const c of telegramCalls()) {
+      expect(c.body.text).toMatch(/Target 1 :- <b>66000<\/b>/);
+      expect(c.body.text).toMatch(/Target 3 :- <b>68000<\/b>/);
+    }
+    expect(telegramCalls()).toHaveLength(2); // persona + comunidad
+  });
+
   it("publica la señal en la comunidad conectada, además del aviso privado", async () => {
     db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
     expect((await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).status).toBe(201);

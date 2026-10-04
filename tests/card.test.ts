@@ -45,6 +45,26 @@ describe("dibujo de la tarjeta (SVG)", () => {
     expect(short).toContain("VENTA · SHORT");
   });
 
+  it("con varios targets dibuja una fila por cada uno (el más lejano arriba en una compra) y el R:R del TP final", () => {
+    const svg = card.signalCardSvg({ symbol: "HYPEUSDT", direction: "LONG", entry: 40.5, tp: 44, sl: 39.5, targets: [41.5, 42.5] }, "es");
+    for (const l of ["TARGET 1", "TARGET 2", "TARGET 3"]) expect(svg).toContain(`>${l}<`);
+    expect(svg.indexOf(">TARGET 3<")).toBeLessThan(svg.indexOf(">TARGET 1<"));
+    expect(svg.indexOf(">TARGET 1<")).toBeLessThan(svg.indexOf(">ENTRADA<"));
+    expect(svg).toContain("1 : 3.5");
+    const short = card.signalCardSvg({ symbol: "ETHUSDT", direction: "SHORT", entry: 3050, tp: 2940, sl: 3100, targets: [3020, 3000, 2980, 2960] }, "es");
+    expect(short.indexOf(">STOP LOSS<")).toBeLessThan(short.indexOf(">TARGET 1<"));
+    expect(short.indexOf(">TARGET 1<")).toBeLessThan(short.indexOf(">TARGET 5<"));
+  });
+
+  it("el aviso de un target lleva su número y el resultado puede llevar una nota", () => {
+    const p2 = card.partialCardSvg({ symbol: "HYPEUSDT", direction: "LONG", entry: 40.5, tp: 44, sl: 39.5 }, 42.5, 2, "es", null, 2);
+    expect(p2).toContain("TARGET 2 ALCANZADO");
+    expect(p2).toContain("Asegurar ganancias: mover el SL al Target 1");
+    const r = card.resultCardSvg("HYPEUSDT", "SL", -1, "es", { note: "SL tocado antes del Target 1" });
+    expect(r).toContain("SL tocado antes del Target 1");
+    expect(card.resultCardSvg("HYPEUSDT", "SL", -1, "es")).not.toContain("antes del Target");
+  });
+
   it("en inglés usa los textos en inglés y un símbolo raro no rompe el SVG", () => {
     const svg = card.signalCardSvg({ symbol: "A<B>&C", direction: "LONG", entry: 1, tp: 2, sl: 0.5 }, "en");
     expect(svg).toContain("NEW SIGNAL");

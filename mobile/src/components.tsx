@@ -420,6 +420,7 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
           <Level label={t("STOP LOSS")} value={fmtPrice(trade.sl)} color={colors.bear} />
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
+        {!!trade.targets?.length && <Text style={[s.date, { color: colors.bull }]}>{trade.targets.map((n, i) => `T${i + 1} ${fmtPrice(n)}`).join(" · ")}</Text>}
         {trade.exit != null && <Text style={s.date}>{t("Salida")} {fmtPrice(trade.exit)}</Text>}
         {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>{t("⚡ Cerrada automáticamente")}</Text>}
         {!!trade.tags?.length && (

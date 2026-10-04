@@ -337,11 +337,11 @@ export default function SettingsScreen({
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>{t("AVISO DE TARGET 1")}</Text>
+      <Text style={styles.sectionTitle}>{t("AVISOS DE TARGETS")}</Text>
       <View style={styles.card}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Text style={[styles.hint, { flex: 1 }]}>
-            {t("Cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.")}
+            {t("Cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.")}
           </Text>
           <Switch
             value={partialAlerts}

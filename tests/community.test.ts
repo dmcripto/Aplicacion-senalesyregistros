@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { communityResultMessage, communitySignalMessage, prettyPair, publishToCommunities, resultCardHtml, signalCardHtml } from "../supabase/functions/_shared/community";
+import { communityResultMessage, communitySignalMessage, partialCardHtml, prettyPair, publishToCommunities, resultCardHtml, resultNote, signalCardHtml } from "../supabase/functions/_shared/community";
 import { db, resetDb } from "./helpers/fake-supabase";
 
 let handler: (req: Request) => Promise<Response>;
@@ -247,5 +247,37 @@ describe("mensajes y errores de la comunidad", () => {
     const { createClient } = await import("npm:@supabase/supabase-js@2");
     expect(await publishToCommunities(createClient("x", "y"), undefined, "u1", () => "x")).toBe(0);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("varios targets en los mensajes", () => {
+  const t = { symbol: "HYPEUSDT", direction: "LONG", entry: 40.5, tp: 44, sl: 39.5, targets: [41.5, 42.5] };
+
+  it("la señal lista Target 1, Target 2 y Target 3 (el último es el TP final)", () => {
+    const m = signalCardHtml(t, "es");
+    expect(m).toContain("Target 1 :- <b>41.5</b>  <i>(+2.47%)</i>");
+    expect(m).toContain("Target 2 :- <b>42.5</b>");
+    expect(m).toContain("Target 3 :- <b>44</b>  <i>(+8.64%)</i>");
+    expect(m).toContain("1 : 3.5"); // R:R contra el TP final
+    expect(signalCardHtml({ ...t, targets: undefined }, "es")).toContain("Target :- <b>44</b>"); // uno solo: sin número
+  });
+
+  it("el aviso de cada target dice su número y qué hacer", () => {
+    expect(partialCardHtml(t, 41.5, 1, "es", { n: 1 })).toContain("TARGET 1 ALCANZADO");
+    expect(partialCardHtml(t, 41.5, 1, "es", { n: 1 })).toContain("cerrar 50% y mover el SL a break-even");
+    const two = partialCardHtml(t, 42.5, 2, "en", { n: 2 });
+    expect(two).toContain("TARGET 2 HIT");
+    expect(two).toContain("move the SL to Target 1");
+  });
+
+  it("el resultado aclara si el SL llegó antes del Target 1 o si fue directo al TP", () => {
+    expect(resultNote("SL", 0, 2, "es")).toBe("SL tocado antes del Target 1");
+    expect(resultNote("SL", 2, 2, "en")).toBe("Target 2 was reached before the SL");
+    expect(resultNote("TP", 0, 1, "es")).toBe("Directo al TP, sin pasar por el Target 1");
+    expect(resultNote("TP", 0, 3, "en")).toBe("Straight to TP, skipping the targets");
+    expect(resultNote("TP", 1, 2, "es")).toBeNull();
+    expect(resultNote("SL", 0, 0, "es")).toBeNull(); // sin targets no hay nada que aclarar
+    expect(resultCardHtml("BTCUSDT", "SL", -1, "es", { note: "SL tocado antes del Target 1" })).toContain("⚠️ <i>SL tocado antes del Target 1</i>");
+    expect(resultCardHtml("BTCUSDT", "TP", 2, "es", { note: "Directo al TP" })).toContain("⚡ <i>Directo al TP</i>");
   });
 });

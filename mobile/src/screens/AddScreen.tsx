@@ -165,7 +165,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
                 <View style={{ flex: 1 }}>
                   <Text style={s.previewSymbol}>{v.symbol}</Text>
                   <Text style={s.previewLevels}>
-                    {t("Entrada")} {fmtPrice(v.entry)} · TP {fmtPrice(v.tp)} · SL {fmtPrice(v.sl)}
+                    {t("Entrada")} {fmtPrice(v.entry)} · TP {[...(v.targets ?? []), v.tp].map(fmtPrice).join(" / ")} · SL {fmtPrice(v.sl)}
                   </Text>
                 </View>
                 <Text style={s.previewRR}>1:{rrOf({ ...v, id: "", outcome: "ABIERTA" } as Trade).toFixed(2)}</Text>

@@ -14,6 +14,7 @@ interface TradeRow {
   entry: number;
   tp: number;
   sl: number;
+  targets?: number[] | null;
   date: string;
   outcome: Outcome;
   exit: number | null;
@@ -32,6 +33,7 @@ export function rowToTrade(row: TradeRow): Trade {
     entry: Number(row.entry),
     tp: Number(row.tp),
     sl: Number(row.sl),
+    targets: row.targets?.length ? row.targets.map(Number) : undefined,
     date: row.date,
     outcome: row.outcome,
     exit: row.exit == null ? undefined : Number(row.exit),
@@ -53,21 +55,21 @@ export async function fetchTrades(): Promise<Trade[]> {
 }
 
 export async function insertTrades(userId: string, list: NewTrade[]): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("trades")
-    .insert(
-      list.map((t) => ({
-        user_id: userId,
-        symbol: t.symbol,
-        direction: t.direction,
-        entry: t.entry,
-        tp: t.tp,
-        sl: t.sl,
-        date: t.date,
-        notes: t.notes ?? null,
-      })),
-    )
-    .select("id");
+  const rows = (withTargets: boolean) =>
+    list.map((t) => ({
+      user_id: userId,
+      symbol: t.symbol,
+      direction: t.direction,
+      entry: t.entry,
+      tp: t.tp,
+      sl: t.sl,
+      ...(withTargets && t.targets?.length ? { targets: t.targets } : {}),
+      date: t.date,
+      notes: t.notes ?? null,
+    }));
+  let { data, error } = await supabase.from("trades").insert(rows(true)).select("id");
+  // Si todavía no se corrió el SQL de los targets, se guarda igual (solo con el TP final).
+  if (error && list.some((t) => t.targets?.length)) ({ data, error } = await supabase.from("trades").insert(rows(false)).select("id"));
   if (error) throw error;
   return (data as { id: string }[]).map((row) => row.id);
 }

@@ -18,8 +18,13 @@ const corpus = [
   "symbol: XRPUSDT dirección: venta entrada 0.52 tp 0.50 sl 0.53",
   "BTCUSDT|COMPRA|100|110|95\nETHUSDT|VENTA|50|45|53",
   "Señal: SOL/USDT compra en 150, objetivo 158, stop loss 146",
+  "VELTRIX|BTCUSDT|COMPRA|65000|66000/67000/68000|64500",
+  '{"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":[66000,67000,68000],"sl":64500}',
+  "symbol=BTCUSDT side=buy entry=65000 tp1=66000 tp2=67000 tp3=68000 sl=64500",
+  "HYPE/USDT LONG\nEntry: 40.5\nTP1: 41.5\nTP2: 42.5\nTP3: 44\nSL: 39.5",
+  "BTCUSDT SHORT entrada 65000 targets: 64000, 63000, 62000 sl 66000",
 ];
-const view = (r: { valid: any[] }) => r.valid.map((v) => [v.symbol, v.direction, v.entry, v.tp, v.sl]);
+const view = (r: { valid: any[] }) => r.valid.map((v) => [v.symbol, v.direction, v.entry, v.tp, v.sl, v.targets]);
 
 describe("intérprete web = intérprete del servidor", () => {
   for (const c of corpus) {

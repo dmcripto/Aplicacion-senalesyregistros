@@ -111,7 +111,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
     setPartial(next);
     try {
       await setPartialAlerts(userId, next);
-      notify(next ? t("Aviso de Target 1 activado.") : t("Aviso de Target 1 desactivado."));
+      notify(next ? t("Avisos de targets activados.") : t("Avisos de targets desactivados."));
     } catch (err) {
       setPartial(!next);
       notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
@@ -211,8 +211,8 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
             <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
               <input type="checkbox" checked={partial} onChange={togglePartial} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
               <span>
-                <b className="text-snow">{t("Aviso de Target 1:")}</b>{" "}
-                {t("cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.")}
+                <b className="text-snow">{t("Avisos de targets:")}</b>{" "}
+                {t("cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.")}
               </span>
             </label>
             <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
