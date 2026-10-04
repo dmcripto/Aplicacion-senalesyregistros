@@ -24,5 +24,11 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          eas build:list --platform android --limit 3 --status finished --json --non-interactive > /tmp/latest.json
-          node -e "for (const b of JSON.parse(require('fs').readFileSync('/tmp/latest.json','utf8'))) console.log('BUILD_ID=' + b.id + ' | ' + b.createdAt + ' | profile=' + b.buildProfile + ' | APK_URL=' + ((b.artifacts&&b.artifacts.buildUrl)||''));"
+          set +e
+          eas build:list --platform android --limit 3 --json --non-interactive > /tmp/latest.json 2> /tmp/err.txt
+          code=$?
+          echo "exit=$code"
+          echo "--- stderr ---"; cat /tmp/err.txt
+          echo "--- stdout (primeros 3000 caracteres) ---"; head -c 3000 /tmp/latest.json; echo
+          node -e "try { for (const b of JSON.parse(require('fs').readFileSync('/tmp/latest.json','utf8'))) console.log('BUILD_ID=' + b.id + ' | ' + b.createdAt + ' | profile=' + b.buildProfile + ' | status=' + b.status + ' | APK_URL=' + ((b.artifacts&&b.artifacts.buildUrl)||'')); } catch (e) { console.log('sin JSON: ' + e.message); }"
+          exit 0
