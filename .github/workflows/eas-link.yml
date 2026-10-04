@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install root dependencies (npm workspaces)
+        run: npm ci
+
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
