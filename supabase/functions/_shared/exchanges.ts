@@ -19,7 +19,7 @@ export interface ClosedPosition {
   pnl: number; // resultado neto en USDT (después de comisiones cuando el exchange las informa)
   openedAt: number; // ms
   closedAt: number; // ms
-  raw?: string; // datos tal como los informó el exchange, para verificar (solo exchanges todavía sin comprobar con cuentas reales)
+  raw?: string; // datos tal como los informó el exchange, para verificar casos todavía sin comprobar con cuentas reales
 }
 
 export interface CheckResult {
@@ -420,7 +420,8 @@ export function parseBitunixClosed(list: any[]): ClosedPosition[] {
       pnl: num(r.realizedPNL),
       openedAt: Number(r.ctime ?? closedAt),
       closedAt,
-      raw: `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}`,
+      // Solo si hubo funding: todavía no se sabe si realizedPNL lo incluye, y esto permite comprobarlo con un caso real.
+      raw: num(r.funding) !== 0 ? `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}` : undefined,
     });
   }
   return out;
