@@ -77,6 +77,34 @@
     setLang(saved === "en" || saved === "es" ? saved : (navigator.language || "es").toLowerCase().indexOf("es") === 0 ? "es" : "en");
     document.getElementById("es").onclick = function () { setLang("es"); };
     document.getElementById("en").onclick = function () { setLang("en"); };
+
+    // Enlaces con seguimiento: /app?ref=etiqueta cuenta una visita y cada toque en "Descargar".
+    // Solo se guarda la etiqueta y un identificador aleatorio del navegador (sin datos personales).
+    (function () {
+      var API = "https://hbkveqilauhqahwuuasc.supabase.co/rest/v1/rpc/track_ref";
+      var KEY = "sb_publishable_X5g65kRKtsf8jjcoyZkx1A_GbrhtezQ"; // clave pública del proyecto (la misma que usa la web)
+      var m = /[?&]ref=([A-Za-z0-9_-]{1,40})/.exec(location.search);
+      var ref = m ? m[1].toLowerCase() : null;
+      if (!ref) return;
+      var vid = null;
+      try {
+        vid = localStorage.getItem("veltrix_vid");
+        if (!vid) { vid = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(16) + "-" + Math.random().toString(16).slice(2)); localStorage.setItem("veltrix_vid", vid); }
+        if (!localStorage.getItem("veltrix_ref")) localStorage.setItem("veltrix_ref", ref);
+      } catch (e) {}
+      function send(kind) {
+        try {
+          fetch(API, { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", apikey: KEY }, body: JSON.stringify({ p_ref: ref, p_kind: kind, p_visitor: vid }) }).catch(function () {});
+        } catch (e) {}
+      }
+      send("visit");
+      document.getElementById("download").addEventListener("click", function () { send("download"); });
+      // El enlace a la versión web conserva la etiqueta, así el registro también se atribuye.
+      document.addEventListener("click", function (e) {
+        var a = e.target && e.target.closest ? e.target.closest('a[href="/"]') : null;
+        if (a) { e.preventDefault(); location.href = "/?ref=" + ref; }
+      });
+    })();
   </script>
 </body>
 </html>
