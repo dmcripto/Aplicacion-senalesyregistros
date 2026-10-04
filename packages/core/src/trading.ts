@@ -1001,12 +1001,11 @@ export function exchangeSteps(id: ExchangeId): string[] {
       ];
     case "mexc":
       return [
-        tr("En MEXC: Perfil → Gestión de API → Crear APIKey."),
-        tr("Ponele un nombre (por ejemplo VELTRIX) y activá SOLO los permisos de lectura de Futuros. No actives operar, retirar ni transferir."),
-        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        tr("En MEXC (desde la web): Perfil → Gestión de API → Crear Nueva Clave API."),
+        tr("Escribí una nota (por ejemplo VELTRIX). En Futuros tildá SOLO \"Ver detalles de la cuenta\" y \"Ver detalles de la orden\". No tildes \"Colocar órdenes\" ni nada de Spot, Retirar, Transferir o P2P."),
+        tr("Sin dirección IP vinculada, MEXC la vence a los 90 días: pasado ese tiempo creá otra clave y volvé a conectarla."),
         last,
       ];
-
     case "gate":
       return [
         tr("En Gate: Perfil → Gestión de API → Crear clave API (v4)."),
