@@ -77,14 +77,17 @@ describe("imagen PNG", () => {
     expect(dv.getUint32(16)).toBe(1080);
     expect(dv.getUint32(20)).toBe(1080);
     expect(png.length).toBeGreaterThan(20_000); // tiene contenido (texto, logo), no una imagen vacía
-    expect(img!.caption).toContain("BTC/USDT");
+    // La imagen ya dice todo: el pie solo lleva el aviso legal y el enlace, sin repetir los números.
     expect(img!.caption).toContain("asesoramiento");
+    expect(img!.caption).toContain("veltrix-trading.vercel.app");
+    expect(img!.caption).not.toMatch(/65000|66500|64500|BTC/);
   });
 
   it("también la tarjeta de resultado", async () => {
     const img = await card.resultCardImage("BTCUSDT", "TP", 3, "es");
     expect(img?.png.length).toBeGreaterThan(20_000);
-    expect(img?.caption).toContain("+3.0R");
+    expect(img?.caption).toContain("VELTRIX");
+    expect(img?.caption).not.toContain("3.0R");
   });
 
   it("si no se puede bajar la tipografía devuelve null (el aviso sale como texto)", async () => {

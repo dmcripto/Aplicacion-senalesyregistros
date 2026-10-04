@@ -256,8 +256,8 @@ export async function signalCardImage(t: CommunityTrade, lang: Lang): Promise<Ca
   if (!cardsEnabled()) return null;
   const png = await svgToPng(signalCardSvg(t, lang, await cardLoadLogo()));
   if (!png) return null;
-  const long = t.direction === "LONG";
-  const caption = `<b>${esc(prettyPair(t.symbol))}</b> · ${long ? "LONG 🟢" : "SHORT 🔴"}\n⛩ <b>${t.entry}</b>  💠 <b>${t.tp}</b>  🛑 <b>${t.sl}</b>\n\n<i>${CARD_NOTE[lang]}</i>\n<a href="${CARD_SITE}">VELTRIX</a>`;
+  // La imagen ya dice todo: abajo solo van el aviso legal y el enlace.
+  const caption = `<i>${CARD_NOTE[lang]}</i>\n<a href="${CARD_SITE}">VELTRIX</a>`;
   return { png, caption };
 }
 
@@ -265,8 +265,7 @@ export async function resultCardImage(symbol: string, outcome: "TP" | "SL", r: n
   if (!cardsEnabled()) return null;
   const png = await svgToPng(resultCardSvg(symbol, outcome, r, lang, opts, await cardLoadLogo()));
   if (!png) return null;
-  const ok = outcome === "TP";
-  const caption = `${ok ? "✅" : "❌"} <b>${esc(prettyPair(symbol))}</b> · ${ok ? "TP" : "SL"} · <b>${cardR(r)}</b>\n<a href="${CARD_SITE}">VELTRIX</a>`;
+  const caption = `<a href="${CARD_SITE}">VELTRIX</a>`;
   return { png, caption };
 }
 
