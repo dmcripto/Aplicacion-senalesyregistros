@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, fmtDateTime, rValueMoney, t } from "../lib";
+import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
 import Panel from "./Panel";
@@ -26,6 +26,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState<string | null>(null);
 
@@ -60,13 +61,14 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
   const connect = async () => {
     setBusy(true);
     try {
-      const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim());
+      const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim(), needsPassphrase(exchange) ? passphrase.trim() : undefined);
       if (!r.ok) {
         notify(r.error ?? t("No se pudo conectar."), "err");
         return;
       }
       setApiKey("");
       setApiSecret("");
+      setPassphrase("");
       notify(t("{name} conectado. Operaciones importadas: {n}.", { name: exchangeName(exchange), n: r.imported ?? 0 }));
       if (r.warning) notify(r.warning, "info");
       await reload();
@@ -101,7 +103,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
     }
   };
 
-  const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && !busy;
+  const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && (!needsPassphrase(exchange) || passphrase.trim().length > 0) && !busy;
 
   return (
     <Panel
@@ -148,7 +150,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
           </ul>
         ) : (
           <p className="text-[12px] leading-relaxed text-fog">
-            {t("Conectá tu exchange (Binance, Bybit, Bitunix o MEXC) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+            {t("Conectá tu exchange (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX o KuCoin) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
           </p>
         )}
 
@@ -202,6 +204,12 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
               <span className={label}>{t("Clave secreta (Secret)")}</span>
               <input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} autoComplete="new-password" spellCheck={false} className="field num" />
             </label>
+            {needsPassphrase(exchange) && (
+              <label className="block">
+                <span className={label}>{t("Contraseña de la API (passphrase)")}</span>
+                <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoComplete="new-password" spellCheck={false} className="field num" />
+              </label>
+            )}
             <button
               onClick={connect}
               disabled={!canConnect}

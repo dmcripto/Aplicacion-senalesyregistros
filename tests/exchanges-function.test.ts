@@ -77,6 +77,31 @@ describe("función exchanges", () => {
     expect(db.tables.trades[0].notes).toMatch(/^MEXC/);
   });
 
+  it("Bitget pide la contraseña de la API, la guarda cifrada y la usa al sincronizar", async () => {
+    const seen: string[] = [];
+    const ctime = String(Date.now() - 72e5), utime = String(Date.now() - 36e5);
+    vi.stubGlobal("fetch", async (_url: any, init: any) => {
+      seen.push(init?.headers?.["ACCESS-PASSPHRASE"]);
+      return new Response(JSON.stringify({ code: "00000", data: { list: [{ symbol: "BTCUSDT", holdSide: "long", openAvgPrice: "65000", closeAvgPrice: "65500", closeTotalPos: "0.1", netProfit: "49", ctime, utime }], endId: "" } }));
+    });
+    const base = { action: "connect", exchange: "bitget", apiKey: "BGKEY123456", apiSecret: "BGSECRET1234" };
+    expect((await call(base)).status).toBe(400);
+    const r = await call({ ...base, passphrase: "mi-clave-api" });
+    expect(r.body).toMatchObject({ ok: true, imported: 1 });
+    expect(JSON.stringify(db.tables.exchange_secrets)).not.toContain("mi-clave-api");
+    expect(db.tables.exchange_secrets[0].passphrase_enc).toBeTruthy();
+    expect(db.tables.trades[0]).toMatchObject({ source: "bitget", symbol: "BTCUSDT" });
+    db.tables.exchange_connections[0].last_sync_at = new Date(Date.now() - 120e3).toISOString();
+    await call({ action: "sync" });
+    expect(seen.every((x) => x === "mi-clave-api")).toBe(true);
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("los exchanges sin contraseña no guardan ninguna", async () => {
+    await connect(); // Bybit
+    expect(db.tables.exchange_secrets[0].passphrase_enc).toBeNull();
+  });
+
   it("no reimporta lo que el usuario borró", async () => {
     await connect();
     db.tables.exchange_ignored.push({ user_id: "u1", source: "bybit", external_id: "ETHUSDT:o2" });

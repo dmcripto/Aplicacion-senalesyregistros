@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { EXCHANGE_LIST, exchangeName, exchangeSteps, fmtDateTime, t } from "@dmcripto/core";
+import { EXCHANGE_LIST, exchangeName, exchangeSteps, needsPassphrase, fmtDateTime, t } from "@dmcripto/core";
 import type { ExchangeConnection, ExchangeId } from "@dmcripto/core";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "./tradesApi";
 import { useMoney } from "./money";
 import { colors } from "./theme";
 
-/** Conexión de solo lectura con Binance, Bybit, Bitunix y MEXC (dentro de Ajustes). */
+/** Conexión de solo lectura con ocho exchanges (dentro de Ajustes). */
 export default function ExchangeSection() {
   const { unit } = useMoney();
   const [conns, setConns] = useState<ExchangeConnection[]>([]);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [guide, setGuide] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -31,10 +32,11 @@ export default function ExchangeSection() {
   const connect = async () => {
     setBusy(true);
     try {
-      const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim());
+      const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim(), needsPassphrase(exchange) ? passphrase.trim() : undefined);
       if (!r.ok) return Alert.alert("Error", r.error ?? t("No se pudo conectar."));
       setApiKey("");
       setApiSecret("");
+      setPassphrase("");
       Alert.alert(t("Listo"), t("{name} conectado. Operaciones importadas: {n}.", { name: exchangeName(exchange), n: r.imported ?? 0 }) + (r.warning ? `\n\n${r.warning}` : ""));
       await reload();
     } finally {
@@ -67,7 +69,7 @@ export default function ExchangeSection() {
       },
     ]);
 
-  const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && !busy;
+  const canConnect = unit != null && apiKey.trim().length >= 8 && apiSecret.trim().length >= 8 && (!needsPassphrase(exchange) || passphrase.trim().length > 0) && !busy;
 
   return (
     <View style={s.card}>
@@ -94,7 +96,7 @@ export default function ExchangeSection() {
         ))
       ) : (
         <Text style={s.hint}>
-          {t("Conectá tu exchange (Binance, Bybit, Bitunix o MEXC) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+          {t("Conectá tu exchange (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX o KuCoin) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
         </Text>
       )}
 
@@ -131,6 +133,13 @@ export default function ExchangeSection() {
       <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.dim} style={s.input} />
       <Text style={s.label}>{t("Clave secreta (Secret)")}</Text>
       <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
+
+      {needsPassphrase(exchange) && (
+        <>
+          <Text style={s.label}>{t("Contraseña de la API (passphrase)")}</Text>
+          <TextInput value={passphrase} onChangeText={setPassphrase} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
+        </>
+      )}
 
       <TouchableOpacity style={[s.btn, !canConnect && { opacity: 0.4 }]} onPress={connect} disabled={!canConnect}>
         {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={s.btnText}>{t("Conectar {name}", { name: exchangeName(exchange) })}</Text>}

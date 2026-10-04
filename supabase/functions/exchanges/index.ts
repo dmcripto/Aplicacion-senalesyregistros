@@ -1,7 +1,8 @@
-// Conexión de solo lectura con exchanges (Binance, Bybit, Bitunix, MEXC).
+// Conexión de solo lectura con exchanges (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin).
 //
 //   POST /functions/v1/exchanges   (con la sesión del usuario en Authorization)
-//   { "action": "connect", "exchange": "binance" | "bybit" | "bitunix" | "mexc", "apiKey": "...", "apiSecret": "..." }
+//   { "action": "connect", "exchange": "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin", "apiKey": "...", "apiSecret": "...", "passphrase": "..." }
+//     (la contraseña de la API, passphrase, solo la piden Bitget, OKX y KuCoin)
 //   { "action": "sync" }
 //
 // Sincronización en segundo plano: pg_cron llama cada 10 minutos con el encabezado x-cron-secret
@@ -11,7 +12,7 @@
 // Solo se hacen pedidos GET de lectura: nunca se opera ni se mueven fondos.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { EXCHANGES, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, toTradeRow } from "../_shared/exchanges.ts";
+import { EXCHANGES, NEEDS_PASSPHRASE, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, toTradeRow } from "../_shared/exchanges.ts";
 import type { ExchangeId } from "../_shared/exchanges.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -49,19 +50,21 @@ async function unitOf(userId: string): Promise<number | null> {
 
 /** Trae las operaciones cerradas del exchange y las guarda en el diario (sin duplicar). */
 async function syncOne(conn: Connection, master: string, unit: number) {
-  const { data: secret } = await admin.from("exchange_secrets").select("api_key, secret_enc").eq("connection_id", conn.id).maybeSingle();
+  const { data: secret } = await admin.from("exchange_secrets").select("api_key, secret_enc, passphrase_enc").eq("connection_id", conn.id).maybeSingle();
   if (!secret) throw new ExchangeError("Falta la clave de esta conexión. Desconectala y volvé a conectarla.");
   const apiSecret = await decryptSecret(secret.secret_enc, master);
+  const passphrase = secret.passphrase_enc ? await decryptSecret(secret.passphrase_enc, master) : undefined;
 
   const now = Date.now();
   // Primera vez: 14 días. Después: desde la última sincronización con un día de margen (lo repetido no se duplica).
   const since = conn.last_sync_at ? Math.max(new Date(conn.last_sync_at).getTime() - ONE_DAY, now - 30 * ONE_DAY) : now - 14 * ONE_DAY;
-  const closed = await fetchClosed(conn.exchange, secret.api_key, apiSecret, since, now);
+  const closed = await fetchClosed(conn.exchange, secret.api_key, apiSecret, since, now, undefined, passphrase);
 
   const { data: ignoredRows } = await admin.from("exchange_ignored").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange);
   const ignored = new Set((ignoredRows ?? []).map((r: { external_id: string }) => r.external_id));
+  const seen = new Set<string>();
   const rows = closed
-    .filter((p) => !ignored.has(p.externalId))
+    .filter((p) => !ignored.has(p.externalId) && !seen.has(p.externalId) && !!seen.add(p.externalId))
     .map((p) => ({ ...toTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
 
   let imported = 0;
@@ -174,15 +177,19 @@ Deno.serve(async (req) => {
     const exchange = body.exchange as ExchangeId;
     const apiKey = String(body.apiKey ?? "").trim();
     const apiSecret = String(body.apiSecret ?? "").trim();
+    const passphrase = String(body.passphrase ?? "").trim();
     if (!EXCHANGES.includes(exchange)) return json({ ok: false, error: "Exchange no disponible todavía." }, 400);
     if (apiKey.length < 8 || apiKey.length > 200 || apiSecret.length < 8 || apiSecret.length > 400) {
       return json({ ok: false, error: "Revisá la clave y la clave secreta: parecen incompletas." }, 400);
+    }
+    if (NEEDS_PASSPHRASE.includes(exchange) && (passphrase.length < 1 || passphrase.length > 100)) {
+      return json({ ok: false, error: "Este exchange pide también la contraseña de la API (passphrase): la que elegiste al crear la clave." }, 400);
     }
     if (unit == null) {
       return json({ ok: false, code: "need_money", error: "Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R." }, 400);
     }
 
-    const check = await checkKey(exchange, apiKey, apiSecret);
+    const check = await checkKey(exchange, apiKey, apiSecret, undefined, NEEDS_PASSPHRASE.includes(exchange) ? passphrase : undefined);
     if (!check.ok) return json({ ok: false, error: check.error }, 400);
 
     const { data: conn, error } = await admin
@@ -194,7 +201,15 @@ Deno.serve(async (req) => {
 
     const { error: secretError } = await admin
       .from("exchange_secrets")
-      .upsert({ connection_id: conn.id, api_key: apiKey, secret_enc: await encryptSecret(apiSecret, master) }, { onConflict: "connection_id" });
+      .upsert(
+        {
+          connection_id: conn.id,
+          api_key: apiKey,
+          secret_enc: await encryptSecret(apiSecret, master),
+          passphrase_enc: NEEDS_PASSPHRASE.includes(exchange) ? await encryptSecret(passphrase, master) : null,
+        },
+        { onConflict: "connection_id" },
+      );
     if (secretError) return json({ ok: false, error: "No se pudo guardar la clave de forma segura." }, 500);
 
     const result = await runSync(conn as Connection, master, unit);
