@@ -4,6 +4,7 @@ import {
   computeStats,
   cx,
   dailyStatus,
+  FEATURES,
   downloadCsv,
   fmtPct,
   fmtR,
@@ -779,9 +780,11 @@ function Dashboard({ userId }: { userId: string }) {
             <Reveal delay={160} className="max-lg:order-6">
               <Analysis trades={trades} />
             </Reveal>
-            <Reveal delay={170} className="max-lg:order-6">
-              <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />
-            </Reveal>
+            {FEATURES.coach && (
+              <Reveal delay={170} className="max-lg:order-6">
+                <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />
+              </Reveal>
+            )}
             {trades.length > 0 && (
               <Reveal delay={180} className="max-lg:order-7">
                 <MonthlySummary trades={trades} />

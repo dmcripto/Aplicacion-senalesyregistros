@@ -1168,3 +1168,12 @@ export function binanceSymbol(raw: string): { symbol: string; perp: boolean } | 
   if (!m || NOT_CRYPTO.has(m[1])) return null;
   return { symbol: `${m[1]}${m[2] === "USDC" ? "USDC" : "USDT"}`, perp };
 }
+
+// ─── Funciones que se prenden y apagan ──────────────────────────────────────
+
+/**
+ * Interruptores de funciones que necesitan algo del servidor.
+ * `coach`: el coach con IA necesita la clave de Anthropic y la función `coach` desplegada en Supabase.
+ * Mientras esté en false, la tarjeta no se muestra en la web ni en la app. Para prenderlo, cambiar a true.
+ */
+export const FEATURES = { coach: false } as const;
