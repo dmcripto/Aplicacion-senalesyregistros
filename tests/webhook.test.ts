@@ -46,7 +46,7 @@ describe("webhook de TradingView", () => {
     const tg = telegramCalls();
     expect(tg).toHaveLength(1);
     expect(tg[0].body).toMatchObject({ chat_id: 555, parse_mode: "HTML" });
-    expect(tg[0].body.text).toMatch(/Nueva señal/);
+    expect(tg[0].body.text).toMatch(/NUEVA SEÑAL/);
     expect(tg[0].body.text).toMatch(/BTCUSDT/);
   });
 
@@ -55,7 +55,7 @@ describe("webhook de TradingView", () => {
     expect((await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500")).status).toBe(201);
     const posted = telegramCalls().filter((c) => c.body.chat_id === -1001);
     expect(posted).toHaveLength(1);
-    expect(posted[0].body.text).toMatch(/Nueva señal/);
+    expect(posted[0].body.text).toMatch(/NUEVA SEÑAL/);
     expect(posted[0].body.text).toMatch(/no es asesoramiento financiero/);
     expect(telegramCalls().filter((c) => c.body.chat_id === 555)).toHaveLength(1); // el aviso privado sigue
   });
@@ -79,7 +79,7 @@ describe("webhook de TradingView", () => {
   it("avisa en el idioma del usuario", async () => {
     db.tables.profiles[0].lang = "en";
     await post("VELTRIX|ETHUSDT|VENTA|3000|2900|3050");
-    expect(telegramCalls()[0].body.text).toMatch(/New signal/);
+    expect(telegramCalls()[0].body.text).toMatch(/NEW SIGNAL/);
     expect(telegramCalls()[0].body.text).toMatch(/SELL/);
   });
 
