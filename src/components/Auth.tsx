@@ -89,8 +89,8 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
       <div className="fixed right-3 top-3 z-10"><LangSwitch /></div>
 
       <section className="flex flex-col items-center text-center lg:col-start-1 lg:items-start lg:text-left">
-        <ShieldLogo className="h-16 w-16 drop-shadow-[0_0_22px_rgba(46,196,241,.4)]" />
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[0.04em] text-snow">VELTRIX</h1>
+        <span className="brand-logo"><ShieldLogo className="h-16 w-16" /></span>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[0.04em] text-snow"><span className="brand-word">VELTRIX</span></h1>
         <p className="mt-2 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
         <p className="mt-2 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
       </section>
@@ -112,7 +112,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Así te llegan los avisos")}</h2>
         <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
           {([["signal", "1 · Llega la señal"], ["target", "2 · Aviso de cada target"], ["result", "3 · Resultado al cerrar"]] as const).map(([k, cap]) => (
-            <figure key={k} className="w-[68%] shrink-0 snap-center sm:w-[44%] lg:w-auto">
+            <figure key={k} className="lift w-[68%] shrink-0 snap-center rounded-xl sm:w-[44%] lg:w-auto">
               <img src={`/welcome/${k}-${lang}.png`} alt={t(cap)} loading="lazy" width={600} height={600} className="w-full rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,.45)]" />
               <figcaption className="mt-2 text-center text-[11.5px] font-semibold text-fog">{t(cap)}</figcaption>
             </figure>
@@ -124,7 +124,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           {welcome.features.map((f) => (
-            <div key={f.title} className="flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
+            <div key={f.title} className="lift flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan/25 bg-cyan/10 text-[22px]">{f.icon}</span>
               <div>
                 <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>

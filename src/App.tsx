@@ -145,7 +145,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="glow-card grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-[0_18px_40px_-26px_rgba(0,0,0,.75)] md:grid-cols-4 xl:grid-cols-[1.5fr_1fr_1fr_1fr_1.15fr]">
-      <div className="col-span-2 bg-panel px-5 py-4 md:col-span-4 md:py-5 xl:col-span-1">
+      <div className="stat-cell col-span-2 bg-panel px-5 py-4 md:col-span-4 md:py-5 xl:col-span-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("R neto acumulado")}</p>
         <p
           className={cx(
@@ -174,7 +174,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         )}
       </div>
 
-      <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
+      <div className="stat-cell bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Acierto")}</p>
         <p className={cx("num mt-1 text-3xl font-bold leading-none", winPos ? "text-bull" : "text-bear")}>
           {fmtPct(winRate)}
@@ -184,7 +184,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         </p>
       </div>
 
-      <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
+      <div className="stat-cell bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Profit factor")}</p>
         <p className="num mt-1 text-3xl font-bold leading-none text-snow">
           {stats.pf === null ? "∞" : stats.cerradas ? stats.pf.toFixed(2) : "—"}
@@ -192,7 +192,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         <p className="num mt-1.5 text-[11px] text-dim">{t("ganancia / pérdida")}</p>
       </div>
 
-      <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
+      <div className="stat-cell bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("R promedio")}</p>
         <p
           className={cx(
@@ -205,7 +205,7 @@ function StatsBand({ trades }: { trades: Trade[] }) {
         <p className="num mt-1.5 text-[11px] text-dim">{t("por operación cerrada")}</p>
       </div>
 
-      <div className="bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
+      <div className="stat-cell bg-panel px-5 py-4 transition-colors hover:bg-panel2 md:py-5">
         <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-fog">{t("Operaciones")}</p>
         <p className="num mt-1 text-3xl font-bold leading-none text-snow">{stats.total}</p>
         <p className="num mt-1.5 flex items-center gap-1.5 text-[11px] text-dim">
@@ -678,10 +678,10 @@ function Dashboard({ userId }: { userId: string }) {
       {/* Cabecera */}
       <header className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:gap-y-4 sm:py-5 lg:px-8">
         <div className="flex items-center gap-3.5">
-          <ShieldLogo className="h-11 w-11 drop-shadow-[0_0_18px_rgba(46,196,241,.35)] sm:h-14 sm:w-14" />
+          <span className="brand-logo"><ShieldLogo className="h-11 w-11 sm:h-14 sm:w-14" /></span>
           <div>
             <h1 className="font-display text-[28px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
-              VELTRIX
+              <span className="brand-word">VELTRIX</span>
             </h1>
             <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.22em] text-fog sm:text-[10.5px] sm:tracking-[0.28em]">
               {t("Diario de trading · En vivo")}
