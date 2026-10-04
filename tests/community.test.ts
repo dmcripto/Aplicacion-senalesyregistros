@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { communityResultMessage, communitySignalMessage, publishToCommunities } from "../supabase/functions/_shared/community";
+import { communityResultMessage, communitySignalMessage, publishToCommunities, resultCardHtml, signalCardHtml } from "../supabase/functions/_shared/community";
 import { db, resetDb } from "./helpers/fake-supabase";
 
 let handler: (req: Request) => Promise<Response>;
@@ -190,16 +190,41 @@ describe("mensajes y errores de la comunidad", () => {
 
   it("la señal incluye activo, niveles, R:R y el aviso legal; en inglés también", () => {
     const es = communitySignalMessage(trade, "es");
-    expect(es).toContain("Nueva señal");
+    expect(es).toContain("NUEVA SEÑAL");
     expect(es).toContain("VENTA");
-    expect(es).toContain("R:R 1:2.0");
+    expect(es).toContain("1 : 2.0");
     expect(communitySignalMessage(trade, "en")).toContain("not financial advice");
+  });
+
+  it("la tarjeta muestra los niveles alineados con su distancia en % (a favor y en contra según la dirección)", () => {
+    const long = communitySignalMessage({ symbol: "XAUUSD", direction: "LONG", entry: 2000, tp: 2100, sl: 1950 }, "es");
+    expect(long).toContain("🟢");
+    expect(long).toContain("ENTRADA  2000");
+    expect(long).toContain("TP       2100  +5.00%");
+    expect(long).toContain("SL       1950  −2.50%");
+    const short = communitySignalMessage(trade, "es"); // SHORT 3000 → TP 2900, SL 3050
+    expect(short).toContain("🔴");
+    expect(short).toContain("+3.33%"); // TP a favor
+    expect(short).toContain("−1.67%"); // SL en contra
+    expect(short).toContain("<pre>"); // alineado con letra de ancho fijo
+  });
+
+  it("un activo con símbolos raros no rompe el formato HTML", () => {
+    expect(communitySignalMessage({ symbol: "A<B>&C", direction: "LONG", entry: 1, tp: 2, sl: 0.5 }, "es")).toContain("A&lt;B&gt;&amp;C");
+  });
+
+  it("el aviso privado va sin el aviso legal ni el enlace", () => {
+    const m = signalCardHtml(trade, "es", { header: "🔔", disclaimer: false });
+    expect(m).toContain("🔔");
+    expect(m).not.toContain("asesoramiento");
+    expect(m).not.toContain("href");
   });
 
   it("el resultado muestra TP o SL con su R", () => {
     expect(communityResultMessage("BTCUSDT", "TP", 3, "es")).toContain("+3.0R");
     expect(communityResultMessage("BTCUSDT", "SL", -1, "es")).toContain("−1.0R");
-    expect(communityResultMessage("BTCUSDT", "SL", -1, "en")).toContain("SL hit");
+    expect(communityResultMessage("BTCUSDT", "SL", -1, "en")).toContain("SL HIT");
+    expect(resultCardHtml("BTCUSDT", "TP", 2, "es", { label: "Cierre automático" })).toContain("Cierre automático: <b>+2.0R</b>");
   });
 
   it("si el bot ya no está en el grupo (403), borra la conexión y no rompe nada", async () => {
