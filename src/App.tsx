@@ -384,6 +384,8 @@ type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
 function Dashboard({ userId }: { userId: string }) {
   const { trades, loading, removeLocal, restoreLocal } = useTrades(userId);
+  // La guía de inicio se muestra mientras no hay operaciones; después se puede volver a abrir desde el pie.
+  const [guide, setGuide] = useState(false);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
@@ -710,7 +712,7 @@ function Dashboard({ userId }: { userId: string }) {
 
       {/* Contenido */}
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-5 lg:px-8">
-        <WelcomeCard />
+        {!loading && (trades.length === 0 || guide) && <WelcomeCard />}
         <LimitBanner status={limitStatus} />
         <Reveal>
           <TodayCard trades={trades} prices={prices} now={now} />
@@ -856,6 +858,21 @@ function Dashboard({ userId }: { userId: string }) {
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
             <span className="font-bold text-fog">VELTRIX</span> — {t("tu diario se sincroniza en la nube entre web y móvil.")}
+            {trades.length > 0 && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGuide((g) => !g);
+                    if (!guide) window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="font-semibold text-cyan underline underline-offset-2 hover:text-snow"
+                >
+                  {guide ? t("Ocultar guía de inicio") : t("Ver guía de inicio")}
+                </button>
+              </>
+            )}
           </p>
           <div className="flex flex-wrap items-center gap-2">
           {deleteArmed ? (
