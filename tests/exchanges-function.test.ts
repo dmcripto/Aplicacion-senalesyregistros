@@ -5,7 +5,7 @@ let handler: (req: Request) => Promise<Response>;
 
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba" } as Record<string, string>)[k] },
+    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba", EXCHANGE_CRON_SECRET: "secreto-de-segundo-plano-123" } as Record<string, string>)[k] },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/exchanges/index");
@@ -81,5 +81,52 @@ describe("función exchanges", () => {
     const r = await call({ action: "sync" });
     expect(r.body.results[0].error).toMatch(/bloqueo/);
     expect(db.tables.exchange_connections[0].status).toBe("error");
+  });
+
+  describe("sincronización en segundo plano", () => {
+    const cron = async (secret: string | null) => {
+      const headers: Record<string, string> = {};
+      if (secret !== null) headers["x-cron-secret"] = secret;
+      const r = await handler(new Request("http://x/functions/v1/exchanges", { method: "POST", headers, body: "{}" }));
+      return { status: r.status, body: (await r.json()) as any };
+    };
+    const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+    it("rechaza un secreto incorrecto", async () => {
+      await connect();
+      expect((await cron("otro-secreto-cualquiera")).status).toBe(401);
+      expect((await cron("")).status).toBe(401);
+    });
+
+    it("no vuelve a consultar lo que se sincronizó hace poco", async () => {
+      await connect();
+      const r = await cron("secreto-de-segundo-plano-123");
+      expect(r.body).toMatchObject({ ok: true, due: 0, synced: 0 });
+    });
+
+    it("importa solas las operaciones nuevas de conexiones atrasadas", async () => {
+      await connect();
+      db.tables.trades = [];
+      Object.assign(db.tables.exchange_connections[0], { last_sync_at: ago(15 * 60e3), last_attempt_at: ago(15 * 60e3) });
+      const r = await cron("secreto-de-segundo-plano-123");
+      expect(r.body).toMatchObject({ ok: true, due: 1, synced: 1, imported: 2, failed: 0 });
+      expect(db.tables.trades).toHaveLength(2);
+      expect(db.tables.exchange_connections[0].last_attempt_at).toBeTruthy();
+    });
+
+    it("las conexiones con error se reintentan solo cada tanto", async () => {
+      await connect();
+      Object.assign(db.tables.exchange_connections[0], { status: "error", last_attempt_at: ago(30 * 60e3) });
+      expect((await cron("secreto-de-segundo-plano-123")).body.due).toBe(0);
+      db.tables.exchange_connections[0].last_attempt_at = ago(7 * 3600e3);
+      expect((await cron("secreto-de-segundo-plano-123")).body.due).toBe(1);
+    });
+
+    it("salta a quien no cargó capital y riesgo", async () => {
+      await connect();
+      db.tables.profiles[0].capital = null;
+      Object.assign(db.tables.exchange_connections[0], { last_sync_at: ago(20 * 60e3), last_attempt_at: ago(20 * 60e3) });
+      expect((await cron("secreto-de-segundo-plano-123")).body).toMatchObject({ due: 1, synced: 0 });
+    });
   });
 });

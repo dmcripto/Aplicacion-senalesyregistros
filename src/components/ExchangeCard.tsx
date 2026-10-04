@@ -122,7 +122,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
     <Panel
       id="exchange"
       title={t("CONECTAR EXCHANGE")}
-      subtitle={t("Traé tus operaciones automáticamente · solo lectura")}
+      subtitle={t("Tu diario se llena solo desde tu exchange · solo lectura")}
       summary={conns?.length ? `${conns.map((c) => exchangeName(c.exchange)).join(", ")} · ${t("Conectado")}` : t("Sin conectar")}
       defaultOpen={false}
     >
@@ -145,6 +145,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
                     ? t("Última sincronización: {when} · {n} nuevas", { when: fmtDateTime(c.lastSyncAt), n: c.lastImportCount })
                     : t("Todavía sin sincronizar")}
                 </p>
+                {c.status === "active" && <p className="mt-0.5 text-[11px] text-dim">{t("Se actualiza sola cada ~10 minutos, aunque no abras la app.")}</p>}
                 {c.status === "error" && c.lastError && <p className="mt-1 text-[11px] text-bear">{c.lastError}</p>}
                 <div className="mt-2 flex justify-end">
                   {armed === c.id ? (
