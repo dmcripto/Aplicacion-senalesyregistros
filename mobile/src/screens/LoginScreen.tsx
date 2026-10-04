@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,7 +16,15 @@ import { Logo } from "../ui";
 import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 import { LangSwitch } from "../lang";
-import { t, welcomeContent } from "@dmcripto/core";
+import { getLang, t, welcomeContent } from "@dmcripto/core";
+import LiveDemo from "../LiveDemo";
+
+// Tarjetas reales de los avisos (las mismas que salen en Telegram), en cada idioma.
+const CARDS = {
+  es: [require("../../assets/welcome/signal-es.png"), require("../../assets/welcome/target-es.png"), require("../../assets/welcome/result-es.png")],
+  en: [require("../../assets/welcome/signal-en.png"), require("../../assets/welcome/target-en.png"), require("../../assets/welcome/result-en.png")],
+};
+const CARD_CAPTIONS = ["1 · Llega la señal", "2 · Aviso de cada target", "3 · Resultado al cerrar"];
 
 export default function LoginScreen({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -27,6 +36,12 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const welcome = welcomeContent();
+  const scrollRef = useRef<ScrollView>(null);
+  const formY = useRef(0);
+  const goForm = (m: "login" | "signup") => {
+    setMode(m);
+    scrollRef.current?.scrollTo({ y: Math.max(0, formY.current - 12), animated: true });
+  };
 
   const submit = async () => {
     setError(null);
@@ -96,26 +111,53 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+     <ScrollView ref={scrollRef} contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={{ alignItems: "center", marginBottom: 12 }}>
         <LangSwitch />
       </View>
 
       <View style={styles.hero}>
-        <Logo size={84} />
+        <Logo size={64} />
         <Text style={styles.title}>VELTRIX</Text>
         <Text style={styles.headline}>{welcome.headline}</Text>
         <Text style={styles.lead}>{welcome.lead}</Text>
-        <View style={styles.chips}>
-          {welcome.chips.map((c) => (
-            <View key={c} style={styles.chip}>
-              <Text style={styles.chipText}>{c}</Text>
-            </View>
-          ))}
-        </View>
       </View>
 
-      <View style={styles.card}>
+      <LiveDemo />
+
+      <View style={styles.ctaRow}>
+        <TouchableOpacity style={[styles.cta, styles.ctaPrimary]} onPress={() => goForm("signup")} activeOpacity={0.85}>
+          <Text style={styles.ctaPrimaryText}>{t("Crear cuenta")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.cta, styles.ctaGhost]} onPress={() => goForm("login")} activeOpacity={0.85}>
+          <Text style={styles.ctaGhostText}>{t("Ya tengo cuenta")}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("Así te llegan los avisos")}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={252} decelerationRate="fast" contentContainerStyle={{ gap: 12, paddingRight: 20 }}>
+        {CARDS[getLang()].map((src, k) => (
+          <View key={k} style={{ width: 240 }}>
+            <Image source={src} style={styles.cardImg} resizeMode="cover" />
+            <Text style={styles.cardCaption}>{t(CARD_CAPTIONS[k])}</Text>
+          </View>
+        ))}
+      </ScrollView>
+
+      <Text style={styles.sectionTitle}>{t("QUÉ PODÉS HACER CON VELTRIX")}</Text>
+      {welcome.features.map((f) => (
+        <View key={f.title} style={styles.feature}>
+          <View style={styles.featureIcon}>
+            <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.featureTitle}>{f.title}</Text>
+            <Text style={styles.featureText}>{f.text}</Text>
+          </View>
+        </View>
+      ))}
+
+      <View style={styles.card} onLayout={(e) => { formY.current = e.nativeEvent.layout.y; }}>
         <View style={styles.tabs}>
           <TouchableOpacity
             style={[styles.tab, mode === "login" && styles.tabActive]}
@@ -202,19 +244,6 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>{t("QUÉ PODÉS HACER CON VELTRIX")}</Text>
-      {welcome.features.map((f) => (
-        <View key={f.title} style={styles.feature}>
-          <View style={styles.featureIcon}>
-            <Text style={{ fontSize: 22 }}>{f.icon}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.featureTitle}>{f.title}</Text>
-            <Text style={styles.featureText}>{f.text}</Text>
-          </View>
-        </View>
-      ))}
-
       <Text style={styles.disclaimer}>{disclaimer()}</Text>
      </ScrollView>
     </KeyboardAvoidingView>
@@ -234,6 +263,14 @@ const styles = StyleSheet.create({
   title: { color: colors.snow, fontSize: 30, fontWeight: "800", textAlign: "center", letterSpacing: 1, marginTop: 6 },
   headline: { color: colors.gold, fontSize: 21, fontWeight: "800", textAlign: "center", marginTop: 10, lineHeight: 27 },
   lead: { color: colors.fog, fontSize: 14, lineHeight: 21, textAlign: "center", marginTop: 8, paddingHorizontal: 6 },
+  ctaRow: { flexDirection: "row", gap: 12, marginTop: 16 },
+  cta: { flex: 1, borderRadius: 10, paddingVertical: 14, alignItems: "center", justifyContent: "center" },
+  ctaPrimary: { backgroundColor: colors.gold },
+  ctaPrimaryText: { color: colors.ink, fontWeight: "800", fontSize: 13, letterSpacing: 1 },
+  ctaGhost: { borderWidth: 1, borderColor: "rgba(46,196,241,0.5)" },
+  ctaGhostText: { color: colors.cyan, fontWeight: "800", fontSize: 13, letterSpacing: 0.5, textAlign: "center" },
+  cardImg: { width: 240, height: 240, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
+  cardCaption: { color: colors.fog, fontSize: 11.5, fontWeight: "700", textAlign: "center", marginTop: 8 },
   chips: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 14 },
   chip: { borderWidth: 1, borderColor: "rgba(46,196,241,0.35)", backgroundColor: "rgba(46,196,241,0.08)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { color: colors.cyan, fontSize: 12, fontWeight: "700" },

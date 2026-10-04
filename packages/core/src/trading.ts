@@ -1138,6 +1138,80 @@ export function welcomeContent(): { headline: string; lead: string; chips: strin
   };
 }
 
+// ─── Demo animada de la bienvenida ──────────────────────────────────────────
+// Una señal de ejemplo que avanza sola: aparece la tarjeta, el precio sube, salta cada target y termina en TP.
+// Todo sale de demoFrame(t) (t en milisegundos): la web y la app solo dibujan lo que devuelve, así se ve igual en las dos.
+
+export const DEMO_LOOP_MS = 12_000;
+const DEMO = { entry: 65000, sl: 64500, targets: [65500, 66000, 67000] };
+// [tiempo ms, precio]: sube, se frena un momento en cada target y sigue.
+const DEMO_PATH: Array<[number, number]> = [[1500, 65000], [3200, 65500], [4000, 65500], [5400, 66000], [6200, 66000], [8000, 67000], [11000, 67000]];
+
+export interface DemoFrame {
+  levels: Array<{ key: string; label: string; value: number; pct: number | null; kind: "target" | "entry" | "stop"; shown: boolean; reached: boolean }>;
+  price: number;
+  pct: number; // % desde la entrada
+  track: number; // posición del precio entre las filas (0 = fila de arriba)
+  toast: { n: number; title: string; text: string } | null; // aviso de target alcanzado
+  win: { title: string; r: string; burst: number } | null; // TP alcanzado; burst = 0..1 progreso de los destellos
+  fade: number; // 0..1 desaparece al final del ciclo
+}
+
+export function demoFrame(ms: number): DemoFrame {
+  const t = ((ms % DEMO_LOOP_MS) + DEMO_LOOP_MS) % DEMO_LOOP_MS;
+  let price = DEMO.entry;
+  for (let i = 1; i < DEMO_PATH.length; i++) {
+    const [t0, p0] = DEMO_PATH[i - 1];
+    const [t1, p1] = DEMO_PATH[i];
+    if (t >= t1) price = p1;
+    else if (t > t0) {
+      const k = (t - t0) / (t1 - t0);
+      price = p0 + (p1 - p0) * (k * k * (3 - 2 * k)); // arranque y frenado suaves
+      break;
+    }
+  }
+  if (t < DEMO_PATH[0][0]) price = DEMO.entry;
+  const rows = [
+    ...[...DEMO.targets].reverse().map((v, i) => ({ v, n: 3 - i, kind: "target" as const })), // arriba: el target más lejano
+    { v: DEMO.entry, n: 0, kind: "entry" as const },
+    { v: DEMO.sl, n: 0, kind: "stop" as const },
+  ];
+  const levels = rows.map((r, i) => ({
+    key: r.kind === "target" ? `t${r.n}` : r.kind,
+    label: r.kind === "target" ? `TARGET ${r.n}` : r.kind === "entry" ? tr("ENTRADA") : tr("STOP LOSS"),
+    value: r.v,
+    pct: r.kind === "entry" ? null : ((r.v - DEMO.entry) / DEMO.entry) * 100,
+    kind: r.kind,
+    shown: t > 180 + i * 200,
+    reached: r.kind === "target" && price >= r.v - 0.5,
+  }));
+  // Posición del punto de precio entre las filas (0 = arriba): entre dos niveles se interpola.
+  const prices = rows.map((r) => r.v);
+  let track = rows.length - 1;
+  for (let i = 0; i < prices.length - 1; i++) {
+    if (price <= prices[i] && price >= prices[i + 1]) {
+      track = i + (prices[i] - price) / (prices[i] - prices[i + 1]);
+      break;
+    }
+  }
+  const adviceFor = (n: number) => (n === 1 ? tr("Cerrar 50% y mover el SL a break-even") : tr("Asegurar ganancias: mover el SL al Target {n}", { n: n - 1 }));
+  let toast: DemoFrame["toast"] = null;
+  for (const [n, from, to] of [[1, 3200, 5200], [2, 5400, 7400]] as const) {
+    if (t >= from && t < to) toast = { n, title: tr("TARGET {n} ALCANZADO", { n }), text: `${tr("Profit")} +${(((DEMO.targets[n - 1] - DEMO.entry) / DEMO.entry) * 100).toFixed(2)}% · ${adviceFor(n)}` };
+  }
+  const win = t >= 8000 && t < 11500 ? { title: tr("TP ALCANZADO"), r: `+${((DEMO.targets[2] - DEMO.entry) / (DEMO.entry - DEMO.sl)).toFixed(1)}R`, burst: Math.min(1, (t - 8000) / 1400) } : null;
+  return { levels, price, pct: ((price - DEMO.entry) / DEMO.entry) * 100, track, toast: win ? null : toast, win, fade: t > 11500 ? (t - 11500) / 500 : 0 };
+}
+
+/** Textos fijos de la demo (par, dirección, etiquetas). */
+export const demoTexts = () => ({
+  live: tr("EN VIVO"),
+  newSignal: tr("NUEVA SEÑAL"),
+  pair: "BTC/USDT",
+  side: tr("COMPRA · LONG"),
+  following: tr("📡 Siguiendo el precio en tiempo real…"),
+});
+
 /** Texto listo para mandar a un contacto o grupo. No incluye dinero ni datos de la cuenta. */
 export function signalShareMessage(t: Trade): string {
   const risk = Math.abs(t.entry - t.sl);
