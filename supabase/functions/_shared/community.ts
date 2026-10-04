@@ -19,13 +19,18 @@ const DISCLAIMER = {
 };
 
 const SITE = "https://veltrix-trading.vercel.app";
-const LINE = "━━━━━━━━━━━━━━━";
 const R_OF = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
 const PCT = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
 
+/** "BTCUSDT" → "BTC/USDT" (si no se reconoce la moneda de cotización, queda igual). */
+export function prettyPair(symbol: string): string {
+  const m = String(symbol).toUpperCase().match(/^([A-Z0-9]{2,15}?)(USDT|USDC|BUSD|USD)(\.P|PERP)?$/);
+  return m ? `${m[1]}/${m[2]}${m[3] ?? ""}` : String(symbol);
+}
+
 /**
- * Tarjeta de una señal en texto de Telegram: encabezado, activo y dirección, tabla de niveles con la distancia en %
- * y el R:R. `header` es el emoji de arriba (📢 comunidad, 🔔 aviso privado). Sin datos personales ni dinero.
+ * Señal en texto de Telegram, con un emoji por línea y cada dato bien separado: par y dirección, entrada, objetivo (TP) y stop,
+ * con su distancia en % y el R:R. `header` es el emoji de arriba (📢 comunidad, 🔔 aviso privado). Sin datos personales ni dinero.
  */
 export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: string; disclaimer?: boolean } = {}): string {
   const en = lang === "en";
@@ -35,23 +40,20 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
   const dir = long ? 1 : -1;
   const tpPct = t.entry ? ((dir * (t.tp - t.entry)) / t.entry) * 100 : 0;
   const slPct = t.entry ? ((dir * (t.sl - t.entry)) / t.entry) * 100 : 0;
-  const vals = [String(t.entry), String(t.tp), String(t.sl)];
-  const w = Math.max(...vals.map((v) => v.length));
-  const row = (label: string, v: string, pct?: string) => `${label.padEnd(8)} ${v.padEnd(w)}${pct ? `  ${pct}` : ""}`;
-  const table = [
-    row(en ? "ENTRY" : "ENTRADA", vals[0]),
-    row("TP", vals[1], PCT(tpPct)),
-    row("SL", vals[2], PCT(slPct)),
-    row("R:R", `1 : ${rr.toFixed(1)}`),
-  ].join("\n");
-  const side = long ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA";
   const lines = [
     `${opts.header ?? "📢"} <b>${en ? "NEW SIGNAL" : "NUEVA SEÑAL"}</b>`,
-    LINE,
-    `${long ? "🟢" : "🔴"} <b>${esc(t.symbol)}</b>  ·  ${side}`,
-    `<pre>${esc(table)}</pre>`,
+    "",
+    `⏳ <b>${esc(prettyPair(t.symbol))}</b> ( ${long ? (en ? "LONG 🟢" : "LONG 🟢") : "SHORT 🔴"} )`,
+    "",
+    `⛩ ${en ? "Entry" : "Entrada"} ➡️ <b>${t.entry}</b>`,
+    "",
+    `💠 Target :- <b>${t.tp}</b>  <i>(${PCT(tpPct)})</i>`,
+    "",
+    `🛑 Stoploss = <b>${t.sl}</b>  <i>(${PCT(slPct)})</i>`,
+    "",
+    `⚖️ R:R <b>1 : ${rr.toFixed(1)}</b>`,
   ];
-  if (opts.disclaimer !== false) lines.push(`<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
+  if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
   return lines.join("\n");
 }
 
@@ -63,7 +65,13 @@ export function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, 
   const ok = outcome === "TP";
   const title = ok ? (en ? "TP HIT" : "TP ALCANZADO") : en ? "SL HIT" : "SL ALCANZADO";
   const label = opts.label ?? (en ? "Result" : "Resultado");
-  return [`${ok ? "✅" : "❌"} <b>${title}</b>`, LINE, `<b>${esc(symbol)}</b>`, `${ok ? "🏆" : "📉"} ${label}: <b>${R_OF(r)}</b>`].join("\n");
+  return [
+    `${ok ? "✅" : "❌"} <b>${title}</b> ${ok ? "🎉" : ""}`.trim(),
+    "",
+    `⏳ <b>${esc(prettyPair(symbol))}</b>`,
+    "",
+    `${ok ? "🏆" : "📉"} ${label}: <b>${R_OF(r)}</b>`,
+  ].join("\n");
 }
 
 export const communityResultMessage = (symbol: string, outcome: "TP" | "SL", r: number, lang: Lang) => resultCardHtml(symbol, outcome, r, lang);
