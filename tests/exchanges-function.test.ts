@@ -65,6 +65,18 @@ describe("función exchanges", () => {
     expect(db.tables.trades).toHaveLength(2);
   });
 
+  it("acepta también Bitunix y MEXC", async () => {
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = new URL(String(url));
+      if (u.pathname === "/api/v1/contract/detail") return new Response(JSON.stringify({ success: true, code: 0, data: { contractSize: 0.0001 } }));
+      return new Response(JSON.stringify({ success: true, code: 0, data: [{ positionId: "m1", symbol: "BTC_USDT", positionType: 1, state: 3, closeVol: 1000, openAvgPrice: "65000", closeAvgPrice: "65500", realised: "49.5", createTime: String(Date.now() - 72e5), updateTime: String(Date.now() - 36e5) }] }));
+    });
+    const r = await call({ action: "connect", exchange: "mexc", apiKey: "MEXCKEY12345", apiSecret: "MEXCSECRET1234" });
+    expect(r.body).toMatchObject({ ok: true, imported: 1 });
+    expect(db.tables.trades[0]).toMatchObject({ symbol: "BTCUSDT", source: "mexc", external_id: "BTC_USDT:m1" });
+    expect(db.tables.trades[0].notes).toMatch(/^MEXC/);
+  });
+
   it("no reimporta lo que el usuario borró", async () => {
     await connect();
     db.tables.exchange_ignored.push({ user_id: "u1", source: "bybit", external_id: "ETHUSDT:o2" });

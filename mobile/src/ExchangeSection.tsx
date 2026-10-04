@@ -1,30 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { EXCHANGE_LIST, exchangeName, fmtDateTime, t } from "@dmcripto/core";
+import { EXCHANGE_LIST, exchangeName, exchangeSteps, fmtDateTime, t } from "@dmcripto/core";
 import type { ExchangeConnection, ExchangeId } from "@dmcripto/core";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "./tradesApi";
 import { useMoney } from "./money";
 import { colors } from "./theme";
 
-function steps(exchange: ExchangeId): string[] {
-  return exchange === "binance"
-    ? [
-        t("En Binance: Perfil → Gestión de API → Crear API → \"Generada por el sistema\"."),
-        t("Ponele un nombre (por ejemplo VELTRIX) y confirmá."),
-        t("Dejá tildado SOLO \"Habilitar lectura\". No actives retiros, trading spot/margen ni transferencias."),
-        t("En restricciones de IP elegí \"Sin restricciones\" (con solo lectura es seguro)."),
-        t("Copiá la API Key y la Secret Key y pegalas acá. La Secret se muestra una sola vez."),
-      ]
-    : [
-        t("En Bybit: Perfil → API → Crear nueva clave → \"Claves generadas por el sistema\"."),
-        t("Ponele un nombre (por ejemplo VELTRIX) y elegí permisos \"Solo lectura\"."),
-        t("Activá la lectura de \"Contratos → Órdenes y posiciones\". No actives billetera ni retiros."),
-        t("Dejá la restricción de IP en \"Sin restricción de IP\" (con solo lectura es seguro)."),
-        t("Copiá la API Key y la Secret y pegalas acá. La Secret se muestra una sola vez."),
-      ];
-}
-
-/** Conexión de solo lectura con Binance / Bybit (dentro de Ajustes). */
+/** Conexión de solo lectura con Binance, Bybit, Bitunix y MEXC (dentro de Ajustes). */
 export default function ExchangeSection() {
   const { unit } = useMoney();
   const [conns, setConns] = useState<ExchangeConnection[]>([]);
@@ -112,7 +94,7 @@ export default function ExchangeSection() {
         ))
       ) : (
         <Text style={s.hint}>
-          {t("Conectá Binance o Bybit con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+          {t("Conectá tu exchange (Binance, Bybit, Bitunix o MEXC) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
         </Text>
       )}
 
@@ -126,7 +108,7 @@ export default function ExchangeSection() {
         <Text style={s.notice}>{t("Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R.")}</Text>
       )}
 
-      <View style={s.row}>
+      <View style={[s.row, { flexWrap: "wrap" }]}>
         {EXCHANGE_LIST.map((e) => (
           <TouchableOpacity key={e.id} style={[s.chip, exchange === e.id && s.chipOn]} onPress={() => setExchange(e.id)}>
             <Text style={[s.chipText, exchange === e.id && { color: colors.ink }]}>{e.name}</Text>
@@ -139,7 +121,7 @@ export default function ExchangeSection() {
       </TouchableOpacity>
       {guide && (
         <View style={{ gap: 4 }}>
-          {steps(exchange).map((x, i) => (
+          {exchangeSteps(exchange).map((x, i) => (
             <Text key={x} style={s.hint}>{i + 1}. {x}</Text>
           ))}
         </View>
@@ -173,7 +155,7 @@ const s = StyleSheet.create({
   link: { color: colors.gold, fontSize: 12, fontWeight: "700" },
   label: { color: colors.fog, fontSize: 9.5, fontWeight: "700", letterSpacing: 1 },
   input: { backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: colors.snow, fontSize: 14 },
-  chip: { flex: 1, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  chip: { flex: 1, minWidth: 72, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 10, alignItems: "center" },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
   chipText: { color: colors.fog, fontWeight: "800", fontSize: 12.5 },
   btn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 12, alignItems: "center" },

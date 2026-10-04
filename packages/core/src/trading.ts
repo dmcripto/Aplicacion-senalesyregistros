@@ -23,7 +23,7 @@ export interface Trade {
   closedAt?: string;
   notes?: string;
   autoClosed?: boolean;
-  source?: string; // exchange de origen si se importó (binance | bybit)
+  source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc)
   tags?: string[];
 }
 
@@ -956,12 +956,51 @@ export const fmtMoney = (n: number) =>
 
 // ─── Exchanges conectados (solo lectura) ────────────────────────────────────
 
-export type ExchangeId = "binance" | "bybit";
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc";
 export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string }> = [
   { id: "binance", name: "Binance" },
   { id: "bybit", name: "Bybit" },
+  { id: "bitunix", name: "Bitunix" },
+  { id: "mexc", name: "MEXC" },
 ];
 export const exchangeName = (id: string) => EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id;
+
+/** Pasos para crear la clave de solo lectura en cada exchange. */
+export function exchangeSteps(id: ExchangeId): string[] {
+  const last = tr("Copiá la API Key y la Secret y pegalas acá. La Secret se muestra una sola vez.");
+  switch (id) {
+    case "binance":
+      return [
+        tr("En Binance: Perfil → Gestión de API → Crear API → \"Generada por el sistema\"."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y confirmá."),
+        tr("Dejá tildado SOLO \"Habilitar lectura\". No actives retiros, trading spot/margen ni transferencias."),
+        tr("En restricciones de IP elegí \"Sin restricciones\" (con solo lectura es seguro)."),
+        tr("Copiá la API Key y la Secret Key y pegalas acá. La Secret se muestra una sola vez."),
+      ];
+    case "bybit":
+      return [
+        tr("En Bybit: Perfil → API → Crear nueva clave → \"Claves generadas por el sistema\"."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y elegí permisos \"Solo lectura\"."),
+        tr("Activá la lectura de \"Contratos → Órdenes y posiciones\". No actives billetera ni retiros."),
+        tr("Dejá la restricción de IP en \"Sin restricción de IP\" (con solo lectura es seguro)."),
+        last,
+      ];
+    case "bitunix":
+      return [
+        tr("En Bitunix: Perfil → Gestión de API → Crear API Key."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y dejá SOLO el permiso de lectura. No actives operar, retirar ni transferir."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        last,
+      ];
+    case "mexc":
+      return [
+        tr("En MEXC: Perfil → Gestión de API → Crear APIKey."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y activá SOLO los permisos de lectura de Futuros. No actives operar, retirar ni transferir."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        last,
+      ];
+  }
+}
 
 export interface ExchangeConnection {
   id: string;
@@ -1130,7 +1169,7 @@ export function welcomeContent(): { headline: string; lead: string; chips: strin
     features: [
       { icon: "📡", title: tr("Señales en vivo"), text: tr("Conectá tus alertas de TradingView: cada señal llega sola a tu celular y a Telegram, con una tarjeta lista para compartir.") },
       { icon: "🎯", title: tr("Targets y cierre automático"), text: tr("TP1, TP2, TP3: te avisamos cada vez que el precio toca un target, y cerramos solas tus operaciones cripto en el TP o el SL.") },
-      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance y Bybit.") },
+      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix y MEXC.") },
       { icon: "🛡️", title: tr("Control de riesgo"), text: tr("Calculá cuánto arriesgar en cada operación y poné límites diarios para cuidar tu capital.") },
       { icon: "🗺️", title: tr("Mapa de liquidaciones"), text: tr("Mirá dónde se concentran las liquidaciones del mercado para leer mejor el precio.") },
       { icon: "👥", title: tr("Tu comunidad"), text: tr("Publicá tus señales y resultados en tu grupo o canal de Telegram, sin copiar y pegar.") },

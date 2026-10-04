@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { EXCHANGE_LIST, cx, exchangeName, fmtDateTime, rValueMoney, t } from "../lib";
+import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
 import Panel from "./Panel";
@@ -11,22 +11,7 @@ const STALE_MS = 5 * 60_000; // se sincroniza sola al abrir si pasaron más de 5
 const label = "mb-1 block text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog";
 
 function Guide({ exchange }: { exchange: ExchangeId }) {
-  const steps =
-    exchange === "binance"
-      ? [
-          t("En Binance: Perfil → Gestión de API → Crear API → \"Generada por el sistema\"."),
-          t("Ponele un nombre (por ejemplo VELTRIX) y confirmá."),
-          t("Dejá tildado SOLO \"Habilitar lectura\". No actives retiros, trading spot/margen ni transferencias."),
-          t("En restricciones de IP elegí \"Sin restricciones\" (con solo lectura es seguro)."),
-          t("Copiá la API Key y la Secret Key y pegalas acá. La Secret se muestra una sola vez."),
-        ]
-      : [
-          t("En Bybit: Perfil → API → Crear nueva clave → \"Claves generadas por el sistema\"."),
-          t("Ponele un nombre (por ejemplo VELTRIX) y elegí permisos \"Solo lectura\"."),
-          t("Activá la lectura de \"Contratos → Órdenes y posiciones\". No actives billetera ni retiros."),
-          t("Dejá la restricción de IP en \"Sin restricción de IP\" (con solo lectura es seguro)."),
-          t("Copiá la API Key y la Secret y pegalas acá. La Secret se muestra una sola vez."),
-        ];
+  const steps = exchangeSteps(exchange);
   return (
     <ol className="list-decimal space-y-1 pl-5 text-[11.5px] leading-relaxed text-fog">
       {steps.map((s) => (
@@ -163,7 +148,7 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
           </ul>
         ) : (
           <p className="text-[12px] leading-relaxed text-fog">
-            {t("Conectá Binance o Bybit con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+            {t("Conectá tu exchange (Binance, Bybit, Bitunix o MEXC) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
           </p>
         )}
 
@@ -184,14 +169,14 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
                 {t("Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R.")}
               </p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {EXCHANGE_LIST.map((e) => (
                 <button
                   key={e.id}
                   type="button"
                   onClick={() => setExchange(e.id)}
                   className={cx(
-                    "flex-1 rounded-md border px-3 py-2 text-[12px] font-bold transition-colors",
+                    "min-w-[72px] flex-1 rounded-md border px-3 py-2 text-[12px] font-bold transition-colors",
                     exchange === e.id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow",
                   )}
                 >
