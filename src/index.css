@@ -636,3 +636,37 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 @media (prefers-reduced-motion: reduce) {
   .rise-in, .btn-shine::after, .tab-slider { animation: none; transition: none; }
 }
+
+/* ─── Tarjeta «Bienvenido a VELTRIX»: los tres pasos aparecen de a uno, grandes, y después un foco va pasando de uno a otro ─── */
+@keyframes stepPop {
+  0% { opacity: 0; transform: translateY(28px) scale(0.55); }
+  55% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.14);
+    border-color: var(--color-gold, #2ec4f1);
+    box-shadow: 0 0 0 1px var(--color-gold, #2ec4f1), 0 22px 54px -14px rgba(46, 196, 241, 0.6);
+  }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes stepSpot {
+  0%, 34%, 100% { transform: none; }
+  6%, 28% {
+    transform: translateY(-3px) scale(1.05);
+    border-color: var(--color-gold, #2ec4f1);
+    box-shadow: 0 0 0 1px rgba(46, 196, 241, 0.5), 0 18px 40px -16px rgba(46, 196, 241, 0.55);
+  }
+}
+@keyframes stepTitleIn {
+  from { opacity: 0; transform: translateY(-10px); letter-spacing: 0.16em; }
+  to { opacity: 1; transform: none; }
+}
+.step-card {
+  animation:
+    stepPop 0.95s cubic-bezier(0.2, 0.9, 0.3, 1.15) backwards,
+    stepSpot 9s ease-in-out infinite;
+  animation-delay: calc(0.35s + var(--i, 0) * 0.95s), calc(3.7s + var(--i, 0) * 3s);
+}
+.step-title { animation: stepTitleIn 0.7s ease-out backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .step-card, .step-title { animation: none; }
+}

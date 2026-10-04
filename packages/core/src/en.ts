@@ -37,7 +37,6 @@ export const EN: Record<string, string> = {
   "Regenerar URL del webhook": "Regenerate webhook URL",
   "BIENVENIDO A VELTRIX": "WELCOME TO VELTRIX",
   "Empezá en tres pasos.": "Get started in three steps.",
-  "Entendido": "Got it",
   "Diario de trading · En vivo": "Trading journal · Live",
   "Comunidad": "Community",
   "Compartir": "Share",
