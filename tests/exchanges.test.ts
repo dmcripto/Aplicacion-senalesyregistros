@@ -152,7 +152,9 @@ describe("Bitunix", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ externalId: "BTCUSDT:p1", direction: "LONG", qty: 0.5, entry: 65000, exit: 66000, pnl: 500, closedAt: 1712720865566, openedAt: 1712717265566 });
     expect(rows[1]).toMatchObject({ direction: "SHORT", pnl: -100 });
+    // con funding, la nota deja los datos crudos para poder verificarlo; sin funding, la nota queda limpia
     expect(ex.toTradeRow(rows[0], "bitunix", 10).notes).toMatch(/Bitunix informó: realizedPNL 500 · fee 1.5 · funding -0.5/);
+    expect(ex.toTradeRow(rows[1], "bitunix", 10).notes).not.toMatch(/informó/);
   });
 
   it("operación real de Bitunix: precio −0,2088 y comisiones 0,1555 dan −0,3643", () => {
