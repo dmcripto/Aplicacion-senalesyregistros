@@ -1,14 +1,52 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { EXCHANGE_LIST, exchangeName, exchangeSteps, needsPassphrase, fmtDateTime, t } from "@dmcripto/core";
-import type { ExchangeConnection, ExchangeId } from "@dmcripto/core";
+import { EXCHANGE_LIST, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, t } from "@dmcripto/core";
+import type { ExchangeConnection, ExchangeId, MoneySettings } from "@dmcripto/core";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "./tradesApi";
 import { useMoney } from "./money";
 import { colors } from "./theme";
 
+/** Primer paso: sin capital y riesgo no se puede convertir lo importado a R, así que se piden acá mismo. */
+function CapitalStep({ onSave, currency }: { onSave: (m: MoneySettings) => Promise<void>; currency: string }) {
+  const [capital, setCapital] = useState("");
+  const [risk, setRisk] = useState("1");
+  const [busy, setBusy] = useState(false);
+  const num = (v: string) => {
+    const n = Number(v.replace(",", "."));
+    return v.trim() && Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const cap = num(capital), rk = num(risk);
+  const ok = cap != null && rk != null && rk <= 100;
+  const save = async () => {
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await onSave({ capital: cap, riskPct: rk, currency: currency || "USD" });
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : t("No se pudo guardar."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={s.notice}>
+      <Text style={s.stepTitle}>{t("Paso 1 · Tu capital")}</Text>
+      <Text style={s.hint}>{t("Para pasar tus operaciones a R necesitamos tu capital y cuánto arriesgás por operación. Es una estimación y lo podés cambiar cuando quieras.")}</Text>
+      <Text style={s.label}>{t("Capital inicial").toUpperCase()}</Text>
+      <TextInput value={capital} onChangeText={setCapital} keyboardType="decimal-pad" placeholder="1000" placeholderTextColor={colors.dim} style={s.input} />
+      <Text style={s.label}>{t("Riesgo (%)").toUpperCase()}</Text>
+      <TextInput value={risk} onChangeText={setRisk} keyboardType="decimal-pad" placeholder="1" placeholderTextColor={colors.dim} style={s.input} />
+      {ok ? <Text style={s.hint}>{t("1R equivale a")} {fmtCurrency((cap! * rk!) / 100, currency || "USD", false)}</Text> : null}
+      <TouchableOpacity style={[s.btn, (!ok || busy) && { opacity: 0.4 }]} onPress={save} disabled={!ok || busy}>
+        {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={s.btnText}>{t("Guardar y seguir")}</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 /** Conexión de solo lectura con ocho exchanges (dentro de Ajustes). */
-export default function ExchangeSection() {
-  const { unit } = useMoney();
+export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: MoneySettings) => Promise<void> }) {
+  const { unit, money } = useMoney();
   const [conns, setConns] = useState<ExchangeConnection[]>([]);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
@@ -106,10 +144,9 @@ export default function ExchangeSection() {
         </TouchableOpacity>
       )}
 
-      {unit == null && (
-        <Text style={s.notice}>{t("Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R.")}</Text>
-      )}
-
+      {unit == null && <CapitalStep onSave={onSaveMoney} currency={money.currency} />}
+      {unit != null && (
+        <>
       <View style={[s.row, { flexWrap: "wrap" }]}>
         {EXCHANGE_LIST.map((e) => (
           <TouchableOpacity key={e.id} style={[s.chip, exchange === e.id && s.chipOn]} onPress={() => setExchange(e.id)}>
@@ -147,6 +184,8 @@ export default function ExchangeSection() {
       <Text style={s.hint}>
         {t("Tu clave secreta se guarda cifrada en el servidor y no se vuelve a mostrar. VELTRIX solo lee: rechaza claves que permitan operar o retirar. Las operaciones se importan con tu 1R (capital × riesgo %) y quedan marcadas con el exchange de origen.")}
       </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -160,7 +199,8 @@ const s = StyleSheet.create({
   status: { fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
   hint: { color: colors.dim, fontSize: 11.5, lineHeight: 17 },
   error: { color: colors.bear, fontSize: 11.5, lineHeight: 16 },
-  notice: { color: colors.gold, fontSize: 11.5, lineHeight: 17, borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 10 },
+  notice: { borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 12, gap: 8 },
+  stepTitle: { color: colors.gold, fontSize: 10.5, fontWeight: "800", letterSpacing: 1.4 },
   link: { color: colors.gold, fontSize: 12, fontWeight: "700" },
   label: { color: colors.fog, fontSize: 9.5, fontWeight: "700", letterSpacing: 1 },
   input: { backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: colors.snow, fontSize: 14 },

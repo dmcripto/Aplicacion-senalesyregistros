@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtDateTime, rValueMoney, t } from "../lib";
+import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
 import Panel from "./Panel";
@@ -21,7 +21,60 @@ function Guide({ exchange }: { exchange: ExchangeId }) {
   );
 }
 
-export default function ExchangeCard({ money, notify }: { money: MoneySettings; notify: Notify }) {
+/** Primer paso: sin capital y riesgo no se puede convertir lo importado a R, así que se piden acá mismo. */
+function CapitalStep({ money, onSave }: { money: MoneySettings; onSave: (m: MoneySettings) => Promise<void> }) {
+  const [capital, setCapital] = useState(money.capital == null ? "" : String(money.capital));
+  const [risk, setRisk] = useState(money.riskPct == null ? "1" : String(money.riskPct));
+  const [busy, setBusy] = useState(false);
+  const num = (v: string) => {
+    const n = Number(v.replace(",", "."));
+    return v.trim() && Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const cap = num(capital), rk = num(risk);
+  const ok = cap != null && rk != null && rk <= 100;
+  const unit = ok ? (cap * rk) / 100 : null;
+  const save = async () => {
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await onSave({ capital: cap, riskPct: rk, currency: money.currency || "USD" });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-3 rounded-md border border-gold/40 bg-golddeep/20 p-4">
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Paso 1 · Tu capital")}</p>
+      <p className="text-[12px] leading-relaxed text-fog">
+        {t("Para pasar tus operaciones a R necesitamos tu capital y cuánto arriesgás por operación. Es una estimación y lo podés cambiar cuando quieras.")}
+      </p>
+      <div className="flex gap-2.5">
+        <label className="min-w-0 flex-[1.4]">
+          <span className={label}>{t("Capital inicial")}</span>
+          <input inputMode="decimal" value={capital} onChange={(e) => setCapital(e.target.value)} placeholder="1000" className="field num" />
+        </label>
+        <label className="min-w-0 flex-1">
+          <span className={label}>{t("Riesgo (%)")}</span>
+          <input inputMode="decimal" value={risk} onChange={(e) => setRisk(e.target.value)} placeholder="1" className="field num" />
+        </label>
+      </div>
+      {unit != null && (
+        <p className="text-[11.5px] text-fog">
+          {t("1R equivale a")} <b className="num text-gold">{fmtCurrency(unit, money.currency || "USD", false)}</b>
+        </p>
+      )}
+      <button
+        onClick={save}
+        disabled={!ok || busy}
+        className="w-full rounded-md bg-gold px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 disabled:opacity-40"
+      >
+        {busy ? t("Un momento…") : t("Guardar y seguir")}
+      </button>
+    </div>
+  );
+}
+
+export default function ExchangeCard({ money, notify, onSaveMoney }: { money: MoneySettings; notify: Notify; onSaveMoney: (m: MoneySettings) => Promise<void> }) {
   const [conns, setConns] = useState<ExchangeConnection[] | null>(null);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
@@ -166,11 +219,9 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
 
         <>
           <div className="space-y-3 border-t border-line pt-4">
-            {unit == null && (
-              <p className="rounded-md border border-gold/40 bg-golddeep/30 px-3 py-2 text-[11.5px] leading-relaxed text-gold">
-                {t("Antes cargá tu capital y el % de riesgo en \"Capital y dinero\": se usan para convertir tus resultados a R.")}
-              </p>
-            )}
+            {unit == null && <CapitalStep money={money} onSave={onSaveMoney} />}
+            {unit != null && (
+              <>
             <div className="flex flex-wrap gap-2">
               {EXCHANGE_LIST.map((e) => (
                 <button
@@ -220,6 +271,8 @@ export default function ExchangeCard({ money, notify }: { money: MoneySettings; 
             <p className="text-[10.5px] leading-relaxed text-dim">
               {t("Tu clave secreta se guarda cifrada en el servidor y no se vuelve a mostrar. VELTRIX solo lee: rechaza claves que permitan operar o retirar. Las operaciones se importan con tu 1R (capital × riesgo %) y quedan marcadas con el exchange de origen.")}
             </p>
+              </>
+            )}
           </div>
         </>
       </div>
