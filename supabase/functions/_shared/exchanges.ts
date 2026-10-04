@@ -1,11 +1,13 @@
 // ─── VELTRIX · Conexión de solo lectura con exchanges ─────────────────────
-// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix y MEXC (futuros). Solo se hacen pedidos
+// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix, MEXC, Gate, Bitget, OKX y KuCoin (futuros). Solo se hacen pedidos
 // GET de lectura: VELTRIX nunca opera ni mueve fondos.
 // Sin dependencias de Deno ni de Node: solo fetch y WebCrypto, para poder probarlo en local.
 
-export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc";
-export const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc"];
-export const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC" };
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin";
+export const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc", "gate", "bitget", "okx", "kucoin"];
+export const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC", gate: "Gate", bitget: "Bitget", okx: "OKX", kucoin: "KuCoin" };
+/** Exchanges que además de la clave y la secreta piden una contraseña de la API (passphrase). */
+export const NEEDS_PASSPHRASE: ExchangeId[] = ["bitget", "okx", "kucoin"];
 
 export interface ClosedPosition {
   externalId: string;
@@ -527,19 +529,428 @@ export async function mexcFetchClosed(key: string, secret: string, since: number
   return parseMexcClosed(raw, sizes);
 }
 
+// ─── Gate (futuros perpetuos USDT) ──────────────────────────────────────────
+
+const GATE = "https://api.gateio.ws";
+const GATE_PATH = "/api/v4/futures/usdt/position_close";
+
+const hmacHex512 = async (secret: string, message: string) => {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+};
+const sha512Hex = async (text: string) => toHex(await crypto.subtle.digest("SHA-512", enc.encode(text)));
+
+/** Firma de Gate v4: HMAC-SHA512 (hex) de "MÉTODO\nruta\nquery\nsha512(cuerpo)\ntimestamp en segundos". */
+export async function gateSign(method: string, path: string, query: string, timestamp: string, secret: string) {
+  return hmacHex512(secret, [method.toUpperCase(), path, query, await sha512Hex(""), timestamp].join("\n"));
+}
+
+async function gateGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const query = qs(params);
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = await gateSign("GET", path, query, ts, secret);
+  const r = await getJson(fetchFn, `${GATE}${path}${query ? `?${query}` : ""}`, { KEY: key, Timestamp: ts, SIGN: sig, "Content-Type": "application/json" }, "Gate");
+  const label = r.body?.label;
+  if (r.status >= 400 || (typeof label === "string" && label)) {
+    if (label === "INVALID_KEY" || label === "INVALID_SIGNATURE") throw new ExchangeError("Gate no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (label === "IP_FORBIDDEN") throw new ExchangeError("La clave de Gate tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (label === "REQUEST_EXPIRED") throw new ExchangeError("El reloj del servidor no coincide con el de Gate. Probá de nuevo.");
+    if (label === "FORBIDDEN") throw new ExchangeError("La clave de Gate no tiene permiso para leer Futuros. Activá la lectura de \"Futuros perpetuos\" y volvé a intentar.");
+    if (label === "TOO_MANY_REQUESTS") throw new ExchangeError("Gate limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`Gate respondió con un error${r.body?.message ? `: ${r.body.message}` : ""}.`);
+  }
+  return r.body;
+}
+
+export async function gateCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await gateGet(fetchFn, GATE_PATH, { limit: 1 }, key, secret);
+    // Gate no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Gate no nos deja confirmar los permisos de la clave. Verificá en Gate que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** Gate informa el tamaño en contratos: se multiplica por lo que vale cada contrato en la moneda base (quanto_multiplier). */
+export function parseGateClosed(list: any[], multipliers: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const direction = r.side === "long" ? "LONG" : r.side === "short" ? "SHORT" : null;
+    // En un largo, long_price es la entrada y short_price la salida; en un corto, al revés.
+    const entry = num(direction === "LONG" ? r.long_price : r.short_price);
+    const exit = num(direction === "LONG" ? r.short_price : r.long_price);
+    const mult = multipliers[String(r.contract)];
+    const pnl = num(r.pnl); // ya incluye comisiones y funding
+    // Sin el valor del contrato se deduce el tamaño del resultado de precio (pnl_pnl) y el recorrido.
+    const move = Math.abs(exit - entry);
+    const qty = mult > 0 ? num(r.max_size) * mult : move > 0 ? Math.abs(num(r.pnl_pnl)) / move : 0;
+    const closedAt = Number(r.time) * 1000;
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    const openedAt = Number(r.first_open_time) * 1000;
+    out.push({
+      externalId: `${r.contract}:${r.side}:${r.first_open_time}:${r.time}`,
+      symbol: String(r.contract).replace(/_/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number.isFinite(openedAt) ? openedAt : closedAt,
+      closedAt,
+    });
+  }
+  return out;
+}
+
+async function gateMultiplier(fetchFn: FetchFn, contract: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${GATE}/api/v4/futures/usdt/contracts/${encodeURIComponent(contract)}`, {}, "Gate");
+    return num(r.body?.quanto_multiplier);
+  } catch {
+    return 0;
+  }
+}
+
+export async function gateFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let offset = 0, page = 0; page < 30; page++, offset += 100) {
+      const list: any[] = (await gateGet(fetchFn, GATE_PATH, { from: Math.floor(s / 1000), to: Math.floor(e / 1000), limit: 100, offset }, key, secret)) ?? [];
+      raw.push(...(Array.isArray(list) ? list : []));
+      if (!Array.isArray(list) || list.length < 100) break;
+    }
+  }
+  const mults: Record<string, number> = {};
+  for (const c of new Set(raw.map((r) => String(r.contract)))) mults[c] = await gateMultiplier(fetchFn, c);
+  return parseGateClosed(raw, mults);
+}
+
+// ─── Bitget (futuros USDT) ──────────────────────────────────────────────────
+
+const BITGET = "https://api.bitget.com";
+const BITGET_PATH = "/api/v2/mix/position/history-position";
+
+const hmacBase64 = async (secret: string, message: string) => {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+};
+
+/** Firma de Bitget: HMAC-SHA256 en base64 de timestamp + MÉTODO + ruta + ?query. */
+export async function bitgetSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function bitgetGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const sorted = Object.fromEntries(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const query = qs(sorted);
+  const ts = String(Date.now());
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await bitgetSign(ts, "GET", full, secret);
+  const r = await getJson(fetchFn, `${BITGET}${full}`, { "ACCESS-KEY": key, "ACCESS-SIGN": sig, "ACCESS-TIMESTAMP": ts, "ACCESS-PASSPHRASE": pass, "Content-Type": "application/json" }, "Bitget");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "00000")) {
+    const c = String(code);
+    if (["40006", "40009", "40010", "40012"].includes(c)) throw new ExchangeError("Bitget no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "40011" || c === "40001" || c === "40002") throw new ExchangeError("Faltan datos de la clave de Bitget. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "40014") throw new ExchangeError("La clave de Bitget no tiene permiso para leer Futuros. Activá la lectura de \"Futuros\" y volvé a intentar.");
+    if (c === "40018") throw new ExchangeError("La clave de Bitget tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "40004" || c === "40008" || c === "40005") throw new ExchangeError("El reloj del servidor no coincide con el de Bitget. Probá de nuevo.");
+    throw new ExchangeError(`Bitget respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function bitgetCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "Bitget pide también la contraseña de la API (passphrase)." };
+  try {
+    await bitgetGet(fetchFn, BITGET_PATH, { productType: "USDT-FUTURES", limit: 1 }, key, secret, pass);
+    // Bitget no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Bitget no nos deja confirmar los permisos de la clave. Verificá en Bitget que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+export function parseBitgetClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const direction = r.holdSide === "long" ? "LONG" : r.holdSide === "short" ? "SHORT" : null;
+    const entry = num(r.openAvgPrice), exit = num(r.closeAvgPrice);
+    const qty = num(r.closeTotalPos) > 0 ? num(r.closeTotalPos) : num(r.openTotalPos);
+    const closedAt = Number(r.utime ?? r.ctime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: r.positionId ? `${r.symbol}:${r.positionId}` : `${r.symbol}:${r.holdSide}:${r.ctime}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.pnl) + num(r.openFee) + num(r.closeFee) + num(r.totalFunding), // neto de comisiones y funding
+      openedAt: Number(r.ctime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+export async function bitgetFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    let cursor = "";
+    for (let page = 0; page < 30; page++) {
+      const params: Record<string, string | number> = { productType: "USDT-FUTURES", startTime: s, endTime: e, limit: 100 };
+      if (cursor) params.idLessThan = cursor;
+      const data = await bitgetGet(fetchFn, BITGET_PATH, params, key, secret, pass);
+      const list: any[] = data?.list ?? [];
+      all.push(...parseBitgetClosed(list));
+      cursor = data?.endId ? String(data.endId) : "";
+      if (!cursor || list.length < 100) break;
+    }
+  }
+  return all;
+}
+
+// ─── OKX (perpetuos y futuros) ──────────────────────────────────────────────
+
+const OKX = "https://www.okx.com";
+const OKX_PATH = "/api/v5/account/positions-history";
+
+/** Firma de OKX: HMAC-SHA256 en base64 de timestamp ISO + MÉTODO + ruta + ?query. */
+export async function okxSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function okxGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const query = qs(params);
+  const ts = new Date().toISOString();
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await okxSign(ts, "GET", full, secret);
+  const r = await getJson(fetchFn, `${OKX}${full}`, { "OK-ACCESS-KEY": key, "OK-ACCESS-SIGN": sig, "OK-ACCESS-TIMESTAMP": ts, "OK-ACCESS-PASSPHRASE": pass, "Content-Type": "application/json" }, "OKX");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "0")) {
+    const c = String(code);
+    if (c === "50111" || c === "50113" || c === "50105" || c === "50114") throw new ExchangeError("OKX no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "50103" || c === "50104") throw new ExchangeError("Faltan datos de la clave de OKX. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "50110") throw new ExchangeError("La clave de OKX tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "50102") throw new ExchangeError("El reloj del servidor no coincide con el de OKX. Probá de nuevo.");
+    if (c === "50011" || r.status === 429) throw new ExchangeError("OKX limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`OKX respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function okxCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "OKX pide también la contraseña de la API (passphrase)." };
+  try {
+    const cfg = await okxGet(fetchFn, "/api/v5/account/config", {}, key, secret, pass);
+    const perm = String(cfg?.[0]?.perm ?? "");
+    if (/trade|withdraw/.test(perm)) {
+      return { ok: false, error: "Esta clave permite operar o retirar. Por seguridad, creá una nueva en OKX con permisos de SOLO LECTURA." };
+    }
+    return perm ? { ok: true } : { ok: true, warning: "No pudimos confirmar que la clave sea solo de lectura. Verificá en OKX que hayas elegido \"Solo lectura\"." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** OKX informa el tamaño en contratos: se multiplica por el valor del contrato (ctVal × ctMult). */
+export function parseOkxClosed(list: any[], contractValues: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const entry = num(r.openAvgPx), exit = num(r.closeAvgPx);
+    const pnl = num(r.realizedPnl); // ya incluye comisiones, funding y penalidad de liquidación
+    // En modo neto "direction" viene como "net": el lado se deduce del recorrido del precio y del signo del resultado de precio.
+    const dirOfPrice = (exit - entry) * num(r.pnl); // positivo: subió y ganó (o bajó y perdió) → largo
+    const direction = r.direction === "long" ? "LONG" : r.direction === "short" ? "SHORT" : dirOfPrice > 0 ? "LONG" : dirOfPrice < 0 ? "SHORT" : null;
+    const cv = contractValues[String(r.instId)];
+    const move = Math.abs(exit - entry);
+    const qty = cv > 0 ? num(r.closeTotalPos) * cv : move > 0 ? Math.abs(num(r.pnl)) / move : 0;
+    const closedAt = Number(r.uTime ?? r.cTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.instId}:${r.posId}`,
+      symbol: String(r.instId).replace(/-SWAP$/, "").replace(/-/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number(r.cTime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+async function okxContractValue(fetchFn: FetchFn, instType: string, instId: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${OKX}/api/v5/public/instruments?instType=${instType}&instId=${encodeURIComponent(instId)}`, {}, "OKX");
+    const d = r.body?.data?.[0];
+    return num(d?.ctVal) * (num(d?.ctMult) || 1);
+  } catch {
+    return 0;
+  }
+}
+
+export async function okxFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  const types = new Map<string, string>();
+  for (const instType of ["SWAP", "FUTURES"]) {
+    let after = "";
+    for (let page = 0; page < 30; page++) {
+      const params: Record<string, string | number> = { instType, limit: 100 };
+      if (after) params.after = after; // trae lo anterior a esa fecha
+      const list: any[] = (await okxGet(fetchFn, OKX_PATH, params, key, secret, pass)) ?? [];
+      for (const r of list) {
+        const t = Number(r.uTime ?? r.cTime);
+        if (t >= since && t <= now) {
+          raw.push(r);
+          types.set(String(r.instId), instType);
+        }
+      }
+      if (list.length < 100) break;
+      const oldest = Math.min(...list.map((r) => Number(r.uTime ?? r.cTime)));
+      if (!(oldest > since)) break;
+      after = String(oldest);
+    }
+  }
+  const values: Record<string, number> = {};
+  for (const [id, t] of types) values[id] = await okxContractValue(fetchFn, t, id);
+  return parseOkxClosed(raw, values);
+}
+
+// ─── KuCoin (futuros) ───────────────────────────────────────────────────────
+
+const KUCOIN = "https://api-futures.kucoin.com";
+const KUCOIN_PATH = "/api/v1/history-positions";
+
+/** Firma de KuCoin: HMAC-SHA256 en base64 de timestamp + MÉTODO + ruta + ?query. */
+export async function kucoinSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function kucoinGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const query = qs(params);
+  const ts = String(Date.now());
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await kucoinSign(ts, "GET", full, secret);
+  const r = await getJson(
+    fetchFn,
+    `${KUCOIN}${full}`,
+    {
+      "KC-API-KEY": key,
+      "KC-API-SIGN": sig,
+      "KC-API-TIMESTAMP": ts,
+      "KC-API-PASSPHRASE": await hmacBase64(secret, pass), // con la versión 2 de la clave, la contraseña va firmada
+      "KC-API-KEY-VERSION": "2",
+      "Content-Type": "application/json",
+    },
+    "KuCoin",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "200000")) {
+    const c = String(code);
+    if (["400003", "400004", "400005"].includes(c) || r.status === 401) throw new ExchangeError("KuCoin no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "400001") throw new ExchangeError("Faltan datos de la clave de KuCoin. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "400006") throw new ExchangeError("La clave de KuCoin tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "400007") throw new ExchangeError("La clave de KuCoin no tiene permiso para leer Futuros. Revisá los permisos de la clave y volvé a intentar.");
+    if (c === "400002") throw new ExchangeError("El reloj del servidor no coincide con el de KuCoin. Probá de nuevo.");
+    if (c === "429000") throw new ExchangeError("KuCoin limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`KuCoin respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function kucoinCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "KuCoin pide también la contraseña de la API (passphrase)." };
+  try {
+    await kucoinGet(fetchFn, KUCOIN_PATH, { limit: 1 }, key, secret, pass);
+    // KuCoin no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "KuCoin no nos deja confirmar los permisos de la clave. Verificá en KuCoin que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** KuCoin informa el tamaño en lotes: se multiplica por el valor del lote (multiplier). El pnl ya viene neto de comisiones y funding. */
+export function parseKucoinClosed(list: any[], multipliers: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const type = String(r.type ?? "").toUpperCase();
+    const side = String(r.side ?? "").toLowerCase();
+    const direction = side === "long" || type.endsWith("LONG") ? "LONG" : side === "short" || type.endsWith("SHORT") ? "SHORT" : null;
+    const entry = num(r.openPrice), exit = num(r.closePrice);
+    const pnl = num(r.pnl);
+    const mult = Math.abs(multipliers[String(r.symbol)] ?? 0);
+    // Sin el tamaño se deduce del resultado bruto (pnl + comisión − funding) y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const gross = Math.abs(pnl + num(r.tradeFee) - num(r.fundingFee));
+    const qty = mult > 0 && num(r.closeSize) > 0 ? num(r.closeSize) * mult : move > 0 ? gross / move : 0;
+    const closedAt = Number(r.closeTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.closeId ?? r.positionId ?? closedAt}`,
+      symbol: String(r.symbol).replace(/M$/, "").replace(/^XBT/, "BTC"),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number(r.openTime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+async function kucoinMultiplier(fetchFn: FetchFn, symbol: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${KUCOIN}/api/v1/contracts/${encodeURIComponent(symbol)}`, {}, "KuCoin");
+    return num(r.body?.data?.multiplier);
+  } catch {
+    return 0;
+  }
+}
+
+export async function kucoinFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let pageId = 1; pageId <= 30; pageId++) {
+      const data = await kucoinGet(fetchFn, KUCOIN_PATH, { from: s, to: e, limit: 100, pageId }, key, secret, pass);
+      const items: any[] = data?.items ?? [];
+      raw.push(...items);
+      const totalPage = Number(data?.totalPage);
+      if (items.length < 100 || (Number.isFinite(totalPage) && pageId >= totalPage)) break;
+    }
+  }
+  const mults: Record<string, number> = {};
+  for (const sym of new Set(raw.map((r) => String(r.symbol)))) mults[sym] = await kucoinMultiplier(fetchFn, sym);
+  return parseKucoinClosed(raw, mults);
+}
+
 // ─── Común ──────────────────────────────────────────────────────────────────
 
-export const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: FetchFn) =>
+export const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: FetchFn, pass?: string) =>
   ex === "binance" ? binanceCheck(key, secret, fetchFn)
   : ex === "bybit" ? bybitCheck(key, secret, fetchFn)
   : ex === "bitunix" ? bitunixCheck(key, secret, fetchFn)
-  : mexcCheck(key, secret, fetchFn);
+  : ex === "mexc" ? mexcCheck(key, secret, fetchFn)
+  : ex === "gate" ? gateCheck(key, secret, fetchFn)
+  : ex === "bitget" ? bitgetCheck(key, secret, fetchFn, pass)
+  : ex === "okx" ? okxCheck(key, secret, fetchFn, pass)
+  : kucoinCheck(key, secret, fetchFn, pass);
 
-export const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: number, now?: number, fetchFn?: FetchFn) =>
+export const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: number, now?: number, fetchFn?: FetchFn, pass?: string) =>
   ex === "binance" ? binanceFetchClosed(key, secret, since, now, fetchFn)
   : ex === "bybit" ? bybitFetchClosed(key, secret, since, now, fetchFn)
   : ex === "bitunix" ? bitunixFetchClosed(key, secret, since, now, fetchFn)
-  : mexcFetchClosed(key, secret, since, now, fetchFn);
+  : ex === "mexc" ? mexcFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "gate" ? gateFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bitget" ? bitgetFetchClosed(key, secret, since, now, fetchFn, pass)
+  : ex === "okx" ? okxFetchClosed(key, secret, since, now, fetchFn, pass)
+  : kucoinFetchClosed(key, secret, since, now, fetchFn, pass);
 
 export interface TradeRow {
   symbol: string;

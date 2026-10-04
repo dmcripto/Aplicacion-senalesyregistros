@@ -246,3 +246,171 @@ describe("MEXC", () => {
     expect(r).toBeCloseTo(p.pnl / 0.5, 6);
   });
 });
+
+describe("Gate", () => {
+  const sha512 = (s: string) => createHash("sha512").update(s).digest("hex");
+  it("firma: HMAC-SHA512 de método, ruta, query, sha512 del cuerpo vacío y timestamp", async () => {
+    const sig = await ex.gateSign("GET", "/api/v4/futures/usdt/position_close", "limit=100&offset=0", "1700000000", "SECRET");
+    expect(sig).toBe(createHmac("sha512", "SECRET").update(["GET", "/api/v4/futures/usdt/position_close", "limit=100&offset=0", sha512(""), "1700000000"].join("\n")).digest("hex"));
+  });
+
+  // Ejemplo con la forma real de la respuesta de Gate (tamaño en contratos).
+  const long = { contract: "SLERF_USDT", side: "long", long_price: "0.766306", short_price: "0.539119", pnl: "-23.41702352", pnl_pnl: "-22.7187", pnl_fee: "-0.06527125", pnl_fund: "-0.63305227", max_size: "100", accum_size: "100", time: 1711279263, first_open_time: 1711037985 };
+  const short = { ...long, side: "short", contract: "BTC_USDT", short_price: "65000", long_price: "64000", pnl: "9.5", pnl_pnl: "10", max_size: "100", time: 1711279999 };
+
+  it("convierte contratos y toma entrada y salida según el lado", () => {
+    const [a, b] = ex.parseGateClosed([long, short], { SLERF_USDT: 1, BTC_USDT: 0.0001 });
+    expect(a).toMatchObject({ symbol: "SLERFUSDT", direction: "LONG", qty: 100, entry: 0.766306, exit: 0.539119, pnl: -23.41702352, closedAt: 1711279263000, openedAt: 1711037985000 });
+    // en el corto, short_price es la entrada y long_price la salida
+    expect(b).toMatchObject({ direction: "SHORT", entry: 65000, exit: 64000, qty: 0.01 });
+  });
+
+  it("sin el valor del contrato deduce el tamaño del resultado de precio", () => {
+    const [a] = ex.parseGateClosed([long], {});
+    expect(a.qty).toBeCloseTo(100, 0);
+  });
+
+  it("pide por páginas y explica los errores", async () => {
+    const offsets: string[] = [];
+    const fake = (async (url: any, init: any) => {
+      const u = new URL(String(url));
+      if (u.pathname.includes("/contracts/")) return json({ quanto_multiplier: "1" });
+      expect(init.headers.KEY).toBe("KEY");
+      expect(init.headers.SIGN).toHaveLength(128);
+      const off = Number(u.searchParams.get("offset"));
+      offsets.push(String(off));
+      return json(off === 0 ? Array.from({ length: 100 }, (_, i) => ({ ...long, first_open_time: 1000 + i })) : [short]);
+    }) as unknown as typeof fetch;
+    expect((await ex.checkKey("gate", "KEY", "SECRET", fake)).warning).toMatch(/SOLO LECTURA/);
+    const got = await ex.fetchClosed("gate", "KEY", "SECRET", Date.now() - 864e5, undefined, fake);
+    expect(got).toHaveLength(101);
+    expect(offsets.slice(-2)).toEqual(["0", "100"]);
+    const err = (label: string) => (async () => json({ label, message: "x" }, 401)) as unknown as typeof fetch;
+    expect((await ex.checkKey("gate", "K", "S", err("INVALID_KEY"))).error).toMatch(/no aceptó la clave/);
+    expect((await ex.checkKey("gate", "K", "S", err("IP_FORBIDDEN"))).error).toMatch(/restricción de IP/);
+    expect((await ex.checkKey("gate", "K", "S", err("FORBIDDEN"))).error).toMatch(/permiso para leer Futuros/);
+  });
+});
+
+describe("Bitget", () => {
+  it("firma: HMAC-SHA256 en base64 de timestamp + método + ruta + query", async () => {
+    const sig = await ex.bitgetSign("1700000000000", "GET", "/api/v2/mix/position/history-position?limit=1&productType=USDT-FUTURES", "SECRET");
+    expect(sig).toBe(createHmac("sha256", "SECRET").update("1700000000000GET/api/v2/mix/position/history-position?limit=1&productType=USDT-FUTURES").digest("base64"));
+  });
+
+  const row = { symbol: "XRPUSDT", marginCoin: "USDT", holdSide: "long", openAvgPrice: "0.64967", closeAvgPrice: "0.58799", openTotalPos: "10", closeTotalPos: "10", pnl: "-0.62976205", netProfit: "-0.65356802", totalFunding: "-0.01638", openFee: "-0.00389802", closeFee: "-0.00352794", ctime: "1709590322199", utime: "1709667583395" };
+
+  it("usa el resultado neto y el tamaño en moneda base", () => {
+    const [p] = ex.parseBitgetClosed([row, { ...row, holdSide: "short", openAvgPrice: "0", netProfit: "1" }]);
+    expect(p).toMatchObject({ symbol: "XRPUSDT", direction: "LONG", qty: 10, entry: 0.64967, exit: 0.58799, pnl: -0.65356802, closedAt: 1709667583395, openedAt: 1709590322199 });
+    expect(p.externalId).toBe("XRPUSDT:long:1709590322199");
+  });
+
+  it("exige la contraseña de la API, la envía y explica los errores", async () => {
+    expect((await ex.checkKey("bitget", "K", "S", undefined, "")).error).toMatch(/contraseña de la API/);
+    const fake = (async (url: any, init: any) => {
+      const u = new URL(String(url));
+      expect(u.pathname).toBe("/api/v2/mix/position/history-position");
+      expect(init.headers["ACCESS-PASSPHRASE"]).toBe("PASS");
+      expect(init.headers["ACCESS-KEY"]).toBe("KEY");
+      const ts = init.headers["ACCESS-TIMESTAMP"];
+      expect(init.headers["ACCESS-SIGN"]).toBe(createHmac("sha256", "SECRET").update(ts + "GET" + u.pathname + u.search).digest("base64"));
+      return json({ code: "00000", msg: "success", data: { list: [row], endId: "" } });
+    }) as unknown as typeof fetch;
+    expect((await ex.checkKey("bitget", "KEY", "SECRET", fake, "PASS")).ok).toBe(true);
+    expect(await ex.fetchClosed("bitget", "KEY", "SECRET", Date.now() - 864e5, undefined, fake, "PASS")).toHaveLength(1);
+    const err = (code: string) => (async () => json({ code, msg: "x" })) as unknown as typeof fetch;
+    expect((await ex.checkKey("bitget", "K", "S", err("40012"), "P")).error).toMatch(/contraseña de la API/);
+    expect((await ex.checkKey("bitget", "K", "S", err("40014"), "P")).error).toMatch(/permiso para leer Futuros/);
+  });
+});
+
+describe("OKX", () => {
+  it("firma: HMAC-SHA256 en base64 de timestamp + método + ruta + query", async () => {
+    const sig = await ex.okxSign("2024-01-01T00:00:00.000Z", "GET", "/api/v5/account/positions-history?instType=SWAP&limit=100", "SECRET");
+    expect(sig).toBe(createHmac("sha256", "SECRET").update("2024-01-01T00:00:00.000ZGET/api/v5/account/positions-history?instType=SWAP&limit=100").digest("base64"));
+  });
+
+  // Ejemplo real de la documentación: realizedPnl = pnl + fee + fundingFee.
+  const sushi = { cTime: "1708351230102", closeAvgPx: "1.2567", closeTotalPos: "40", direction: "short", fee: "-0.0351036", fundingFee: "0", instId: "SUSHI-USDT-SWAP", instType: "SWAP", openAvgPx: "1.2462", openMaxPos: "40", pnl: "-0.42", posId: "666159086676836352", realizedPnl: "-0.4551036", type: "2", uTime: "1708354805699" };
+
+  it("toma el resultado neto y convierte contratos con su valor", () => {
+    const [p] = ex.parseOkxClosed([sushi], { "SUSHI-USDT-SWAP": 1 });
+    expect(p).toMatchObject({ externalId: "SUSHI-USDT-SWAP:666159086676836352", symbol: "SUSHIUSDT", direction: "SHORT", qty: 40, entry: 1.2462, exit: 1.2567, pnl: -0.4551036 });
+    const [q] = ex.parseOkxClosed([{ ...sushi, instId: "BTC-USDT-SWAP", closeTotalPos: "100" }], { "BTC-USDT-SWAP": 0.01 });
+    expect(q.qty).toBe(1);
+    expect(q.symbol).toBe("BTCUSDT");
+  });
+
+  it("en modo neto deduce el lado del precio y del resultado", () => {
+    const net = { ...sushi, direction: "net" };
+    expect(ex.parseOkxClosed([net], {})[0].direction).toBe("SHORT"); // subió el precio y perdió
+    expect(ex.parseOkxClosed([{ ...net, closeAvgPx: "1.2", pnl: "0.2" }], {})[0].direction).toBe("SHORT"); // bajó el precio y ganó
+    expect(ex.parseOkxClosed([{ ...net, closeAvgPx: "1.3", pnl: "0.2" }], {})[0].direction).toBe("LONG");
+    expect(ex.parseOkxClosed([net], {})[0].qty).toBeCloseTo(40, 0);
+  });
+
+  const okx = (perm: string) => (async (url: any, init: any) => {
+    const u = new URL(String(url));
+    if (u.pathname === "/api/v5/public/instruments") return json({ code: "0", data: [{ ctVal: "1", ctMult: "1" }] });
+    expect(init.headers["OK-ACCESS-PASSPHRASE"]).toBe("PASS");
+    if (u.pathname === "/api/v5/account/config") return json({ code: "0", data: [{ perm }] });
+    expect(u.pathname).toBe("/api/v5/account/positions-history");
+    return json({ code: "0", data: u.searchParams.get("instType") === "SWAP" ? [{ ...sushi, uTime: String(Date.now() - 36e5) }] : [] });
+  }) as unknown as typeof fetch;
+
+  it("acepta claves de solo lectura y rechaza las que operan o retiran", async () => {
+    expect((await ex.checkKey("okx", "K", "S", okx("read_only"), "PASS")).ok).toBe(true);
+    expect((await ex.checkKey("okx", "K", "S", okx("read_only,trade"), "PASS")).error).toMatch(/SOLO LECTURA/);
+    expect((await ex.checkKey("okx", "K", "S", okx("read_only,withdraw"), "PASS")).ok).toBe(false);
+    expect((await ex.checkKey("okx", "K", "S", okx("read_only"), "")).error).toMatch(/contraseña de la API/);
+  });
+
+  it("trae las posiciones de perpetuos y futuros dentro del período", async () => {
+    const got = await ex.fetchClosed("okx", "K", "S", Date.now() - 864e5, undefined, okx("read_only"), "PASS");
+    expect(got).toHaveLength(1);
+    expect(got[0].qty).toBe(40);
+  });
+
+  it("explica los errores en español", async () => {
+    const err = (code: string) => (async () => json({ code, msg: "x" })) as unknown as typeof fetch;
+    expect((await ex.checkKey("okx", "K", "S", err("50105"), "P")).error).toMatch(/contraseña de la API/);
+    expect((await ex.checkKey("okx", "K", "S", err("50110"), "P")).error).toMatch(/restricción de IP/);
+  });
+});
+
+describe("KuCoin", () => {
+  it("firma y contraseña: HMAC-SHA256 en base64", async () => {
+    const sig = await ex.kucoinSign("1700000000000", "GET", "/api/v1/history-positions?limit=1", "SECRET");
+    expect(sig).toBe(createHmac("sha256", "SECRET").update("1700000000000GET/api/v1/history-positions?limit=1").digest("base64"));
+  });
+
+  // Ejemplo de la documentación: pnl = (cierre − apertura) × tamaño − comisión + funding.
+  const btc = { closeId: "500000000036305465", symbol: "XBTUSDTM", settleCurrency: "USDT", leverage: "1.0", type: "CLOSE_LONG", pnl: "0.51214413", realisedGrossCost: "-0.5837", tradeFee: "0.03766066", fundingFee: "-0.03389521", openTime: 1735549162120, closeTime: 1735589352069, openPrice: "93859.8", closePrice: "94443.5" };
+
+  it("el resultado ya viene neto y el lado sale del tipo de cierre", () => {
+    const [p] = ex.parseKucoinClosed([btc, { ...btc, closeId: "2", type: "CLOSE_SHORT", closeSize: 1 }], { XBTUSDTM: 0.001 });
+    expect(p).toMatchObject({ externalId: "XBTUSDTM:500000000036305465", symbol: "BTCUSDT", direction: "LONG", entry: 93859.8, exit: 94443.5, pnl: 0.51214413, closedAt: 1735589352069 });
+    expect(p.qty).toBeCloseTo(0.001, 6); // deducido del resultado bruto
+    const [, q] = ex.parseKucoinClosed([btc, { ...btc, closeId: "2", type: "CLOSE_SHORT", closeSize: 1 }], { XBTUSDTM: 0.001 });
+    expect(q).toMatchObject({ direction: "SHORT", qty: 0.001 });
+  });
+
+  it("exige la contraseña, la firma al enviarla y explica los errores", async () => {
+    expect((await ex.checkKey("kucoin", "K", "S", undefined, "")).error).toMatch(/contraseña de la API/);
+    const fake = (async (url: any, init: any) => {
+      const u = new URL(String(url));
+      if (u.pathname.startsWith("/api/v1/contracts/")) return json({ code: "200000", data: { multiplier: 0.001 } });
+      expect(init.headers["KC-API-KEY-VERSION"]).toBe("2");
+      expect(init.headers["KC-API-PASSPHRASE"]).toBe(createHmac("sha256", "SECRET").update("PASS").digest("base64"));
+      const ts = init.headers["KC-API-TIMESTAMP"];
+      expect(init.headers["KC-API-SIGN"]).toBe(createHmac("sha256", "SECRET").update(ts + "GET" + u.pathname + u.search).digest("base64"));
+      return json({ code: "200000", data: { currentPage: 1, totalPage: 1, items: [btc] } });
+    }) as unknown as typeof fetch;
+    expect((await ex.checkKey("kucoin", "KEY", "SECRET", fake, "PASS")).warning).toMatch(/SOLO LECTURA/);
+    expect(await ex.fetchClosed("kucoin", "KEY", "SECRET", Date.now() - 864e5, undefined, fake, "PASS")).toHaveLength(1);
+    const err = (code: string) => (async () => json({ code, msg: "x" }, 400)) as unknown as typeof fetch;
+    expect((await ex.checkKey("kucoin", "K", "S", err("400004"), "P")).error).toMatch(/contraseña de la API/);
+    expect((await ex.checkKey("kucoin", "K", "S", err("400006"), "P")).error).toMatch(/restricción de IP/);
+  });
+});

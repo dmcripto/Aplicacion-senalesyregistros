@@ -214,7 +214,7 @@ export async function saveLang(userId: string, lang: string) {
   await supabase.from("profiles").update({ lang }).eq("id", userId);
 }
 
-// ─── Exchanges (Binance, Bybit): conexión de solo lectura ───────────────────
+// ─── Exchanges (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin): conexión de solo lectura ───────────────────
 
 interface ConnRow {
   id: string;
@@ -268,8 +268,8 @@ async function callFunction<T extends { ok: boolean; error?: string }>(name: str
 
 const callExchanges = (body: Record<string, unknown>) => callFunction<ExchangeResult>("exchanges", body);
 
-export const connectExchange = (exchange: ExchangeId, apiKey: string, apiSecret: string) =>
-  callExchanges({ action: "connect", exchange, apiKey, apiSecret });
+export const connectExchange = (exchange: ExchangeId, apiKey: string, apiSecret: string, passphrase?: string) =>
+  callExchanges({ action: "connect", exchange, apiKey, apiSecret, ...(passphrase ? { passphrase } : {}) });
 
 export const syncExchanges = () => callExchanges({ action: "sync" });
 

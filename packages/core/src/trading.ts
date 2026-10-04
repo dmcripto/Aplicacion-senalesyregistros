@@ -23,7 +23,7 @@ export interface Trade {
   closedAt?: string;
   notes?: string;
   autoClosed?: boolean;
-  source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc)
+  source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc | gate | bitget | okx | kucoin)
   tags?: string[];
 }
 
@@ -956,18 +956,25 @@ export const fmtMoney = (n: number) =>
 
 // ─── Exchanges conectados (solo lectura) ────────────────────────────────────
 
-export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc";
-export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string }> = [
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin";
+export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: boolean }> = [
   { id: "binance", name: "Binance" },
   { id: "bybit", name: "Bybit" },
   { id: "bitunix", name: "Bitunix" },
   { id: "mexc", name: "MEXC" },
+  { id: "gate", name: "Gate" },
+  { id: "bitget", name: "Bitget", passphrase: true }, // pide una contraseña de la API (passphrase)
+  { id: "okx", name: "OKX", passphrase: true },
+  { id: "kucoin", name: "KuCoin", passphrase: true },
 ];
+export const needsPassphrase = (id: string) => !!EXCHANGE_LIST.find((e) => e.id === id)?.passphrase;
 export const exchangeName = (id: string) => EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id;
 
 /** Pasos para crear la clave de solo lectura en cada exchange. */
 export function exchangeSteps(id: ExchangeId): string[] {
   const last = tr("Copiá la API Key y la Secret y pegalas acá. La Secret se muestra una sola vez.");
+  const passStep = tr("Ponele un nombre (por ejemplo VELTRIX), elegí una contraseña de la API (passphrase) y anotala.");
+  const lastPass = tr("Copiá la API Key y la Secret y pegalas acá, junto con tu contraseña de la API. La Secret se muestra una sola vez.");
   switch (id) {
     case "binance":
       return [
@@ -998,6 +1005,38 @@ export function exchangeSteps(id: ExchangeId): string[] {
         tr("Ponele un nombre (por ejemplo VELTRIX) y activá SOLO los permisos de lectura de Futuros. No actives operar, retirar ni transferir."),
         tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
         last,
+      ];
+
+    case "gate":
+      return [
+        tr("En Gate: Perfil → Gestión de API → Crear clave API (v4)."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y elegí permisos de SOLO LECTURA en Futuros perpetuos. No actives operar ni retirar."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        last,
+      ];
+    case "bitget":
+      return [
+        tr("En Bitget: Perfil → API → Crear API Key."),
+        passStep,
+        tr("En permisos elegí SOLO la lectura de Futuros. No actives operar, retirar ni transferir."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        lastPass,
+      ];
+    case "okx":
+      return [
+        tr("En OKX: Perfil → API → Crear clave V5."),
+        passStep,
+        tr("En permisos elegí SOLO \"Lectura\". No actives operar ni retirar."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        lastPass,
+      ];
+    case "kucoin":
+      return [
+        tr("En KuCoin: Perfil → Gestión de API → Crear API."),
+        passStep,
+        tr("En permisos dejá SOLO \"General\" (lectura). No actives operar, retirar ni transferir."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        lastPass,
       ];
   }
 }
@@ -1169,7 +1208,7 @@ export function welcomeContent(): { headline: string; lead: string; chips: strin
     features: [
       { icon: "📡", title: tr("Señales en vivo"), text: tr("Conectá tus alertas de TradingView: cada señal llega sola a tu celular y a Telegram, con una tarjeta lista para compartir.") },
       { icon: "🎯", title: tr("Targets y cierre automático"), text: tr("TP1, TP2, TP3: te avisamos cada vez que el precio toca un target, y cerramos solas tus operaciones cripto en el TP o el SL.") },
-      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix y MEXC.") },
+      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX y KuCoin.") },
       { icon: "🛡️", title: tr("Control de riesgo"), text: tr("Calculá cuánto arriesgar en cada operación y poné límites diarios para cuidar tu capital.") },
       { icon: "🗺️", title: tr("Mapa de liquidaciones"), text: tr("Mirá dónde se concentran las liquidaciones del mercado para leer mejor el precio.") },
       { icon: "👥", title: tr("Tu comunidad"), text: tr("Publicá tus señales y resultados en tu grupo o canal de Telegram, sin copiar y pegar.") },
