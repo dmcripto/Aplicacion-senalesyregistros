@@ -17,7 +17,7 @@ export const LEGAL_LINKS = {
 };
 
 export const disclaimer = () =>
-  t("VELTRIX es una herramienta de registro y no constituye asesoramiento financiero ni recomendación de inversión. Operar implica riesgo de pérdida y los resultados pasados no garantizan resultados futuros. No está afiliado a TradingView.");
+  t("VELTRIX no constituye asesoramiento financiero ni recomendación de inversión. Operar implica riesgo de pérdida y los resultados pasados no garantizan resultados futuros. No está afiliado a TradingView.");
 
 export const openLink = (url: string) => Linking.openURL(url).catch(() => {});
 
