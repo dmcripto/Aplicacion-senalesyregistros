@@ -189,11 +189,11 @@ export function partialCardSvg(t: CommunityTrade, level: number, r: number, lang
   <circle cx="540" cy="318" r="24" fill="${CARD_C.bull}"/>
   <text x="540" y="548" font-size="${cardFit(title, 92, 940)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(title)}</text>
   <text x="540" y="634" font-size="${cardFit(pair, 64, 940)}" font-weight="700" text-anchor="middle" fill="#ffffff">${esc(pair)}</text>
-  <text x="540" y="830" font-size="${cardFit(profit, 210, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
-  <text x="540" y="884" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
-  <rect x="60" y="906" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
-  <text x="96" y="944" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
-  <text x="96" y="990" font-size="${cardFit(advice, 32, 890)}" font-weight="700" fill="#ffffff">${esc(advice)}</text>`;
+  <text x="540" y="816" font-size="${cardFit(profit, 196, 900)}" font-weight="700" text-anchor="middle" fill="${CARD_C.bull}">${esc(profit)}</text>
+  <text x="540" y="866" font-size="30" font-weight="700" letter-spacing="5" text-anchor="middle" fill="${CARD_C.muted}">${esc(tx.profit)} · ${esc(cardR(r))}</text>
+  <rect x="60" y="886" width="960" height="102" rx="22" fill="${CARD_C.cyan}" fill-opacity="0.1" stroke="${CARD_C.cyan}" stroke-opacity="0.6" stroke-width="2"/>
+  <text x="96" y="924" font-size="19" font-weight="700" letter-spacing="4" fill="${CARD_C.cyan}">${esc(tx.manage)}</text>
+  <text x="96" y="970" font-size="${cardFit(advice, 32, 890)}" font-weight="700" fill="#ffffff">${esc(advice)}</text>`;
   return cardFrame(lang, `${tx.target} ${n}`, logo, body);
 }
 
