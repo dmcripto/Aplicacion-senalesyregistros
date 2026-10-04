@@ -52,6 +52,20 @@ describe("dibujo de la tarjeta (SVG)", () => {
     expect(svg).not.toContain("A<B>");
   });
 
+  it("el aviso de Target 1 muestra el profit, el R y la gestión sugerida (en español e inglés)", () => {
+    const svg = card.partialCardSvg(sig, 65500, 1, "es");
+    expect(svg).toContain("TARGET 1 ALCANZADO");
+    expect(svg).toContain("BTC/USDT · LONG");
+    expect(svg).toContain("+0.77%");
+    expect(svg).toContain("+1.0R");
+    expect(svg).toContain("Cerrar 50% y mover el SL a break-even");
+    const en = card.partialCardSvg({ symbol: "ETHUSDT", direction: "SHORT", entry: 3050, tp: 2750, sl: 3100 }, 3000, 1, "en");
+    expect(en).toContain("TARGET 1 HIT");
+    expect(en).toContain("ETH/USDT · SHORT");
+    expect(en).toContain("+1.64%"); // en una venta la ganancia es que baje
+    expect(en).toContain("Close 50% and move the SL to break-even");
+  });
+
   it("el resultado muestra TP o SL con su R", () => {
     expect(card.resultCardSvg("BTCUSDT", "TP", 3, "es", { label: "Cierre automático" })).toContain("+3.0R");
     const sl = card.resultCardSvg("ETHUSDT", "SL", -1, "en");
@@ -81,6 +95,12 @@ describe("imagen PNG", () => {
     expect(img!.caption).toContain("asesoramiento");
     expect(img!.caption).toContain("veltrix-trading.vercel.app");
     expect(img!.caption).not.toMatch(/65000|66500|64500|BTC/);
+  });
+
+  it("también el aviso de Target 1", async () => {
+    const img = await card.partialCardImage(sig, 65500, 1, "es");
+    expect(img?.png.length).toBeGreaterThan(20_000);
+    expect(img?.caption).toContain("asesoramiento");
   });
 
   it("también la tarjeta de resultado", async () => {

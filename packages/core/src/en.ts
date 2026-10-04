@@ -715,4 +715,10 @@ export const EN: Record<string, string> = {
   "No se pudo completar.": "It couldn't be completed.",
   "Vas a dejar de recibir las señales por WhatsApp.": "You will stop receiving signals on WhatsApp.",
   "Cada señal que llegue a tu cuenta y cada vez que se toque un TP o un SL. Para pausar desde WhatsApp, respondé BAJA.": "Every signal that reaches your account and every time a TP or SL is hit. To pause from WhatsApp, reply BAJA.",
+  "Aviso de Target 1 activado.": "Target 1 alert turned on.",
+  "Aviso de Target 1 desactivado.": "Target 1 alert turned off.",
+  "Aviso de Target 1:": "Target 1 alert:",
+  "cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.": "when an open trade moves 1R in your favor, we alert you (and your community) to take partial profits and move the SL to break-even.",
+  "AVISO DE TARGET 1": "TARGET 1 ALERT",
+  "Cuando una operación abierta avanza 1R a favor, te avisamos (y a tu comunidad) para tomar beneficios parciales y mover el SL a break-even.": "When an open trade moves 1R in your favor, we alert you (and your community) to take partial profits and move the SL to break-even.",
 };
