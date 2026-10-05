@@ -707,7 +707,7 @@ export function summarize(trades: Trade[], period: SharePeriod, now = new Date()
   let label = tr("Todo el historial");
   if (period === "week") {
     from = now.getTime() - 7 * 86_400_000;
-    label = tr("Últimos 7 días");
+    label = tr("Mi semana en R");
   } else if (period === "month") {
     from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     label = now.toLocaleDateString(locale(), { month: "long", year: "numeric" });
@@ -1443,4 +1443,15 @@ export interface InviteInfo {
   code: string;
   invited: number; // cuentas creadas con tu código
   active: number; // de esas, las que ya cargaron al menos una operación
+}
+
+/** Texto que acompaña a la tarjeta de resultados al publicarla (lleva el enlace de invitado). */
+export function resultShareText(s: ResultSummary, link: string): string {
+  if (s.closed === 0) return tr("Estoy llevando mi diario de trading en VELTRIX. Probalo con mi enlace: {link}", { link });
+  return tr("{label}: {r}R en {n} operaciones con VELTRIX 📈 Llevá tu diario con mi enlace: {link}", {
+    label: s.label,
+    r: fmtR(s.netR),
+    n: s.closed,
+    link,
+  });
 }
