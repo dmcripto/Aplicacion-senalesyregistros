@@ -1,13 +1,15 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
 import { captureRef } from "react-native-view-shot";
-import { fmtR, summarize } from "@dmcripto/core";
+import { SITE_URL, fmtR, inviteLink, resultShareText, summarize } from "@dmcripto/core";
 import type { SharePeriod, Trade } from "@dmcripto/core";
 import { AreaChart, Logo } from "./ui";
 import { colors } from "./theme";
+import { supabase } from "./supabaseClient";
 import { t } from "@dmcripto/core";
 
 const PERIODS: Array<[SharePeriod, string]> = [
@@ -17,12 +19,34 @@ const PERIODS: Array<[SharePeriod, string]> = [
 ];
 
 export default function ShareCardModal({ visible, trades, onClose }: { visible: boolean; trades: Trade[]; onClose: () => void }) {
-  const [period, setPeriod] = useState<SharePeriod>("month");
+  const [period, setPeriod] = useState<SharePeriod>("week");
   const [busy, setBusy] = useState(false);
+  const [code, setCode] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const cardRef = useRef<View>(null);
   const s = useMemo(() => summarize(trades, period), [trades, period]);
   const good = s.netR >= 0;
   const accent = s.closed === 0 ? colors.fog : good ? colors.bull : colors.bear;
+
+  // Código de invitación de la persona (si la función todavía no existe en el servidor, la tarjeta sale sin código).
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("my_invite");
+      const row = Array.isArray(data) ? data[0] : data;
+      if (alive && !error && row?.code) setCode(String(row.code));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const link = code ? inviteLink(code) : `${SITE_URL}/?ref=tarjeta`;
+  const copyPost = async () => {
+    await Clipboard.setStringAsync(resultShareText(s, link));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
 
   const share = async () => {
     setBusy(true);
@@ -92,6 +116,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             </View>
 
             <Text allowFontScaling={false} style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
+            <Text allowFontScaling={false} style={st.addr}>{code ? `veltrix-trading.vercel.app · ${t("Código")} ${code}` : "veltrix-trading.vercel.app"}</Text>
             <View style={st.badge}>
               <Svg width={16} height={18} viewBox="0 0 42 48">
                 <Path d="M0 0 L23 24 L0 48 Z" fill="#00a0ff" />
@@ -109,6 +134,9 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
 
           <TouchableOpacity style={st.shareBtn} onPress={share} disabled={busy}>
             {busy ? <ActivityIndicator color={colors.ink} /> : <Text style={st.shareText}>{t("Compartir imagen")}</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={st.copyBtn} onPress={copyPost}>
+            <Text style={st.copyText}>{copied ? t("Texto copiado. Pegalo en tu post.") : t("Copiar texto del post")}</Text>
           </TouchableOpacity>
           <Text style={st.note}>{t("Solo muestra resultados en R: sin montos de dinero ni datos de tu cuenta.")}</Text>
         </View>
@@ -142,18 +170,21 @@ const st = StyleSheet.create({
   brandSub: { color: colors.gold, fontSize: 9.5, fontWeight: "700" },
   period: { color: colors.snow, fontWeight: "800", fontSize: 10.5 },
   periodSub: { color: colors.fog, fontSize: 9 },
-  kicker: { color: colors.fog, fontSize: 9, fontWeight: "800", letterSpacing: 1.5, textAlign: "center", marginTop: 10 },
-  big: { fontSize: 52, lineHeight: 60, fontWeight: "900", textAlign: "center", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 },
+  kicker: { color: colors.fog, fontSize: 9, fontWeight: "800", letterSpacing: 1.5, textAlign: "center", marginTop: 6 },
+  big: { fontSize: 52, lineHeight: 56, fontWeight: "900", textAlign: "center", textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 },
   chart: { backgroundColor: "rgba(16,23,32,0.85)", borderRadius: 10, borderWidth: 1, borderColor: colors.line, padding: 8, marginTop: 4 },
-  stats: { flexDirection: "row", gap: 6, marginTop: 8 },
+  stats: { flexDirection: "row", gap: 6, marginTop: 6 },
   stat: { flex: 1, backgroundColor: "rgba(16,23,32,0.85)", borderRadius: 8, borderWidth: 1, borderColor: colors.line, paddingVertical: 4, alignItems: "center" },
   statLabel: { color: colors.fog, fontSize: 7.5, lineHeight: 10, fontWeight: "800", letterSpacing: 0.8 },
   statValue: { color: colors.snow, fontSize: 17, lineHeight: 21, fontWeight: "900", marginTop: 1 },
   cta: { color: colors.snow, fontSize: 10.5, lineHeight: 14, fontWeight: "800", textAlign: "center", marginTop: 7 },
-  badge: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#000", borderWidth: 1, borderColor: "#a6a6a6", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, marginTop: 5 },
+  badge: { alignSelf: "center", flexDirection: "row", alignItems: "center", gap: 7, backgroundColor: "#000", borderWidth: 1, borderColor: "#a6a6a6", borderRadius: 7, paddingHorizontal: 10, paddingVertical: 4, marginTop: 3 },
   badgeTop: { color: "#fff", fontSize: 5.5, lineHeight: 8, fontWeight: "700", letterSpacing: 0.4 },
   badgeMain: { color: "#fff", fontSize: 13, lineHeight: 16, fontWeight: "700", marginTop: -1 },
-  legal: { color: colors.dim, fontSize: 6.5, lineHeight: 9, textAlign: "center", marginTop: 4 },
+  legal: { color: colors.dim, fontSize: 6.5, lineHeight: 9, textAlign: "center", marginTop: 2 },
+  addr: { color: colors.cyan, fontSize: 9, lineHeight: 12, fontWeight: "800", textAlign: "center", marginTop: 1 },
+  copyBtn: { borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 12, paddingVertical: 12, alignItems: "center", marginTop: 8 },
+  copyText: { color: colors.gold, fontWeight: "800", fontSize: 12.5 },
   shareBtn: { backgroundColor: colors.gold, borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 14 },
   shareText: { color: colors.ink, fontWeight: "900", fontSize: 14 },
   note: { color: colors.dim, fontSize: 10.5, textAlign: "center", marginTop: 8 },

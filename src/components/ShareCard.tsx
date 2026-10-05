@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { cx, fmtR, summarize } from "../lib";
+import { SITE_URL, cx, fmtR, inviteLink, resultShareText, summarize } from "../lib";
+import { supabase } from "../supabaseClient";
 import type { ResultSummary, SharePeriod, Trade } from "../lib";
 import { t } from "../lib";
 
@@ -21,7 +22,7 @@ const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: num
   c.closePath();
 };
 
-function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElement | null) {
+function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElement | null, code: string | null) {
   const c = canvas.getContext("2d");
   if (!c) return;
   canvas.width = W;
@@ -151,8 +152,11 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   // Pie
   c.fillStyle = "#e8eef6";
   c.font = font(700, 34);
-  c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1150);
-  playBadge(c, W / 2, 1180);
+  c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1146);
+  c.fillStyle = "#2ec4f1";
+  c.font = font(700, 28);
+  c.fillText(code ? `veltrix-trading.vercel.app  ·  ${t("Código")} ${code}` : "veltrix-trading.vercel.app", W / 2, 1190);
+  playBadge(c, W / 2, 1208);
   c.textAlign = "center";
   c.fillStyle = "#5f7389";
   c.font = font(500, 20);
@@ -201,10 +205,24 @@ export default function ShareCard({
   onClose: () => void;
   notify: (msg: string, kind?: "ok" | "err" | "info") => void;
 }) {
-  const [period, setPeriod] = useState<SharePeriod>("month");
+  const [period, setPeriod] = useState<SharePeriod>("week");
+  const [code, setCode] = useState<string | null>(null);
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   const summary = useMemo(() => summarize(trades, period), [trades, period]);
+
+  // Código de invitación de la persona (si la función todavía no existe en el servidor, la tarjeta sale sin código).
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const { data, error } = await supabase.rpc("my_invite");
+      const row = Array.isArray(data) ? data[0] : data;
+      if (alive && !error && row?.code) setCode(String(row.code));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const img = new Image();
@@ -220,13 +238,13 @@ export default function ShareCard({
       } catch {
         /* se usa la fuente del sistema */
       }
-      if (!cancelled && ref.current) draw(ref.current, summary, logo);
+      if (!cancelled && ref.current) draw(ref.current, summary, logo, code);
     };
     run();
     return () => {
       cancelled = true;
     };
-  }, [summary, logo]);
+  }, [summary, logo, code]);
 
   // toBlob no devuelve nada (avisa con la función que recibe), así que no se puede encadenar con «??»: eso resolvía siempre con null.
   const blob = () =>
@@ -275,13 +293,24 @@ export default function ShareCard({
     window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
   };
 
+  const link = code ? inviteLink(code) : `${SITE_URL}/?ref=tarjeta`;
+  const postText = resultShareText(summary, link);
+
+  /** Abre X con el post escrito y baja la imagen para adjuntarla (X no deja adjuntar imágenes desde un enlace). */
+  const postOnX = async () => {
+    const win = window.open(`https://x.com/intent/post?text=${encodeURIComponent(postText)}`, "_blank", "noopener");
+    if (!win) notify(t("El navegador bloqueó la ventana nueva. Permitila e intentá de nuevo."), "err");
+    const b = await blob();
+    if (b && saveFile(b)) notify(t("Imagen descargada: adjuntala a tu post en X."), "info");
+  };
+
   const share = async () => {
     const b = await blob();
     if (!b) return;
     const file = new File([b], "veltrix-resultado.png", { type: "image/png" });
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: t("Mi resultado en VELTRIX") });
+        await navigator.share({ files: [file], title: t("Mi resultado en VELTRIX"), text: postText });
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return; // el usuario canceló
         // El navegador no dejó abrir el menú de compartir: se descarga la imagen para que se pueda mandar igual.
@@ -336,6 +365,12 @@ export default function ShareCard({
               {t("Compartir")}
             </button>
           </div>
+          <button
+            onClick={postOnX}
+            className="w-full rounded-md border border-cyan/50 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/10"
+          >
+            {t("Publicar en X")}
+          </button>
           <button onClick={openImage} className="w-full text-center text-[11px] font-semibold text-dim underline hover:text-fog">
             {t("¿No se descargó? Abrir la imagen")}
           </button>
