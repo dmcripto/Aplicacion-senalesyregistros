@@ -18,6 +18,7 @@ import { supabase } from "../supabaseClient";
 import { Logo } from "../ui";
 import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
+import { cleanInvite } from "@dmcripto/core";
 import { LangSwitch } from "../lang";
 import { getLang, t, welcomeContent } from "@dmcripto/core";
 import LiveDemo from "../LiveDemo";
@@ -59,6 +60,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
@@ -82,7 +84,8 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         if (err) throw err;
       } else {
         if (!accepted) throw new Error(t("Tenés que aceptar los términos de uso y la política de privacidad."));
-        const { error: err } = await supabase.auth.signUp({ email, password });
+        const invite = cleanInvite(inviteCode);
+        const { error: err } = await supabase.auth.signUp({ email, password, options: invite ? { data: { invite_code: invite } } : undefined });
         if (err) throw err;
         setNotice(t("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada."));
       }
@@ -240,6 +243,22 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
             <Text style={styles.link}>{t("Reenviar confirmación")}</Text>
           </TouchableOpacity>
         </View>
+
+        {mode === "signup" && (
+          <>
+            <Text style={styles.label}>{t("Código de invitación (opcional)")}</Text>
+            <TextInput
+              value={inviteCode}
+              onChangeText={(v) => setInviteCode(v.toUpperCase())}
+              placeholder="ABCD2345"
+              placeholderTextColor={colors.dim}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={12}
+              style={styles.input}
+            />
+          </>
+        )}
 
         {mode === "signup" && (
           <TouchableOpacity style={styles.accept} onPress={() => setAccepted((v) => !v)} activeOpacity={0.8}>

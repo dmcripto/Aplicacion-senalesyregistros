@@ -13,6 +13,7 @@ import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
+import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
 import WhatsAppSection from "../WhatsAppSection";
 import { useMoney } from "../money";
@@ -252,6 +253,8 @@ export default function SettingsScreen({
 
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection onSaveMoney={onSaveMoney} />
+
+      <InviteSection />
 
       <Text style={styles.sectionTitle}>{t("LÍMITES DIARIOS")}</Text>
       <View style={styles.card}>

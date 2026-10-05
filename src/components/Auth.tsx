@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "../supabaseClient";
-import { COMMUNITY_URL, cx } from "../lib";
+import { COMMUNITY_URL, cleanInvite, cx } from "../lib";
 import { IconAlert, IconTelegram, ShieldLogo } from "../ui";
 import { LangSwitch, legalUrl } from "../lang";
 import { getLang, t, welcomeContent } from "../lib";
 import LiveDemo from "./LiveDemo";
 import { trackGlow } from "../glowTracking";
-import { trackSignup } from "../refTracking";
+import { pendingInvite, trackSignup } from "../refTracking";
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
+  const [inviteCode, setInviteCode] = useState(() => pendingInvite() ?? "");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +37,8 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
       } else {
-        const { error: err } = await supabase.auth.signUp({ email, password });
+        const invite = cleanInvite(inviteCode);
+        const { error: err } = await supabase.auth.signUp({ email, password, options: invite ? { data: { invite_code: invite } } : undefined });
         if (err) throw err;
         trackSignup();
         setNotice(t("Cuenta creada. Si tu proyecto pide confirmación por email, revisá tu bandeja de entrada."));
@@ -231,6 +233,13 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           )}
           {notice && (
             <div className="rounded-md border border-cyan/30 bg-ink px-3 py-2 text-[12px] text-cyan">{notice}</div>
+          )}
+
+          {mode === "signup" && (
+            <label className="block">
+              <span className="mb-1 block text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog">{t("Código de invitación (opcional)")}</span>
+              <input value={inviteCode} onChange={(e) => setInviteCode(e.target.value.toUpperCase())} maxLength={12} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="ABCD2345" className="field num uppercase" />
+            </label>
           )}
 
           {mode === "signup" && (
