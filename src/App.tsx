@@ -68,6 +68,7 @@ import TagStats from "./components/TagStats";
 import Analysis from "./components/Analysis";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
+import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
@@ -873,6 +874,9 @@ function Dashboard({ userId }: { userId: string }) {
               </Reveal>
               <Reveal delay={165}>
                 <MoneyCard money={money} trades={trades} onSave={persistMoney} />
+              </Reveal>
+              <Reveal delay={170}>
+                <InviteCard notify={notify} />
               </Reveal>
             </div>
           </div>

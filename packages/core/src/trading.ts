@@ -1421,3 +1421,26 @@ export function cleanRef(raw: unknown): string | null {
   const v = raw.trim().toLowerCase();
   return /^[a-z0-9_-]{1,40}$/.test(v) ? v : null;
 }
+
+
+// ─── Programa de invitados ──────────────────────────────────────────────────
+
+export const SITE_URL = "https://veltrix-trading.vercel.app";
+
+/** Código de invitación válido (letras y números, 6 a 12), en mayúsculas. Devuelve null si no sirve. */
+export function cleanInvite(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim().toUpperCase();
+  return /^[A-Z0-9]{6,12}$/.test(v) ? v : null;
+}
+
+export const inviteLink = (code: string) => `${SITE_URL}/?inv=${code}`;
+
+export const inviteMessage = (code: string) =>
+  tr("Estoy llevando mi diario de trading en VELTRIX. Probalo con mi enlace: {link}", { link: inviteLink(code) });
+
+export interface InviteInfo {
+  code: string;
+  invited: number; // cuentas creadas con tu código
+  active: number; // de esas, las que ya cargaron al menos una operación
+}
