@@ -32,6 +32,11 @@
     .step:last-child { border-bottom:0; }
     .step b { color:var(--snow); }
     .n { flex:none; width:26px; height:26px; border-radius:50%; background:var(--cyan); color:#04202b; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; }
+    .trust { margin-top:18px; text-align:left; background:rgba(15,22,31,.88); border:1px solid rgba(22,217,138,.35); border-radius:14px; padding:14px 16px; }
+    .trust h2 { margin:0 0 6px; font-size:14px; color:var(--bull); letter-spacing:.02em; }
+    .trust p { margin:0; font-size:13px; line-height:1.5; color:var(--fog); }
+    .trust img { display:block; width:100%; max-width:230px; height:auto; margin:12px auto 0; border-radius:14px; border:1px solid var(--line); }
+    .trust small { display:block; margin-top:10px; font-size:11.5px; line-height:1.45; color:#6f8399; }
     .note { margin-top:16px; font-size:13px; color:var(--fog); line-height:1.5; }
     .note a { color:var(--cyan); }
     .chip { display:inline-block; margin-top:14px; padding:5px 12px; border:1px solid rgba(22,217,138,.4); background:rgba(22,217,138,.1); color:var(--bull); border-radius:999px; font-size:12px; font-weight:700; }
@@ -57,6 +62,13 @@
       <div class="step"><span class="n">1</span><span data-es="<b>Tocá el botón desde tu celular Android</b>: la descarga empieza sola. Si Chrome avisa que el archivo puede ser dañino, tocá <b>Descargar de todos modos</b> (es el aviso de siempre con las apps que se instalan por fuera de Google Play)." data-en="<b>Tap the button on your Android phone</b>: the download starts by itself. If Chrome warns the file may be harmful, tap <b>Download anyway</b> (it's the usual notice for apps installed outside Google Play)."></span></div>
       <div class="step"><span class="n">2</span><span data-es="Abrí el archivo descargado y tocá <b>Instalar</b>. Si Android lo pide, permití <b>instalar apps de esta fuente</b>." data-en="Open the downloaded file and tap <b>Install</b>. If Android asks, allow <b>installing apps from this source</b>."></span></div>
       <div class="step"><span class="n">3</span><span data-es="Abrí <b>VELTRIX</b>, creá tu cuenta y listo." data-en="Open <b>VELTRIX</b>, create your account and you're set."></span></div>
+    </section>
+
+    <section class="trust">
+      <h2 data-es="🛡️ La revisa Google Play Protect" data-en="🛡️ Reviewed by Google Play Protect"></h2>
+      <p data-es="Al instalarla, Android analiza la app con <b>Google Play Protect</b>. Esto es lo que mostró en una instalación real de VELTRIX: <b>«Esta app parece segura»</b>." data-en="When you install it, Android scans the app with <b>Google Play Protect</b>. This is what it showed on a real VELTRIX install: <b>“This app looks safe”</b>."></p>
+      <img src="/app/play-protect.webp" width="609" height="851" loading="lazy" alt="Google Play Protect: Esta app parece segura. VELTRIX. Puedes continuar con la instalación." />
+      <small data-es="Es el análisis automático de Android: no es una aprobación de Google Play ni una garantía absoluta. Por eso la app se instala por fuera de la tienda y Chrome puede avisar." data-en="This is Android's automatic scan: it is not a Google Play approval or an absolute guarantee. That is why the app installs outside the store and Chrome may show a warning."></small>
     </section>
 
     <p class="note" data-es='¿No se descargó? <a href="https://expo.dev/accounts/dmcriptos-team/projects/dmcripto-senales/builds/d1f29485-a500-474e-bb52-f81b6609f63e">Abrí la página de instalación</a>.' data-en='Didn&#39;t download? <a href="https://expo.dev/accounts/dmcriptos-team/projects/dmcripto-senales/builds/d1f29485-a500-474e-bb52-f81b6609f63e">Open the install page</a>.'></p>
