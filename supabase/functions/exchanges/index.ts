@@ -1,7 +1,7 @@
-// Conexión de solo lectura con exchanges (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin).
+// Conexión de solo lectura con exchanges (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin, BingX).
 //
 //   POST /functions/v1/exchanges   (con la sesión del usuario en Authorization)
-//   { "action": "connect", "exchange": "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin", "apiKey": "...", "apiSecret": "...", "passphrase": "..." }
+//   { "action": "connect", "exchange": "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin" | "bingx", "apiKey": "...", "apiSecret": "...", "passphrase": "..." }
 //     (la contraseña de la API, passphrase, solo la piden Bitget, OKX y KuCoin)
 //   { "action": "sync" }
 //

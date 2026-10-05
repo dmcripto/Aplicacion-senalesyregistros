@@ -23,7 +23,7 @@ export interface Trade {
   closedAt?: string;
   notes?: string;
   autoClosed?: boolean;
-  source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc | gate | bitget | okx | kucoin)
+  source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc | gate | bitget | okx | kucoin | bingx)
   tags?: string[];
 }
 
@@ -956,7 +956,7 @@ export const fmtMoney = (n: number) =>
 
 // ─── Exchanges conectados (solo lectura) ────────────────────────────────────
 
-export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin";
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin" | "bingx";
 export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: boolean }> = [
   { id: "binance", name: "Binance" },
   { id: "bybit", name: "Bybit" },
@@ -966,6 +966,7 @@ export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: b
   { id: "bitget", name: "Bitget", passphrase: true }, // pide una contraseña de la API (passphrase)
   { id: "okx", name: "OKX", passphrase: true },
   { id: "kucoin", name: "KuCoin", passphrase: true },
+  { id: "bingx", name: "BingX" },
 ];
 export const needsPassphrase = (id: string) => !!EXCHANGE_LIST.find((e) => e.id === id)?.passphrase;
 export const exchangeName = (id: string) => EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id;
@@ -1036,6 +1037,13 @@ export function exchangeSteps(id: ExchangeId): string[] {
         tr("En permisos dejá SOLO \"General\" (lectura). No actives operar, retirar ni transferir."),
         tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
         lastPass,
+      ];
+    case "bingx":
+      return [
+        tr("En BingX: Perfil → Gestión de API → Crear API."),
+        tr("Ponele un nombre (por ejemplo VELTRIX) y dejá SOLO el permiso de lectura. No actives operar, retirar ni transferir."),
+        tr("Si te deja elegir, dejá la restricción de IP sin configurar (con solo lectura es seguro)."),
+        last,
       ];
   }
 }
@@ -1207,7 +1215,7 @@ export function welcomeContent(): { headline: string; lead: string; chips: strin
     features: [
       { icon: "📡", title: tr("Señales en vivo"), text: tr("Conectá tus alertas de TradingView: cada señal llega sola a tu celular y a Telegram, con una tarjeta lista para compartir.") },
       { icon: "🎯", title: tr("Targets y cierre automático"), text: tr("TP1, TP2, TP3: te avisamos cada vez que el precio toca un target, y cerramos solas tus operaciones cripto en el TP o el SL.") },
-      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX y KuCoin.") },
+      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin y BingX.") },
       { icon: "🛡️", title: tr("Control de riesgo"), text: tr("Calculá cuánto arriesgar en cada operación y poné límites diarios para cuidar tu capital.") },
       { icon: "🗺️", title: tr("Mapa de liquidaciones"), text: tr("Mirá dónde se concentran las liquidaciones del mercado para leer mejor el precio.") },
       { icon: "👥", title: tr("Tu comunidad"), text: tr("Publicá tus señales y resultados en tu grupo o canal de Telegram, sin copiar y pegar.") },

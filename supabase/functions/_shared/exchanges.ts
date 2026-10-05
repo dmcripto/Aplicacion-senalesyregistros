@@ -1,11 +1,11 @@
 // ─── VELTRIX · Conexión de solo lectura con exchanges ─────────────────────
-// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix, MEXC, Gate, Bitget, OKX y KuCoin (futuros). Solo se hacen pedidos
+// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix, MEXC, Gate, Bitget, OKX, KuCoin y BingX (futuros). Solo se hacen pedidos
 // GET de lectura: VELTRIX nunca opera ni mueve fondos.
 // Sin dependencias de Deno ni de Node: solo fetch y WebCrypto, para poder probarlo en local.
 
-export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin";
-export const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc", "gate", "bitget", "okx", "kucoin"];
-export const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC", gate: "Gate", bitget: "Bitget", okx: "OKX", kucoin: "KuCoin" };
+export type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin" | "bingx";
+export const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc", "gate", "bitget", "okx", "kucoin", "bingx"];
+export const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC", gate: "Gate", bitget: "Bitget", okx: "OKX", kucoin: "KuCoin", bingx: "BingX" };
 /** Exchanges que además de la clave y la secreta piden una contraseña de la API (passphrase). */
 export const NEEDS_PASSPHRASE: ExchangeId[] = ["bitget", "okx", "kucoin"];
 
@@ -934,6 +934,103 @@ export async function kucoinFetchClosed(key: string, secret: string, since: numb
   return parseKucoinClosed(raw, mults);
 }
 
+// ─── BingX (futuros perpetuos USDT) ─────────────────────────────────────────
+
+const BINGX = "https://open-api.bingx.com";
+const BINGX_HISTORY = "/openApi/swap/v1/trade/positionHistory";
+const BINGX_INCOME = "/openApi/swap/v2/user/income";
+
+/** Firma de BingX: HMAC-SHA256 (hex) de los parámetros ordenados por nombre (clave=valor&...), con el timestamp incluido. */
+export async function bingxSign(query: string, secret: string) {
+  return hmacHex(secret, query);
+}
+
+/** Pide a BingX. Con `soft`, un error de parámetros devuelve null en vez de cortar (para probar otra forma de pedirlo). */
+async function bingxGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, soft = false) {
+  const all = { ...params, recvWindow: 10_000, timestamp: Date.now() };
+  const sorted = Object.fromEntries(Object.entries(all).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const raw = Object.entries(sorted).map(([k, v]) => `${k}=${v}`).join("&");
+  const sig = await bingxSign(raw, secret);
+  const r = await getJson(fetchFn, `${BINGX}${path}?${qs(sorted)}&signature=${sig}`, { "X-BX-APIKEY": key }, "BingX");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (soft && (c === 100400 || c === 80014 || /symbol/i.test(String(r.body?.msg ?? "")))) return null;
+    if (c === 100001 || c === 100412 || c === 100413) throw new ExchangeError("BingX no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 100004) throw new ExchangeError("La clave de BingX no tiene permiso para leer Futuros. Activá la lectura y volvé a intentar.");
+    if (c === 100419) throw new ExchangeError("La clave de BingX tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === 100410 || c === 100500) throw new ExchangeError("BingX está ocupado en este momento. Probá de nuevo en unos minutos.");
+    throw new ExchangeError(`BingX respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+export async function bingxCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await bingxGet(fetchFn, BINGX_INCOME, { limit: 1 }, key, secret);
+    // BingX no permite confirmar con certeza los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "BingX no nos deja confirmar los permisos de la clave. Verificá en BingX que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+export function parseBingxClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const entry = num(r.avgPrice), exit = num(r.avgClosePrice);
+    const side = String(r.positionSide ?? "").toUpperCase();
+    // En modo unidireccional el lado no viene como LONG/SHORT: se deduce del recorrido del precio y del resultado.
+    const dirOfPrice = (exit - entry) * num(r.realisedProfit);
+    const direction = side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : dirOfPrice > 0 ? "LONG" : dirOfPrice < 0 ? "SHORT" : null;
+    const qty = num(r.closePositionAmt) > 0 ? num(r.closePositionAmt) : num(r.positionAmt);
+    const closedAt = Number(r.updateTime ?? r.openTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol).replace(/-/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      // netProfit ya descuenta comisiones y funding (en la muestra de BingX: 102,89 − 0,34 − 2,92 = 99,63).
+      pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.realisedProfit) + num(r.positionCommission) + num(r.totalFunding),
+      openedAt: Number(r.openTime ?? closedAt),
+      closedAt,
+    });
+  }
+  return out;
+}
+
+async function bingxPages(fetchFn: FetchFn, params: Record<string, string | number>, key: string, secret: string, soft: boolean): Promise<any[] | null> {
+  const rows: any[] = [];
+  for (let pageIndex = 1; pageIndex <= 30; pageIndex++) {
+    const data = await bingxGet(fetchFn, BINGX_HISTORY, { ...params, pageIndex, pageSize: 100 }, key, secret, soft);
+    if (data === null) return null;
+    const list: any[] = data?.positionHistory ?? [];
+    rows.push(...list);
+    if (list.length < 100) break;
+  }
+  return rows;
+}
+
+export async function bingxFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    // Primero se pide todo junto; si BingX exige el par, se arma la lista de pares a partir de los resultados cerrados del período.
+    let rows = await bingxPages(fetchFn, { startTs: s, endTs: e }, key, secret, true);
+    if (rows === null) {
+      const income: any[] = (await bingxGet(fetchFn, BINGX_INCOME, { incomeType: "REALIZED_PNL", startTime: s, endTime: e, limit: 1000 }, key, secret)) ?? [];
+      rows = [];
+      for (const symbol of new Set(income.map((i) => String(i.symbol ?? "")).filter(Boolean))) {
+        rows.push(...((await bingxPages(fetchFn, { symbol, startTs: s, endTs: e }, key, secret, false)) ?? []));
+      }
+    }
+    all.push(...parseBingxClosed(rows));
+  }
+  return all;
+}
+
 // ─── Común ──────────────────────────────────────────────────────────────────
 
 export const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: FetchFn, pass?: string) =>
@@ -944,7 +1041,8 @@ export const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: 
   : ex === "gate" ? gateCheck(key, secret, fetchFn)
   : ex === "bitget" ? bitgetCheck(key, secret, fetchFn, pass)
   : ex === "okx" ? okxCheck(key, secret, fetchFn, pass)
-  : kucoinCheck(key, secret, fetchFn, pass);
+  : ex === "kucoin" ? kucoinCheck(key, secret, fetchFn, pass)
+  : bingxCheck(key, secret, fetchFn);
 
 export const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: number, now?: number, fetchFn?: FetchFn, pass?: string) =>
   ex === "binance" ? binanceFetchClosed(key, secret, since, now, fetchFn)
@@ -954,7 +1052,8 @@ export const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: 
   : ex === "gate" ? gateFetchClosed(key, secret, since, now, fetchFn)
   : ex === "bitget" ? bitgetFetchClosed(key, secret, since, now, fetchFn, pass)
   : ex === "okx" ? okxFetchClosed(key, secret, since, now, fetchFn, pass)
-  : kucoinFetchClosed(key, secret, since, now, fetchFn, pass);
+  : ex === "kucoin" ? kucoinFetchClosed(key, secret, since, now, fetchFn, pass)
+  : bingxFetchClosed(key, secret, since, now, fetchFn);
 
 export interface TradeRow {
   symbol: string;
