@@ -422,3 +422,92 @@ describe("KuCoin", () => {
     expect((await ex.checkKey("kucoin", "K", "S", err("400006"), "P")).error).toMatch(/restricción de IP/);
   });
 });
+
+describe("BingX", () => {
+  it("firma: HMAC-SHA256 de los parámetros ordenados", async () => {
+    const q = "pageIndex=1&pageSize=100&recvWindow=10000&startTs=1&timestamp=1700000000000";
+    expect(await ex.bingxSign(q, "SECRET")).toBe(createHmac("sha256", "SECRET").update(q).digest("hex"));
+  });
+
+  // Ejemplo de la forma real de la respuesta de BingX: netProfit = realisedProfit + comisión + funding.
+  const ltc = { positionId: "1861675561156571136", symbol: "LTC-USDT", isolated: false, positionSide: "LONG", openTime: 1732693017000, updateTime: 1733310292000, avgPrice: "95.18", avgClosePrice: "129.48", realisedProfit: "102.89", netProfit: "99.63", positionAmt: "30.0", closePositionAmt: "30.0", leverage: 6, closeAllPositions: true, positionCommission: "-0.33699650000000003", totalFunding: "-2.921461693902908" };
+
+  it("toma el resultado neto, el tamaño en moneda base y el lado", () => {
+    const [p] = ex.parseBingxClosed([ltc, { ...ltc, positionId: "2", positionSide: "SHORT", avgPrice: "130", avgClosePrice: "120", netProfit: "299" }]);
+    expect(p).toMatchObject({ externalId: "LTC-USDT:1861675561156571136", symbol: "LTCUSDT", direction: "LONG", qty: 30, entry: 95.18, exit: 129.48, pnl: 99.63, closedAt: 1733310292000, openedAt: 1732693017000 });
+    expect(ex.parseBingxClosed([{ ...ltc, positionSide: "SHORT", avgPrice: "130", avgClosePrice: "120" }])[0].direction).toBe("SHORT");
+    // sin netProfit se arma con comisión y funding (con su signo)
+    expect(ex.parseBingxClosed([{ ...ltc, netProfit: undefined }])[0].pnl).toBeCloseTo(102.89 - 0.3369965 - 2.921461693902908, 6);
+  });
+
+  it("en modo unidireccional deduce el lado del precio y del resultado", () => {
+    const one = { ...ltc, positionSide: "BOTH" };
+    expect(ex.parseBingxClosed([one])[0].direction).toBe("LONG"); // subió y ganó
+    expect(ex.parseBingxClosed([{ ...one, avgClosePrice: "80", realisedProfit: "450" }])[0].direction).toBe("SHORT"); // bajó y ganó
+    expect(ex.parseBingxClosed([{ ...one, avgClosePrice: "80", realisedProfit: "-450" }])[0].direction).toBe("LONG"); // bajó y perdió
+  });
+
+  it("verifica la clave, firma el pedido y avisa que no puede confirmar permisos", async () => {
+    const fake = (async (url: any, init: any) => {
+      const u = new URL(String(url));
+      expect(init.headers["X-BX-APIKEY"]).toBe("KEY");
+      const sig = u.searchParams.get("signature")!;
+      u.searchParams.delete("signature");
+      const raw = [...u.searchParams.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join("&");
+      expect(sig).toBe(createHmac("sha256", "SECRET").update(raw).digest("hex"));
+      expect(u.searchParams.get("timestamp")).toBeTruthy();
+      return json({ code: 0, msg: "", data: [] });
+    }) as unknown as typeof fetch;
+    const check = await ex.checkKey("bingx", "KEY", "SECRET", fake);
+    expect(check.ok).toBe(true);
+    expect(check.warning).toMatch(/SOLO LECTURA/);
+  });
+
+  it("pide por páginas y trae lo cerrado sin pedir el par", async () => {
+    const pages: string[] = [];
+    const fake = (async (url: any) => {
+      const u = new URL(String(url));
+      expect(u.pathname).toBe("/openApi/swap/v1/trade/positionHistory");
+      expect(u.searchParams.has("symbol")).toBe(false);
+      const page = Number(u.searchParams.get("pageIndex"));
+      pages.push(String(page));
+      const now = Date.now();
+      const many = Array.from({ length: 100 }, (_, i) => ({ ...ltc, positionId: `p${i}`, updateTime: now - 36e5 }));
+      return json({ code: 0, data: { positionHistory: page === 1 ? many : [{ ...ltc, positionId: "ultima", updateTime: now - 36e5 }] } });
+    }) as unknown as typeof fetch;
+    const got = await ex.fetchClosed("bingx", "KEY", "SECRET", Date.now() - 864e5, undefined, fake);
+    expect(got).toHaveLength(101);
+    expect(pages.slice(0, 2)).toEqual(["1", "2"]);
+  });
+
+  it("si BingX exige el par, lo arma con los resultados cerrados del período", async () => {
+    const symbolsAsked: string[] = [];
+    const fake = (async (url: any) => {
+      const u = new URL(String(url));
+      if (u.pathname === "/openApi/swap/v2/user/income") {
+        expect(u.searchParams.get("incomeType")).toBe("REALIZED_PNL");
+        return json({ code: 0, data: [{ symbol: "LTC-USDT" }, { symbol: "LTC-USDT" }, { symbol: "BTC-USDT" }] });
+      }
+      const sym = u.searchParams.get("symbol");
+      if (!sym) return json({ code: 100400, msg: "Invalid parameters: symbol is required" });
+      symbolsAsked.push(sym);
+      return json({ code: 0, data: { positionHistory: sym === "LTC-USDT" ? [{ ...ltc, updateTime: Date.now() - 36e5 }] : [] } });
+    }) as unknown as typeof fetch;
+    const got = await ex.fetchClosed("bingx", "KEY", "SECRET", Date.now() - 864e5, undefined, fake);
+    expect(got).toHaveLength(1);
+    expect([...new Set(symbolsAsked)].sort()).toEqual(["BTC-USDT", "LTC-USDT"]);
+  });
+
+  it("explica los errores en español", async () => {
+    const err = (code: number, status = 200) => (async () => json({ code, msg: "x" }, status)) as unknown as typeof fetch;
+    expect((await ex.checkKey("bingx", "K", "S", err(100413))).error).toMatch(/no aceptó la clave/);
+    expect((await ex.checkKey("bingx", "K", "S", err(100001))).error).toMatch(/no aceptó la clave/);
+    expect((await ex.checkKey("bingx", "K", "S", err(100419))).error).toMatch(/restricción de IP/);
+    expect((await ex.checkKey("bingx", "K", "S", err(100004))).error).toMatch(/permiso para leer/);
+  });
+
+  it("el diario muestra el nombre del exchange", () => {
+    const [p] = ex.parseBingxClosed([ltc]);
+    expect(ex.toTradeRow(p, "bingx", 5).notes).toMatch(/^BingX · /);
+  });
+});

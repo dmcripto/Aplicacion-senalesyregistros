@@ -134,7 +134,7 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
         ))
       ) : (
         <Text style={s.hint}>
-          {t("Conectá tu exchange (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX o KuCoin) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+          {t("Conectá tu exchange (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin o BingX) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
         </Text>
       )}
 
