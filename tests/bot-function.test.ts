@@ -41,7 +41,7 @@ let sent: { telegram: any[]; push: any[] } = { telegram: [], push: [] };
 beforeEach(() => {
   resetDb({ bot_settings: [], bot_signals: [], trades: [] });
   klines = series(285, true);
-  tickers = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "USDCUSDT", "BTCUSDT_261225", "TINYUSDT"].map((symbol, i) => ({ symbol, quoteVolume: String(symbol === "TINYUSDT" ? 1e6 : 9e9 - i * 1e8) }));
+  tickers = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "USDCUSDT", "BTCUSDT_261225", "TINYUSDT", "XAUUSDT", "CLUSDT"].map((symbol, i) => ({ symbol, quoteVolume: String(symbol === "TINYUSDT" ? 1e6 : 9e9 - i * 1e8) }));
   sent = { telegram: [], push: [] };
   vi.stubGlobal("fetch", async (url: any, init?: any) => {
     const u = new URL(String(url));
@@ -54,6 +54,7 @@ beforeEach(() => {
       return new Response("{}");
     }
     if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/ticker/24hr")) return new Response(JSON.stringify(tickers));
+    if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/exchangeInfo")) return new Response(JSON.stringify({ symbols: tickers.map((x) => ({ symbol: x.symbol, status: "TRADING", contractType: x.symbol.includes("_") ? "CURRENT_QUARTER" : "PERPETUAL", underlyingType: "COIN" })) }));
     if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
     return new Response("{}", { status: 404 });
   });
@@ -455,7 +456,7 @@ describe("función bot · escaneo del mercado", () => {
     expect(r.body.opened).toBe(3);
     const syms = db.tables.trades.map((t: any) => t.symbol);
     expect(new Set(syms).size).toBe(3);
-    expect(syms.every((x: string) => ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT"].includes(x))).toBe(true); // nada de stablecoins, vencimientos ni activos de poco volumen
+    expect(syms.every((x: string) => ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT"].includes(x))).toBe(true); // nada de stablecoins, vencimientos, petróleo, oro ni activos de poco volumen
   });
 
   it("si no se puede bajar la lista del mercado sigue con los activos elegidos", async () => {
