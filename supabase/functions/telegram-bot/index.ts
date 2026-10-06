@@ -323,6 +323,7 @@ async function handleMessage(msg: any) {
     const [first, ...rest] = text.split(/\s+/);
     const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
+    if (cmd === "/anunciar" || cmd === "/announce") return announceHere(msg, rest);
     if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint, msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     return;
   }
@@ -375,8 +376,9 @@ async function handleMessage(msg: any) {
 }
 
 /**
- * /anunciar ID            → muestra cómo se vería el aviso (solo en este chat).
- * /anunciar ID confirmar  → lo publica en las comunidades de Telegram conectadas a esta cuenta.
+ * /anunciar ID (chat privado) → muestra cómo se vería el aviso, solo en ese chat, y explica cómo publicarlo.
+ * Para publicar hay que escribir el comando DENTRO del grupo, en el tema que corresponda (ver announceHere): así nunca
+ * sale en un tema equivocado, como el de las señales.
  * Solo para cuentas habilitadas (profiles.bot_beta); para el resto el comando no existe.
  */
 async function announce(chatId: number, link: { user_id: string }, lang: Lang, args: string[]) {
@@ -386,14 +388,42 @@ async function announce(chatId: number, link: { user_id: string }, lang: Lang, a
   const text = ANNOUNCEMENTS[id];
   const es = lang === "es";
   if (!text) return say(chatId, es ? `Avisos disponibles: ${announcementIds().join(", ")}.\nUsá /anunciar ${announcementIds()[0]} para ver cómo queda.` : `Available announcements: ${announcementIds().join(", ")}.\nUse /announce ${announcementIds()[0]} to preview it.`);
-  const confirm = ["confirmar", "confirm"].includes((args[1] ?? "").toLowerCase());
-  if (!confirm) {
-    await say(chatId, text[lang]);
-    return say(chatId, es ? `👆 Así se vería. Publicalo solo cuando la app nueva esté lanzada y el bot abierto.\n\nPara publicarlo en tus comunidades conectadas:\n/anunciar ${id} confirmar` : `👆 This is how it would look. Publish it only when the new app is released and the bot is open.\n\nTo publish it in your connected communities:\n/announce ${id} confirm`);
+  await say(chatId, text[lang]);
+  return say(
+    chatId,
+    es
+      ? `👆 Así se vería. Publicalo solo cuando la app nueva esté lanzada y el bot abierto.\n\nPara publicarlo: entrá al grupo, abrí el tema donde lo querés (por ejemplo «APPS») y escribí ahí:\n/anunciar ${id} confirmar\n\nSolo funciona si sos administrador y el grupo está conectado a tu cuenta.`
+      : `👆 This is how it would look. Publish it only when the new app is released and the bot is open.\n\nTo publish it: go to the group, open the topic where you want it (for example “APPS”) and type there:\n/announce ${id} confirm\n\nIt only works if you are an admin and the group is connected to your account.`,
+  );
+}
+
+/**
+ * /anunciar ID confirmar, escrito DENTRO de un grupo (en el tema donde se quiere el aviso, por ejemplo «APPS»).
+ * Publica ahí mismo. Solo lo puede usar un administrador del grupo, y solo si el grupo está conectado a una cuenta habilitada.
+ * Para cualquier otra persona o grupo no hace nada (el comando no existe).
+ */
+async function announceHere(msg: any, args: string[]) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token) return;
+  const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
+  const extra = thread ? { message_thread_id: thread } : {};
+  const member = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
+  const status = member?.result?.status;
+  if (status !== "creator" && status !== "administrator") return;
+  const { data: row } = await admin.from("telegram_communities").select("user_id").eq("chat_id", chatId).limit(1).maybeSingle();
+  if (!row) return;
+  const owner = (row as { user_id: string }).user_id;
+  const { data: prof, error } = await admin.from("profiles").select("bot_beta, lang").eq("id", owner).maybeSingle();
+  if (error || !(prof as { bot_beta?: boolean } | null)?.bot_beta) return;
+  const lang: Lang = (prof as { lang?: string }).lang === "en" ? "en" : "es";
+  const text = ANNOUNCEMENTS[(args[0] ?? "").toLowerCase()];
+  if (!text) return say(chatId, lang === "es" ? `Avisos disponibles: ${announcementIds().join(", ")}.` : `Available announcements: ${announcementIds().join(", ")}.`, extra);
+  if (!["confirmar", "confirm"].includes((args[1] ?? "").toLowerCase())) {
+    const id = (args[0] ?? "").toLowerCase();
+    return say(chatId, lang === "es" ? `Para publicarlo acá (en este tema) escribí:\n/anunciar ${id} confirmar` : `To publish it here (in this topic) type:\n/announce ${id} confirm`, extra);
   }
-  const n = await publishToCommunities(admin, botToken(), link.user_id, (l) => text[l]);
-  if (!n) return say(chatId, es ? "No se publicó en ningún lado: no tenés una comunidad conectada (o el bot ya no está en el grupo o canal)." : "Nothing was published: you have no connected community (or the bot is no longer in the group or channel).");
-  return say(chatId, es ? `✅ Publicado en ${n} ${n === 1 ? "comunidad" : "comunidades"}. Si lo repetís se publica de nuevo.` : `✅ Published in ${n} ${n === 1 ? "community" : "communities"}. If you repeat it, it will be posted again.`);
+  return sendMessage(token, chatId, text[lang], extra);
 }
 
 // ─── Pedidos de la app ──────────────────────────────────────────────────────
