@@ -17,6 +17,7 @@ import {
 } from "./lib";
 import { NO_MONEY, balanceInfo, fmtCurrency } from "./lib";
 import type { DailyLimits, MoneySettings, Trade } from "./lib";
+import { useBot } from "./botStore";
 import { useCountUp, useFlashId, useNow, usePrices, useSession, useTpCelebration, useTrades } from "./hooks";
 import {
   CloseModal,
@@ -403,6 +404,7 @@ function Dashboard({ userId }: { userId: string }) {
   const [guide, setGuide] = useState(false);
   // Con el diario vacío se esconden las secciones que no tendrían nada que mostrar; aparecen solas al haber operaciones.
   const empty = !loading && trades.length === 0;
+  const botReady = useBot().status === "ready"; // el botón del bot aparece solo si el servidor ya tiene el bot
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
@@ -742,25 +744,33 @@ function Dashboard({ userId }: { userId: string }) {
           </>
         )}
 
-        {/* Atajos a cada sección y abrir/cerrar todo */}
-        <nav className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden" aria-label={t("Secciones")}>
+        {/* Atajos a cada sección y abrir/cerrar todo: quedan fijos arriba al bajar por la página */}
+        <nav
+          className="sticky top-0 z-30 -mx-4 flex items-center gap-2 overflow-x-auto border-b border-line/60 bg-ink/85 px-4 py-2 backdrop-blur-md [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:rounded-lg sm:border sm:px-3 [&::-webkit-scrollbar]:hidden"
+          aria-label={t("Secciones")}
+        >
           {(
             [
-              ["register", t("Registrar")],
-              ["journal", t("Diario")],
-              ["analysis", t("Análisis")],
-              ["strategy", t("Estrategia")],
-              ["liqmap", t("Mapa")],
-              ["telegram", t("Conexiones")],
+              ["register", t("Registrar"), false],
+              ["journal", t("Diario"), false],
+              ["analysis", t("Análisis"), false],
+              ["strategy", t("Estrategia"), false],
+              ["liqmap", t("Mapa"), false],
+              ["exchange", t("Exchanges"), true],
+              ["bot", t("Bot"), true],
+              ["telegram", t("Conexiones"), false],
             ] as const
           )
-            .filter(([id]) => !empty || (id !== "journal" && id !== "analysis" && id !== "strategy"))
-            .map(([id, label]) => (
+            .filter(([id]) => (!empty || (id !== "journal" && id !== "analysis" && id !== "strategy")) && (id !== "bot" || botReady))
+            .map(([id, label, accent]) => (
             <button
               key={id}
               type="button"
               onClick={() => jumpToPanel(id)}
-              className="shrink-0 whitespace-nowrap rounded-md border border-line px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow"
+              className={cx(
+                "shrink-0 whitespace-nowrap rounded-md border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors",
+                accent ? "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20" : "border-line text-fog hover:border-line2 hover:text-snow",
+              )}
             >
               {label}
             </button>

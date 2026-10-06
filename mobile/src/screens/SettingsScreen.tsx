@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, ScrollView, Share, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
@@ -17,6 +17,7 @@ import BotSection from "../BotSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
 import WhatsAppSection from "../WhatsAppSection";
+import { useBot } from "../botStore";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
 
@@ -60,6 +61,21 @@ export default function SettingsScreen({
     onSaveLimits({ maxLossR: positive(lossStr), maxTrades: positive(tradesStr) ? Math.round(positive(tradesStr)!) : null })
       .then(() => Alert.alert(t("Listo"), t("Límites guardados.")))
       .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudieron guardar los límites.")));
+
+  // Atajos de arriba: cada sección anota dónde está y el chip lleva el scroll hasta ahí.
+  const scroller = useRef<ScrollView>(null);
+  const pos = useRef<Record<string, number>>({});
+  const mark = (key: string) => ({ onLayout: (e: { nativeEvent: { layout: { y: number } } }) => { pos.current[key] = e.nativeEvent.layout.y; } });
+  const jump = (key: string) => scroller.current?.scrollTo({ y: Math.max(0, (pos.current[key] ?? 0) - 4), animated: true });
+  const botReady = useBot().status === "ready";
+  const shortcuts: Array<{ key: string; label: string; accent?: boolean }> = [
+    { key: "exchange", label: t("Exchanges"), accent: true },
+    ...(botReady ? [{ key: "bot", label: t("Bot"), accent: true }] : []),
+    { key: "telegram", label: t("Telegram") },
+    { key: "money", label: t("Capital") },
+    { key: "limits", label: t("Límites") },
+    { key: "account", label: t("Cuenta") },
+  ];
 
   const { money, unit } = useMoney();
   const [capStr, setCapStr] = useState("");
@@ -210,7 +226,17 @@ export default function SettingsScreen({
     ]);
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ padding: 16 }}>
+    <ScrollView ref={scroller} style={styles.screen} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }} stickyHeaderIndices={[0]}>
+      <View style={styles.shortcutBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+          {shortcuts.map((x) => (
+            <TouchableOpacity key={x.key} onPress={() => jump(x.key)} style={[styles.chip, x.accent && styles.chipAccent]}>
+              <Text style={[styles.chipText, x.accent && { color: colors.gold }]}>{x.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+      <View style={{ height: 12 }} />
       <CommunityCard />
 
       <Text style={styles.sectionTitle}>{t("IDIOMA")} / LANGUAGE</Text>
@@ -218,6 +244,7 @@ export default function SettingsScreen({
         <LangSwitch wide />
       </View>
 
+      <View {...mark("money")} />
       <Text style={styles.sectionTitle}>{t("CAPITAL Y DINERO")}</Text>
       <View style={styles.card}>
         {bal ? (
@@ -248,17 +275,21 @@ export default function SettingsScreen({
         <Text style={styles.hint}>{t("Es una estimación: multiplica tus R por lo que arriesgás. Las tarjetas para compartir siguen mostrando solo R.")}</Text>
       </View>
 
+      <View {...mark("telegram")} />
       <Text style={styles.sectionTitle}>{t("BOT DE TELEGRAM")}</Text>
       <TelegramSection userId={userId} />
       <WhatsAppSection />
 
+      <View {...mark("exchange")} />
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection onSaveMoney={onSaveMoney} />
 
+      <View {...mark("bot")} />
       <BotSection titleStyle={styles.sectionTitle} />
 
       <InviteSection />
 
+      <View {...mark("limits")} />
       <Text style={styles.sectionTitle}>{t("LÍMITES DIARIOS")}</Text>
       <View style={styles.card}>
         <Text style={styles.hint}>
@@ -302,6 +333,7 @@ export default function SettingsScreen({
         </View>
       </View>
 
+      <View {...mark("account")} />
       <Text style={styles.sectionTitle}>{t("CUENTA")}</Text>
       <View style={styles.card}>
         {email && <Text style={styles.email}>{email}</Text>}
@@ -428,6 +460,10 @@ export default function SettingsScreen({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  shortcutBar: { marginHorizontal: -16, paddingVertical: 10, backgroundColor: colors.ink, borderBottomWidth: 1, borderBottomColor: colors.line },
+  chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  chipAccent: { borderColor: colors.gold, backgroundColor: "rgba(46,196,241,0.10)" },
+  chipText: { color: colors.fog, fontSize: 11, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" },
   sectionTitle: {
     color: colors.fog,
     fontSize: 10,

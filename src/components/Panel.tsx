@@ -76,7 +76,7 @@ export default function Panel({ id, title, subtitle, summary, defaultOpen = true
   const line = open ? subtitle : (summary ?? subtitle);
 
   return (
-    <section id={`panel-${id}`} className="glass glow-card scroll-mt-4 overflow-hidden rounded-xl">
+    <section id={`panel-${id}`} className="glass glow-card scroll-mt-16 overflow-hidden rounded-xl">
       <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5 sm:py-4", open && "border-b border-line")}>
         <h2 className="min-w-[11rem] flex-1">
           <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 text-left">
