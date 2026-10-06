@@ -53,6 +53,7 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
   const [apiSecret, setApiSecret] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [guide, setGuide] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
@@ -147,13 +148,28 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
       {unit == null && <CapitalStep onSave={onSaveMoney} currency={money.currency} />}
       {unit != null && (
         <>
-      <View style={[s.row, { flexWrap: "wrap" }]}>
-        {EXCHANGE_LIST.map((e) => (
-          <TouchableOpacity key={e.id} style={[s.chip, exchange === e.id && s.chipOn]} onPress={() => setExchange(e.id)}>
-            <Text style={[s.chipText, exchange === e.id && { color: colors.ink }]}>{e.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <Text style={s.label}>{t("Exchange")}</Text>
+      <TouchableOpacity style={[s.drop, listOpen && { borderColor: colors.gold }]} onPress={() => setListOpen((o) => !o)} accessibilityRole="button" accessibilityState={{ expanded: listOpen }}>
+        <Text style={s.dropText}>{exchangeName(exchange)}</Text>
+        <Text style={s.dropArrow}>{listOpen ? "▲" : "▼"}</Text>
+      </TouchableOpacity>
+      {listOpen && (
+        <View style={s.dropList}>
+          {EXCHANGE_LIST.map((e, i) => (
+            <TouchableOpacity
+              key={e.id}
+              style={[s.dropItem, i > 0 && { borderTopWidth: 1, borderTopColor: colors.line }, e.id === exchange && { backgroundColor: colors.gold + "22" }]}
+              onPress={() => {
+                setExchange(e.id);
+                setListOpen(false);
+              }}
+            >
+              <Text style={[s.dropItemText, e.id === exchange && { color: colors.gold }]}>{e.name}</Text>
+              {conns.some((c) => c.exchange === e.id) && <Text style={s.dropConn}>{t("Conectado")}</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <TouchableOpacity onPress={() => setGuide((g) => !g)}>
         <Text style={s.link}>{guide ? "▾ " : "▸ "}{t("Cómo crear la clave (solo lectura)")}</Text>
@@ -191,6 +207,13 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
 }
 
 const s = StyleSheet.create({
+  drop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: colors.ink, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 },
+  dropText: { color: colors.snow, fontSize: 14, fontWeight: "800" },
+  dropArrow: { color: colors.gold, fontSize: 10 },
+  dropList: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, overflow: "hidden", backgroundColor: colors.ink },
+  dropItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 12, paddingVertical: 12 },
+  dropItemText: { color: colors.fog, fontSize: 13.5, fontWeight: "700" },
+  dropConn: { color: colors.bull, fontSize: 9.5, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" },
   card: { backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 16, marginBottom: 20, gap: 10 },
   conn: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 10, gap: 4, backgroundColor: colors.ink },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
