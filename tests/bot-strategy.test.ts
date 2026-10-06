@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAR_MS, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
+import { BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -351,5 +351,82 @@ describe("perfiles de estrategia", () => {
   it("describe la estrategia con sus números", () => {
     expect(describeParams(BOT_PROFILES.balanced)).toBe("ruptura de 20 velas a favor de la tendencia (EMA 50/200) · stop 1,5 ATR · objetivo 2R");
     expect(describeParams(BOT_PROFILES.dynamic)).toContain("ruptura de 10 velas");
+  });
+});
+
+describe("velas de 4 horas y laboratorio", () => {
+  it("pide velas de 4 horas a Binance y, si falla, a Bybit (interval 240)", async () => {
+    const mk = (i: number) => [T0 + i * 4 * BAR_MS, "1", "2", "0.5", "1.5", "10"];
+    const calls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(url);
+      if (url.includes("binance")) return new Response("blocked", { status: 451 });
+      return new Response(JSON.stringify({ result: { list: Array.from({ length: 400 }, (_, i) => mk(399 - i).map(String)) } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await fetchBars("BTCUSDT", 400, fetchFn, "4h");
+    expect(calls[0]).toContain("interval=4h");
+    expect(calls.find((c) => c.includes("bybit"))).toContain("interval=240");
+    // sin indicar, sigue siendo 1 hora
+    calls.length = 0;
+    await fetchBars("BTCUSDT", 400, fetchFn);
+    expect(calls[0]).toContain("interval=1h");
+    expect(calls.find((c) => c.includes("bybit"))).toContain("interval=60");
+  });
+
+  it("una vela de 4 horas se considera cerrada recién a las 4 horas", () => {
+    const bars = [bar(0, 1, 1, 1, 1)];
+    const now = T0 + 2 * BAR_MS;
+    expect(closedBars(bars, now)).toHaveLength(1);
+    expect(closedBars(bars, now, barMsOf({ tf: "4h" }))).toHaveLength(0);
+    expect(barMsOf({})).toBe(BAR_MS);
+  });
+
+  it("la nota de la operación dice cuando son velas de 4 horas", () => {
+    expect(describeParams({ ...BOT_PROFILES.balanced, tf: "4h" })).toContain("ruptura de 20 velas de 4 horas");
+    expect(describeParams(BOT_PROFILES.balanced)).not.toContain("4 horas");
+  });
+
+  function market4h(seed: number, n = 2600): Bar[] {
+    let s = seed >>> 0;
+    const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    let p = 100, drift = 0.002;
+    const out: Bar[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i % 300 === 0) drift = -drift * (r() > 0.4 ? 1 : -1);
+      const o = p;
+      let c = o, h = o, l = o;
+      for (let k = 0; k < 4; k++) {
+        c *= 1 + drift / 4 + (r() - 0.5) * 0.012;
+        h = Math.max(h, c);
+        l = Math.min(l, c);
+      }
+      out.push({ t: T0 + i * 4 * BAR_MS, o, h, l, c });
+      p = c;
+    }
+    return out;
+  }
+
+  it("la simulación con velas de 4 horas cierra siempre en un cierre de vela de 4 horas", () => {
+    const bars = market4h(5);
+    const r = simulate({ BTCUSDT: bars }, { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, rules: [], timeZone: "UTC" }, { ...BOT_PROFILES.balanced, tf: "4h" });
+    expect(r.trades.length).toBeGreaterThan(5);
+    for (const t of r.trades) expect((t.closedAt - T0) % (4 * BAR_MS)).toBe(0);
+  });
+
+  it("el laboratorio devuelve las variantes y las dos mitades suman el total", () => {
+    const four = market4h(9);
+    const one = four.flatMap((b, i) => Array.from({ length: 4 }, (_, k) => ({ ...b, t: T0 + (i * 4 + k) * BAR_MS }))); // mismas velas, 4 veces más seguidas
+    const mid = T0 + (2600 * 4 * BAR_MS) / 2;
+    const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
+    expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h"]);
+    for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
+    expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
+    expect(LAB_DAYS).toBe(360);
+  });
+
+  it("las variantes de 4 horas no tocan los perfiles del bot", () => {
+    expect(BOT_PROFILES.balanced.tf).toBeUndefined();
+    expect(LAB_VARIANTS.find((x) => x.id === "h1-balanced")!.params).toEqual(BOT_PROFILES.balanced);
   });
 });

@@ -23,7 +23,10 @@ export interface BotParams {
   atrMult: number; // distancia del stop, en ATR
   rr: number; // objetivo, en múltiplos del riesgo
   feePct: number; // costo de ida y vuelta (comisión + deslizamiento), en % del precio, solo para la prueba
+  tf?: BotTimeframe; // tamaño de vela; sin indicar, 1 hora
 }
+
+export type BotTimeframe = "1h" | "4h";
 
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: 0.1 };
 
@@ -40,13 +43,14 @@ export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
 /** La estrategia en una frase (para la nota de cada operación simulada). */
 export const describeParams = (p: BotParams) => {
   const n = (x: number) => String(x).replace(".", ",");
-  return `ruptura de ${p.lookback} velas a favor de la tendencia (EMA ${p.emaFast}/${p.emaSlow}) · stop ${n(p.atrMult)} ATR · objetivo ${n(p.rr)}R`;
+  return `ruptura de ${p.lookback} velas${p.tf === "4h" ? " de 4 horas" : ""} a favor de la tendencia (EMA ${p.emaFast}/${p.emaSlow}) · stop ${n(p.atrMult)} ATR · objetivo ${n(p.rr)}R`;
 };
 export const isProfileId = (x: unknown): x is BotProfileId => typeof x === "string" && (BOT_PROFILE_IDS as string[]).includes(x);
 export const paramsOf = (id: unknown): BotParams => (isProfileId(id) ? BOT_PROFILES[id] : DEFAULT_PARAMS);
 
 export const BOT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
 export const BAR_MS = 3_600_000;
+export const barMsOf = (p: Pick<BotParams, "tf">) => (p.tf === "4h" ? 4 * BAR_MS : BAR_MS);
 /** Velas mínimas para poder calcular todo (la EMA lenta manda). */
 export const WARMUP = (p: BotParams = DEFAULT_PARAMS) => p.emaSlow + 5;
 
@@ -191,7 +195,7 @@ export function botStats(rs: number[]): BotStats {
 }
 
 /** Velas cerradas: descarta la última si todavía está en curso. */
-export const closedBars = (bars: Bar[], now = Date.now()) => bars.filter((b) => b.t + BAR_MS <= now);
+export const closedBars = (bars: Bar[], now = Date.now(), barMs = BAR_MS) => bars.filter((b) => b.t + barMs <= now);
 
 export const isBotSymbol = (s: unknown): s is (typeof BOT_SYMBOLS)[number] => typeof s === "string" && (BOT_SYMBOLS as readonly string[]).includes(s);
 
@@ -205,12 +209,12 @@ async function getJson(fetchFn: Fetch, url: string): Promise<unknown> {
   return res.json();
 }
 
-/** Velas de 1 hora, de más viejas a más nuevas. Prueba Binance (futuros) y, si falla, Bybit. */
-export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch): Promise<Bar[]> {
+/** Velas de 1 hora (o de 4), de más viejas a más nuevas. Prueba Binance (futuros) y, si falla, Bybit. */
+export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch, tf: BotTimeframe = "1h"): Promise<Bar[]> {
   const errors: string[] = [];
   for (const provider of [binanceBars, bybitBars]) {
     try {
-      const bars = await provider(symbol, count, fetchFn);
+      const bars = await provider(symbol, count, fetchFn, tf);
       if (bars.length >= Math.min(count, 300)) return bars;
       errors.push("pocas velas");
     } catch (e) {
@@ -220,11 +224,11 @@ export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = 
   throw new Error(`No se pudieron bajar las velas de ${symbol} (${errors.join(", ")})`);
 }
 
-async function binanceBars(symbol: string, count: number, fetchFn: Fetch): Promise<Bar[]> {
+async function binanceBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
   const out: Bar[] = [];
   let end = Date.now();
   while (out.length < count) {
-    const rows = (await getJson(fetchFn, `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=1000&endTime=${end}`)) as unknown[][];
+    const rows = (await getJson(fetchFn, `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=${tf}&limit=1000&endTime=${end}`)) as unknown[][];
     if (!rows.length) break;
     const page = rows.map((r) => ({ t: Number(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) }));
     out.unshift(...page);
@@ -234,11 +238,11 @@ async function binanceBars(symbol: string, count: number, fetchFn: Fetch): Promi
   return dedupe(out).slice(-count);
 }
 
-async function bybitBars(symbol: string, count: number, fetchFn: Fetch): Promise<Bar[]> {
+async function bybitBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
   const out: Bar[] = [];
   let end = Date.now();
   while (out.length < count) {
-    const j = (await getJson(fetchFn, `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=60&limit=1000&end=${end}`)) as {
+    const j = (await getJson(fetchFn, `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${tf === "4h" ? 240 : 60}&limit=1000&end=${end}`)) as {
       result?: { list?: string[][] };
     };
     const rows = j.result?.list ?? [];
@@ -358,8 +362,9 @@ export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p:
 
   const costR = (sig: BotSignal) => ((p.feePct / 100) * sig.entry) / Math.abs(sig.entry - sig.sl);
 
+  const barMs = barMsOf(p);
   for (const T of times) {
-    const now = T + BAR_MS; // la vela T ya cerró
+    const now = T + barMs; // la vela T ya cerró
     // 1) cerrar lo que esta vela tocó
     for (const symbol of symbols) {
       const o = open.get(symbol);
@@ -397,4 +402,41 @@ export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p:
     }
   }
   return { trades: done, open: open.size };
+}
+
+// ─── Laboratorio de variantes ───────────────────────────────────────────────
+// Prueba varias versiones de la estrategia sobre un año de precios y mira si ganan en las DOS mitades por separado.
+// Probar muchas versiones y quedarse con la mejor engaña (alguna sale bien por pura suerte); por eso la vara es alta
+// y ninguna variante se vuelve un perfil del bot sin confirmarse antes en modo simulado.
+
+export interface LabVariant {
+  id: string;
+  params: BotParams;
+}
+
+export const LAB_DAYS = 360;
+export const LAB_VARIANTS: LabVariant[] = [
+  { id: "h1-balanced", params: { ...DEFAULT_PARAMS } }, // referencia: lo que se probó hasta ahora
+  { id: "h4-balanced", params: { ...DEFAULT_PARAMS, tf: "4h" } },
+  { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
+  { id: "h4-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: 0.1, tf: "4h" } },
+  { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
+];
+
+export interface LabRow {
+  id: string;
+  tf: BotTimeframe;
+  whole: BotStats;
+  first: BotStats;
+  second: BotStats;
+}
+
+/** Corre cada variante con sus velas (`barsFor` da las velas de cada tamaño) y separa las operaciones en dos mitades (antes y después de `midMs`). */
+export function runLab(barsFor: (tf: BotTimeframe) => Record<string, Bar[]>, s: Omit<SimSettings, "rules">, midMs: number, variants: LabVariant[] = LAB_VARIANTS): LabRow[] {
+  return variants.map((v) => {
+    const tf = v.params.tf ?? "1h";
+    const trades = simulate(barsFor(tf), { ...s, rules: [] }, v.params).trades;
+    const rs = (list: SimTrade[]) => botStats(list.map((x) => x.r));
+    return { id: v.id, tf, whole: rs(trades), first: rs(trades.filter((x) => x.t < midMs)), second: rs(trades.filter((x) => x.t >= midMs)) };
+  });
 }

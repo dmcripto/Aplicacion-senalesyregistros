@@ -1478,6 +1478,45 @@ export type BotBacktest =
   | { ok: true; days: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
   | { ok: false; error?: string };
 
+// ─── Laboratorio de variantes del bot ───────────────────────────────────────
+
+export interface BotLabRow {
+  id: string;
+  tf: "1h" | "4h";
+  whole: BotStatsRow;
+  first: BotStatsRow;
+  second: BotStatsRow;
+}
+export type BotLab = { ok: true; days: number; variants: BotLabRow[]; symbols: string[] } | { ok: false; error?: string };
+
+export function labVariantInfo(id: string): { name: string; blurb: string } {
+  switch (id) {
+    case "h1-balanced":
+      return { name: tr("Velas de 1 hora · equilibrado"), blurb: tr("La referencia: lo que probaste hasta ahora.") };
+    case "h4-balanced":
+      return { name: tr("Velas de 4 horas · equilibrado"), blurb: tr("Mismos números, pero con velas más lentas: menos operaciones y menos comisiones.") };
+    case "h4-conservative":
+      return { name: tr("Velas de 4 horas · conservador"), blurb: tr("Espera rupturas grandes y deja más espacio al stop.") };
+    case "h4-wide":
+      return { name: tr("Velas de 4 horas · objetivo amplio"), blurb: tr("Acierta menos veces, pero busca ganar el triple de lo que arriesga.") };
+    default:
+      return { name: tr("Velas de 4 horas · dinámico"), blurb: tr("Reacciona antes y busca un objetivo más cercano.") };
+  }
+}
+
+/** Una variante solo cuenta si gana entera y en cada mitad del año, con operaciones suficientes (si no, es suerte o es ruido). */
+export function labPasses(r: BotLabRow): boolean {
+  return r.whole.n >= 30 && r.first.n >= 10 && r.second.n >= 10 && r.whole.expectancy > 0.05 && r.first.expectancy > 0 && r.second.expectancy > 0;
+}
+
+/** Frase honesta sobre el laboratorio: probar muchas versiones y elegir la mejor engaña, así que la vara es alta. */
+export function labVerdict(rows: BotLabRow[]): string {
+  const good = rows.filter(labPasses);
+  if (!good.length) return tr("Ninguna versión ganó a la vez en las dos mitades del año. Con esto no hay base para sumar una estrategia nueva: conviene seguir mirando el modo simulado o probar otra idea.");
+  const names = good.map((r) => labVariantInfo(r.id).name).join(", ");
+  return tr("Ganó en las dos mitades del año: {names}. Es un indicio, no una prueba: se probaron {k} versiones y alguna puede salir bien por pura suerte. Antes de usarla hay que confirmarla en modo simulado.", { names, k: rows.length });
+}
+
 // ─── Funciones que se prenden y apagan ──────────────────────────────────────
 
 /**

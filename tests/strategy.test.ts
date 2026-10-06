@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { labPasses, labVariantInfo, labVerdict } from "../packages/core/src/trading";
+import type { BotLabRow } from "../packages/core/src/trading";
+import { LAB_VARIANTS } from "../supabase/functions/_shared/botStrategy";
 import { BOT_PROFILES as CORE_PROFILES, BOT_OWN_MIN, botHowItDecides, botProfileInfo, actionId, backtestVerdict, filterBySource, metricsOf, ruleEvidence, strategyPlan, strategySources } from "../packages/core/src/trading";
 import { BOT_PROFILES as SERVER_PROFILES, cleanActions } from "../supabase/functions/_shared/botStrategy";
 import type { Trade } from "../packages/core/src/trading";
@@ -331,5 +334,31 @@ describe("perfiles del bot: pantalla y servidor", () => {
     expect(botProfileInfo("conservative").name).toBe("Conservador");
     expect(botProfileInfo("balanced").name).toBe("Equilibrado");
     expect(botProfileInfo("dynamic").blurb.length).toBeGreaterThan(10);
+  });
+});
+
+describe("laboratorio de variantes (núcleo)", () => {
+  const st = (n: number, e: number) => ({ n, winRate: 40, expectancy: e, netR: n * e, profitFactor: 1, maxDrawdownR: 3 });
+  const row = (id: string, whole: [number, number], a: [number, number], b: [number, number]): BotLabRow => ({ id, tf: "4h", whole: st(...whole), first: st(...a), second: st(...b) });
+
+  it("tiene nombre para cada variante del servidor", () => {
+    for (const v of LAB_VARIANTS) expect(labVariantInfo(v.id).name.length).toBeGreaterThan(5);
+    expect(new Set(LAB_VARIANTS.map((v) => labVariantInfo(v.id).name)).size).toBe(LAB_VARIANTS.length);
+  });
+
+  it("solo pasa la vara si gana entera y en las dos mitades, con operaciones suficientes", () => {
+    expect(labPasses(row("a", [60, 0.2], [30, 0.1], [30, 0.3]))).toBe(true);
+    expect(labPasses(row("a", [60, 0.2], [30, 0.5], [30, -0.1]))).toBe(false); // una mitad pierde
+    expect(labPasses(row("a", [20, 0.4], [10, 0.4], [10, 0.4]))).toBe(false); // pocas operaciones
+    expect(labPasses(row("a", [60, 0.03], [30, 0.03], [30, 0.03]))).toBe(false); // ganancia ínfima
+    expect(labPasses(row("a", [60, 0.3], [50, 0.3], [5, 0.3]))).toBe(false); // una mitad casi sin operaciones
+  });
+
+  it("el veredicto no promete nada si ninguna pasa y advierte de la suerte si alguna pasa", () => {
+    const none = labVerdict([row("h1-balanced", [100, -0.1], [50, -0.1], [50, -0.1]), row("h4-wide", [60, -0.05], [30, 0.1], [30, -0.2])]);
+    expect(none).toContain("Ninguna versión");
+    const some = labVerdict([row("h1-balanced", [100, -0.1], [50, -0.1], [50, -0.1]), row("h4-wide", [60, 0.2], [30, 0.1], [30, 0.3])]);
+    expect(some).toContain("pura suerte");
+    expect(some).toContain("modo simulado");
   });
 });

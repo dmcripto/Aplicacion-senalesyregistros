@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { BotAction, BotBacktest, BotLoaded, BotProfileId, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { BOT_PROFILE_LIST, DEFAULT_BOT, LIQ_COINS, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -328,6 +328,9 @@ export async function saveBotSettings(userId: string, s: BotSettings, caps: { ru
 
 /** Prueba la estrategia con el historial real de precios (no toca nada). */
 export const runBotBacktest = (symbols: string[], days = 120) => callFunction<BotBacktest & { ok: boolean; error?: string }>("bot", { action: "backtest", symbols, days });
+
+/** Laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades. */
+export const runBotLab = (symbols: string[]) => callFunction<BotLab & { ok: boolean; error?: string }>("bot", { action: "lab", symbols });
 
 // ─── Bot de Telegram ────────────────────────────────────────────────────────
 
