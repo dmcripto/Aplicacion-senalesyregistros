@@ -1,0 +1,239 @@
+// Bot automático (etapa simulada): estrategia de ruptura a favor de la tendencia, y su prueba con historial.
+//
+// Es una estrategia clásica y transparente, no un secreto ni una promesa de ganancia:
+//   · Tendencia: la media rápida (EMA 50) está por encima de la lenta (EMA 200) y el precio también → solo compras.
+//     Al revés → solo ventas.
+//   · Entrada: la vela cerrada rompe el máximo (o mínimo) de las últimas 20 velas.
+//   · Stop: 1,5 veces el ATR(14) de distancia. Objetivo: 2 veces lo arriesgado (2R).
+// Funciona sobre velas de 1 hora ya cerradas, sin mirar nunca el futuro. Sin dependencias de Deno.
+
+export interface Bar {
+  t: number; // apertura, ms
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+
+export interface BotParams {
+  lookback: number; // velas del canal de ruptura
+  emaFast: number;
+  emaSlow: number;
+  atrLen: number;
+  atrMult: number; // distancia del stop, en ATR
+  rr: number; // objetivo, en múltiplos del riesgo
+  feePct: number; // costo de ida y vuelta (comisión + deslizamiento), en % del precio, solo para la prueba
+}
+
+export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: 0.1 };
+
+export const BOT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
+export const BAR_MS = 3_600_000;
+/** Velas mínimas para poder calcular todo (la EMA lenta manda). */
+export const WARMUP = (p: BotParams = DEFAULT_PARAMS) => p.emaSlow + 5;
+
+export interface BotSignal {
+  direction: "LONG" | "SHORT";
+  entry: number;
+  sl: number;
+  tp: number;
+  t: number; // apertura de la vela que dio la señal
+}
+
+/** EMA (serie completa); los primeros valores usan el promedio simple como arranque. */
+export function ema(values: number[], len: number): number[] {
+  const out: number[] = new Array(values.length).fill(NaN);
+  if (values.length < len) return out;
+  const k = 2 / (len + 1);
+  let prev = values.slice(0, len).reduce((a, b) => a + b, 0) / len;
+  out[len - 1] = prev;
+  for (let i = len; i < values.length; i++) {
+    prev = values[i] * k + prev * (1 - k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+/** ATR de Wilder (serie completa). */
+export function atr(bars: Bar[], len: number): number[] {
+  const out: number[] = new Array(bars.length).fill(NaN);
+  if (bars.length <= len) return out;
+  const tr = bars.map((b, i) => (i === 0 ? b.h - b.l : Math.max(b.h - b.l, Math.abs(b.h - bars[i - 1].c), Math.abs(b.l - bars[i - 1].c))));
+  let prev = tr.slice(1, len + 1).reduce((a, b) => a + b, 0) / len;
+  out[len] = prev;
+  for (let i = len + 1; i < bars.length; i++) {
+    prev = (prev * (len - 1) + tr[i]) / len;
+    out[i] = prev;
+  }
+  return out;
+}
+
+export interface Indicators {
+  fast: number[];
+  slow: number[];
+  atr: number[];
+}
+
+export function indicators(bars: Bar[], p: BotParams = DEFAULT_PARAMS): Indicators {
+  const closes = bars.map((b) => b.c);
+  return { fast: ema(closes, p.emaFast), slow: ema(closes, p.emaSlow), atr: atr(bars, p.atrLen) };
+}
+
+/** Señal de la vela cerrada número `i` (solo usa datos hasta `i`). null = sin señal. */
+export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams = DEFAULT_PARAMS): BotSignal | null {
+  if (i < Math.max(p.emaSlow, p.lookback + 1, p.atrLen + 1) || i >= bars.length) return null;
+  const f = ind.fast[i], s = ind.slow[i], a = ind.atr[i], c = bars[i].c;
+  if (![f, s, a, c].every(Number.isFinite) || a <= 0) return null;
+  let hi = -Infinity, lo = Infinity;
+  for (let k = i - p.lookback; k < i; k++) {
+    hi = Math.max(hi, bars[k].h);
+    lo = Math.min(lo, bars[k].l);
+  }
+  const dist = a * p.atrMult;
+  if (c > hi && f > s && c > s) return { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t };
+  if (c < lo && f < s && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t };
+  return null;
+}
+
+/** Primera vela posterior que toca el stop o el objetivo. Si una misma vela toca ambos, se asume el stop (criterio conservador). */
+export function resolveFrom(bars: Bar[], from: number, sig: Pick<BotSignal, "direction" | "sl" | "tp">): { outcome: "TP" | "SL"; index: number } | null {
+  const long = sig.direction === "LONG";
+  for (let j = from; j < bars.length; j++) {
+    const hitSl = long ? bars[j].l <= sig.sl : bars[j].h >= sig.sl;
+    if (hitSl) return { outcome: "SL", index: j };
+    const hitTp = long ? bars[j].h >= sig.tp : bars[j].l <= sig.tp;
+    if (hitTp) return { outcome: "TP", index: j };
+  }
+  return null;
+}
+
+export interface BacktestTrade {
+  t: number;
+  direction: "LONG" | "SHORT";
+  entry: number;
+  outcome: "TP" | "SL";
+  r: number; // resultado en R, ya con el costo de ida y vuelta
+}
+
+export interface BacktestResult {
+  bars: number;
+  trades: BacktestTrade[];
+  open: number; // operaciones que seguían abiertas al final (no cuentan)
+}
+
+/** Recorre el historial vela por vela, una sola operación a la vez. */
+export function backtest(bars: Bar[], p: BotParams = DEFAULT_PARAMS): BacktestResult {
+  const ind = indicators(bars, p);
+  const trades: BacktestTrade[] = [];
+  let open = 0;
+  let i = 0;
+  while (i < bars.length - 1) {
+    const sig = signalAt(bars, ind, i, p);
+    if (!sig) {
+      i++;
+      continue;
+    }
+    const hit = resolveFrom(bars, i + 1, sig);
+    if (!hit) {
+      open++;
+      break;
+    }
+    const risk = Math.abs(sig.entry - sig.sl);
+    const gross = hit.outcome === "TP" ? p.rr : -1;
+    const cost = ((p.feePct / 100) * sig.entry) / risk; // comisión y deslizamiento medidos en R
+    trades.push({ t: sig.t, direction: sig.direction, entry: sig.entry, outcome: hit.outcome, r: gross - cost });
+    i = hit.index + 1;
+  }
+  return { bars: bars.length, trades, open };
+}
+
+export interface BotStats {
+  n: number;
+  wins: number;
+  winRate: number; // %
+  expectancy: number; // R por operación
+  netR: number;
+  profitFactor: number | null;
+  maxDrawdownR: number;
+}
+
+export function botStats(rs: number[]): BotStats {
+  const n = rs.length;
+  if (!n) return { n: 0, wins: 0, winRate: 0, expectancy: 0, netR: 0, profitFactor: null, maxDrawdownR: 0 };
+  const gain = rs.filter((r) => r > 0).reduce((a, b) => a + b, 0);
+  const loss = Math.abs(rs.filter((r) => r < 0).reduce((a, b) => a + b, 0));
+  let cum = 0, peak = 0, dd = 0;
+  for (const r of rs) {
+    cum += r;
+    peak = Math.max(peak, cum);
+    dd = Math.max(dd, peak - cum);
+  }
+  const wins = rs.filter((r) => r > 0).length;
+  return { n, wins, winRate: (wins / n) * 100, expectancy: (gain - loss) / n, netR: gain - loss, profitFactor: loss > 0 ? gain / loss : null, maxDrawdownR: dd };
+}
+
+/** Velas cerradas: descarta la última si todavía está en curso. */
+export const closedBars = (bars: Bar[], now = Date.now()) => bars.filter((b) => b.t + BAR_MS <= now);
+
+export const isBotSymbol = (s: unknown): s is (typeof BOT_SYMBOLS)[number] => typeof s === "string" && (BOT_SYMBOLS as readonly string[]).includes(s);
+
+// ─── Velas públicas ─────────────────────────────────────────────────────────
+
+type Fetch = typeof fetch;
+
+async function getJson(fetchFn: Fetch, url: string): Promise<unknown> {
+  const res = await fetchFn(url, { signal: AbortSignal.timeout(9000) });
+  if (!res.ok) throw new Error(`${res.status}`);
+  return res.json();
+}
+
+/** Velas de 1 hora, de más viejas a más nuevas. Prueba Binance (futuros) y, si falla, Bybit. */
+export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch): Promise<Bar[]> {
+  const errors: string[] = [];
+  for (const provider of [binanceBars, bybitBars]) {
+    try {
+      const bars = await provider(symbol, count, fetchFn);
+      if (bars.length >= Math.min(count, 300)) return bars;
+      errors.push("pocas velas");
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  throw new Error(`No se pudieron bajar las velas de ${symbol} (${errors.join(", ")})`);
+}
+
+async function binanceBars(symbol: string, count: number, fetchFn: Fetch): Promise<Bar[]> {
+  const out: Bar[] = [];
+  let end = Date.now();
+  while (out.length < count) {
+    const rows = (await getJson(fetchFn, `https://fapi.binance.com/fapi/v1/klines?symbol=${symbol}&interval=1h&limit=1000&endTime=${end}`)) as unknown[][];
+    if (!rows.length) break;
+    const page = rows.map((r) => ({ t: Number(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) }));
+    out.unshift(...page);
+    end = page[0].t - 1;
+    if (rows.length < 1000) break;
+  }
+  return dedupe(out).slice(-count);
+}
+
+async function bybitBars(symbol: string, count: number, fetchFn: Fetch): Promise<Bar[]> {
+  const out: Bar[] = [];
+  let end = Date.now();
+  while (out.length < count) {
+    const j = (await getJson(fetchFn, `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=60&limit=1000&end=${end}`)) as {
+      result?: { list?: string[][] };
+    };
+    const rows = j.result?.list ?? [];
+    if (!rows.length) break;
+    const page = rows.map((r) => ({ t: Number(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) })).reverse();
+    out.unshift(...page);
+    end = page[0].t - 1;
+    if (rows.length < 1000) break;
+  }
+  return dedupe(out).slice(-count);
+}
+
+function dedupe(bars: Bar[]): Bar[] {
+  const seen = new Set<number>();
+  return bars.filter((b) => (seen.has(b.t) ? false : (seen.add(b.t), true))).sort((a, b) => a.t - b.t);
+}

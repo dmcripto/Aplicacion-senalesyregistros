@@ -1,0 +1,173 @@
+import { describe, expect, it } from "vitest";
+import { BAR_MS, DEFAULT_PARAMS, atr, backtest, botStats, closedBars, ema, fetchBars, indicators, resolveFrom, signalAt } from "../supabase/functions/_shared/botStrategy";
+import type { Bar } from "../supabase/functions/_shared/botStrategy";
+
+const T0 = Date.UTC(2026, 0, 1);
+const bar = (i: number, o: number, h: number, l: number, c: number): Bar => ({ t: T0 + i * BAR_MS, o, h, l, c });
+
+/** Tendencia alcista pareja con pequeñas oscilaciones y, al final, una vela que rompe el máximo. */
+function uptrendWithBreakout(n = 260): Bar[] {
+  const bars: Bar[] = [];
+  let p = 100;
+  for (let i = 0; i < n; i++) {
+    const wave = Math.sin(i / 3) * 0.4; // ruido que impide que cada vela sea un nuevo máximo
+    const c = p + 0.1 + wave * 0.2;
+    bars.push(bar(i, p, Math.max(p, c) + 0.3, Math.min(p, c) - 0.3, c));
+    p = c;
+  }
+  const last = bars[bars.length - 1].c;
+  bars.push(bar(n, last, last + 5, last - 0.2, last + 4.5)); // ruptura fuerte
+  return bars;
+}
+
+describe("indicadores", () => {
+  it("EMA y ATR dan números razonables", () => {
+    const e = ema([1, 2, 3, 4, 5, 6], 3);
+    expect(e[1]).toBeNaN();
+    expect(e[2]).toBeCloseTo(2);
+    expect(e[5]).toBeGreaterThan(e[4]);
+    const bars = Array.from({ length: 30 }, (_, i) => bar(i, 10, 11, 9, 10));
+    expect(atr(bars, 14)[29]).toBeCloseTo(2);
+  });
+});
+
+describe("señal de ruptura con tendencia", () => {
+  it("compra cuando rompe el máximo a favor de la tendencia alcista", () => {
+    const bars = uptrendWithBreakout();
+    const ind = indicators(bars);
+    const sig = signalAt(bars, ind, bars.length - 1);
+    expect(sig?.direction).toBe("LONG");
+    expect(sig!.sl).toBeLessThan(sig!.entry);
+    expect(sig!.tp).toBeGreaterThan(sig!.entry);
+    // objetivo = 2 veces el riesgo
+    expect((sig!.tp - sig!.entry) / (sig!.entry - sig!.sl)).toBeCloseTo(DEFAULT_PARAMS.rr);
+  });
+
+  it("no mira el futuro: cambiar velas posteriores no cambia la señal", () => {
+    const bars = uptrendWithBreakout();
+    const idx = bars.length - 1;
+    const a = signalAt(bars, indicators(bars), idx);
+    const more = [...bars, bar(idx + 1, 1, 1000, 0.1, 500), bar(idx + 2, 500, 900, 1, 2)];
+    expect(signalAt(more, indicators(more), idx)).toEqual(a);
+  });
+
+  it("no opera contra la tendencia ni sin ruptura", () => {
+    const bars = uptrendWithBreakout();
+    // la misma ruptura hacia abajo en tendencia alcista: no vende
+    const last = bars[bars.length - 2].c;
+    const down = [...bars.slice(0, -1), bar(bars.length - 1, last, last + 0.2, last - 5, last - 4.5)];
+    expect(signalAt(down, indicators(down), down.length - 1)).toBeNull();
+    // sin ruptura: la vela cierra dentro del rango
+    const flat = [...bars.slice(0, -1), bar(bars.length - 1, last, last + 0.1, last - 0.1, last)];
+    expect(signalAt(flat, indicators(flat), flat.length - 1)).toBeNull();
+  });
+
+  it("con pocas velas no hay señal", () => {
+    const bars = Array.from({ length: 50 }, (_, i) => bar(i, 1, 2, 0.5, 1.5 + i));
+    expect(signalAt(bars, indicators(bars), 49)).toBeNull();
+  });
+});
+
+describe("resolución y prueba con historial", () => {
+  it("si una vela toca stop y objetivo a la vez, se asume el stop", () => {
+    const bars = [bar(0, 10, 10, 10, 10), bar(1, 10, 20, 5, 12)];
+    expect(resolveFrom(bars, 1, { direction: "LONG", sl: 8, tp: 15 })).toEqual({ outcome: "SL", index: 1 });
+    expect(resolveFrom(bars, 1, { direction: "SHORT", sl: 15, tp: 8 })).toEqual({ outcome: "SL", index: 1 });
+  });
+
+  it("devuelve null si todavía no pasó nada", () => {
+    expect(resolveFrom([bar(0, 10, 11, 9, 10)], 0, { direction: "LONG", sl: 5, tp: 20 })).toBeNull();
+  });
+
+  it("descuenta el costo en R y no superpone operaciones", () => {
+    // tendencia alcista fuerte y pareja: tras cada ruptura el objetivo se toca rápido
+    const bars: Bar[] = [];
+    let p = 100;
+    for (let i = 0; i < 900; i++) {
+      const c = p * (1 + 0.003 + (i % 7 === 0 ? -0.004 : 0.001));
+      bars.push(bar(i, p, Math.max(p, c) * 1.002, Math.min(p, c) * 0.9985, c));
+      p = c;
+    }
+    const r = backtest(bars);
+    expect(r.trades.length).toBeGreaterThan(0);
+    const times = r.trades.map((t) => t.t);
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    for (const t of r.trades) {
+      if (t.outcome === "TP") expect(t.r).toBeLessThan(DEFAULT_PARAMS.rr); // el costo siempre resta
+      else expect(t.r).toBeLessThan(-1);
+    }
+    expect(botStats(r.trades.map((t) => t.r)).n).toBe(r.trades.length);
+  });
+
+  it("estadísticas", () => {
+    const s = botStats([2, -1, 2, -1, -1]);
+    expect(s.n).toBe(5);
+    expect(s.winRate).toBeCloseTo(40);
+    expect(s.netR).toBeCloseTo(1);
+    expect(s.profitFactor).toBeCloseTo(4 / 3);
+    expect(s.maxDrawdownR).toBeCloseTo(2);
+    expect(botStats([]).n).toBe(0);
+  });
+});
+
+describe("velas", () => {
+  it("descarta la vela que todavía está en curso", () => {
+    const now = T0 + 5.5 * BAR_MS;
+    const bars = Array.from({ length: 6 }, (_, i) => bar(i, 1, 1, 1, 1));
+    expect(closedBars(bars, now).map((b) => b.t)).toEqual(bars.slice(0, 5).map((b) => b.t));
+  });
+
+  it("baja velas de Binance y, si falla, de Bybit", async () => {
+    const mk = (i: number) => [T0 + i * BAR_MS, "1", "2", "0.5", "1.5", "10"];
+    const calls: string[] = [];
+    const fetchFn = (async (url: string) => {
+      calls.push(url);
+      if (url.includes("binance")) return new Response("blocked", { status: 451 });
+      return new Response(JSON.stringify({ result: { list: Array.from({ length: 400 }, (_, i) => mk(399 - i).map(String)) } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const bars = await fetchBars("BTCUSDT", 400, fetchFn);
+    expect(calls[0]).toContain("fapi.binance.com");
+    expect(calls.some((c) => c.includes("api.bybit.com"))).toBe(true);
+    expect(bars).toHaveLength(400);
+    expect(bars[0].t).toBeLessThan(bars[399].t);
+  });
+
+  it("avisa claro si ningún proveedor responde", async () => {
+    const fetchFn = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
+    await expect(fetchBars("BTCUSDT", 400, fetchFn)).rejects.toThrow("BTCUSDT");
+  });
+});
+
+describe("sin ventaja inventada", () => {
+  // Control contra errores que "adivinen el futuro": en un mercado al azar (sin tendencia real) la estrategia
+  // NO puede ganar; con el costo de ida y vuelta tiene que dar un promedio igual o menor a cero.
+  function rng(seed: number) {
+    let s = seed >>> 0;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  }
+  const gauss = (r: () => number) => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+
+  it("en un mercado al azar el promedio por operación no es positivo", () => {
+    const all: number[] = [];
+    for (let seed = 1; seed <= 20; seed++) {
+      const r = rng(seed);
+      let p = 100;
+      const bars: Bar[] = [];
+      for (let i = 0; i < 4000; i++) {
+        const o = p;
+        let c = o, h = o, l = o;
+        for (let k = 0; k < 4; k++) {
+          c *= 1 + gauss(r) * 0.004;
+          h = Math.max(h, c);
+          l = Math.min(l, c);
+        }
+        bars.push({ t: T0 + i * BAR_MS, o, h, l, c });
+        p = c;
+      }
+      all.push(...backtest(bars).trades.map((t) => t.r));
+    }
+    const s = botStats(all);
+    expect(s.n).toBeGreaterThan(1500);
+    expect(s.expectancy).toBeLessThan(0.02);
+  });
+});

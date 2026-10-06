@@ -3,9 +3,9 @@
 // `Trade` de @dmcripto/core (camelCase), y expone las mutaciones que antes
 // vivían como setState directo sobre localStorage.
 
-import { LIQ_COINS, t } from "./lib";
+import { DEFAULT_BOT, LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { BotBacktest, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -278,6 +278,32 @@ export async function disconnectExchange(id: string) {
   const { error } = await supabase.from("exchange_connections").delete().eq("id", id);
   if (error) throw error;
 }
+
+// ─── Bot automático (etapa simulada) ────────────────────────────────────────
+
+/** Los ajustes del bot de esta persona (si todavía no los guardó, los de fábrica: apagado). */
+export async function fetchBotSettings(userId: string): Promise<BotSettings> {
+  const { data, error } = await supabase.from("bot_settings").select("enabled, symbols, max_open, daily_loss_r, last_tick_at").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  if (!data) return DEFAULT_BOT;
+  return {
+    enabled: !!data.enabled,
+    symbols: (data.symbols as string[]) ?? DEFAULT_BOT.symbols,
+    maxOpen: Number(data.max_open ?? DEFAULT_BOT.maxOpen),
+    dailyLossR: Number(data.daily_loss_r ?? DEFAULT_BOT.dailyLossR),
+    lastTickAt: data.last_tick_at ?? null,
+  };
+}
+
+export async function saveBotSettings(userId: string, s: BotSettings) {
+  const { error } = await supabase
+    .from("bot_settings")
+    .upsert({ user_id: userId, enabled: s.enabled, symbols: s.symbols, max_open: s.maxOpen, daily_loss_r: s.dailyLossR, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (error) throw error;
+}
+
+/** Prueba la estrategia con el historial real de precios (no toca nada). */
+export const runBotBacktest = (symbols: string[], days = 120) => callFunction<BotBacktest & { ok: boolean; error?: string }>("bot", { action: "backtest", symbols, days });
 
 // ─── Bot de Telegram ────────────────────────────────────────────────────────
 

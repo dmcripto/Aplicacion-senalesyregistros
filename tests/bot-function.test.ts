@@ -1,0 +1,164 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { db, resetDb } from "./helpers/fake-supabase";
+import { BAR_MS } from "../supabase/functions/_shared/botStrategy";
+
+let handler: (req: Request) => Promise<Response>;
+const SECRET = "secreto-de-segundo-plano-123";
+
+beforeAll(async () => {
+  (globalThis as any).Deno = {
+    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_CRON_SECRET: SECRET } as Record<string, string>)[k] },
+    serve: (h: typeof handler) => { handler = h; },
+  };
+  await import("../supabase/functions/bot/index");
+});
+
+const hour = () => Math.floor(Date.now() / BAR_MS) * BAR_MS; // apertura de la vela en curso
+
+/** Velas de 1 h que terminan con la vela en curso. Tendencia alcista con ruido; si `breakout`, la última CERRADA rompe el máximo. */
+function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {}) {
+  const rows: number[][] = [];
+  let p = 100;
+  const start = hour() - (n - 1) * BAR_MS;
+  for (let i = 0; i < n - 1; i++) {
+    const c = p + 0.1 + Math.sin(i / 3) * 0.08;
+    rows.push([start + i * BAR_MS, p, Math.max(p, c) + 0.3, Math.min(p, c) - 0.3, c]);
+    p = c;
+  }
+  if (breakout) {
+    const last = rows.length - 1;
+    const prev = rows[last - 1][4];
+    rows[last] = [rows[last][0], prev, prev + 5, prev - 0.2, prev + 4.5];
+  }
+  const c = rows[rows.length - 1][4];
+  rows.push([hour(), c, opts.formingHigh ?? c + 0.1, c - 0.1, c]); // vela en curso
+  return rows;
+}
+
+let klines: number[][] = [];
+beforeEach(() => {
+  resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+  klines = series(285, true);
+  vi.stubGlobal("fetch", async (url: any) => {
+    const u = new URL(String(url));
+    if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
+    return new Response("{}", { status: 404 });
+  });
+});
+
+const tick = () => handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { "x-cron-secret": SECRET }, body: "{}" })).then(async (r) => ({ status: r.status, body: (await r.json()) as any }));
+const enable = (over: Record<string, unknown> = {}) => db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, ...over });
+
+describe("función bot · corrida periódica", () => {
+  it("rechaza pedidos sin el secreto", async () => {
+    const bad = await handler(new Request("http://x", { method: "POST", headers: { "x-cron-secret": "otro" }, body: "{}" }));
+    expect(bad.status).toBe(401);
+  });
+
+  it("anota una operación simulada cuando la última vela cerrada rompe a favor de la tendencia", async () => {
+    enable();
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    const t = db.tables.trades[0];
+    expect(t).toMatchObject({ user_id: "u1", symbol: "BTCUSDT", direction: "LONG", source: "bot", tags: ["Bot simulado"] });
+    expect(t.sl).toBeLessThan(t.entry);
+    expect(t.tp).toBeGreaterThan(t.entry);
+    expect(t.notes).toContain("No se operó en ningún exchange");
+    expect(db.tables.bot_signals).toHaveLength(1);
+    expect(db.tables.bot_signals[0].trade_id).toBe(t.id);
+  });
+
+  it("no duplica la operación si la corrida se repite", async () => {
+    enable();
+    await tick();
+    await tick();
+    expect(db.tables.trades).toHaveLength(1);
+    expect(db.tables.bot_signals).toHaveLength(1);
+  });
+
+  it("con el bot apagado no hace nada", async () => {
+    enable({ enabled: false });
+    const r = await tick();
+    expect(r.body.opened).toBe(0);
+    expect(db.tables.trades).toHaveLength(0);
+  });
+
+  it("no anota si no hubo señal", async () => {
+    klines = series(285, false);
+    enable();
+    expect((await tick()).body.opened).toBe(0);
+  });
+
+  it("respeta el máximo de operaciones abiertas", async () => {
+    enable({ max_open: 1 });
+    db.tables.trades.push({ id: "x", user_id: "u1", symbol: "ETHUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry: 1, sl: 0.9, tp: 1.2 });
+    const r = await tick();
+    expect(r.body.opened).toBe(0);
+  });
+
+  it("no abre otra operación del mismo activo mientras haya una abierta", async () => {
+    enable();
+    db.tables.trades.push({ id: "x", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry: 1, sl: 0.9, tp: 1.2 });
+    expect((await tick()).body.opened).toBe(0);
+  });
+
+  it("frena por hoy si se alcanzó la pérdida máxima diaria", async () => {
+    enable({ daily_loss_r: 2 });
+    const now = new Date().toISOString();
+    for (let i = 0; i < 2; i++) db.tables.trades.push({ id: `l${i}`, user_id: "u1", symbol: "SOLUSDT", source: "bot", outcome: "SL", entry: 10, sl: 9, tp: 12, closed_at: now });
+    expect((await tick()).body.opened).toBe(0);
+  });
+
+  it("cierra la operación simulada cuando una vela posterior toca el objetivo", async () => {
+    // una operación abierta hace 3 velas cuyo objetivo se alcanza en una vela posterior
+    const rows = series(285, false);
+    const signalT = rows[rows.length - 5][0];
+    const entry = rows[rows.length - 5][4];
+    rows[rows.length - 2] = [rows[rows.length - 2][0], entry, entry + 3, entry - 0.1, entry + 2.5]; // toca tp = entry + 2
+    klines = rows;
+    db.tables.trades.push({ id: "t1", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 2 });
+    db.tables.bot_signals.push({ id: "s1", user_id: "u1", symbol: "BTCUSDT", candle_time: new Date(signalT).toISOString(), trade_id: "t1" });
+    const r = await tick();
+    expect(r.body.closed).toBe(1);
+    expect(db.tables.trades.find((t) => t.id === "t1")).toMatchObject({ outcome: "TP", auto_closed: true });
+  });
+
+  it("sigue cerrando operaciones aunque la persona haya apagado el bot", async () => {
+    const rows = series(285, false);
+    const signalT = rows[rows.length - 5][0];
+    const entry = rows[rows.length - 5][4];
+    rows[rows.length - 2] = [rows[rows.length - 2][0], entry, entry + 0.1, entry - 3, entry - 2.5]; // toca el stop
+    klines = rows;
+    enable({ enabled: false });
+    db.tables.trades.push({ id: "t1", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 2 });
+    db.tables.bot_signals.push({ id: "s1", user_id: "u1", symbol: "BTCUSDT", candle_time: new Date(signalT).toISOString(), trade_id: "t1" });
+    await tick();
+    expect(db.tables.trades.find((t) => t.id === "t1")?.outcome).toBe("SL");
+  });
+});
+
+describe("función bot · prueba con historial", () => {
+  const call = async (body: unknown, token = "good") => {
+    const r = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }));
+    return { status: r.status, body: (await r.json()) as any };
+  };
+
+  it("pide sesión", async () => {
+    expect((await call({ action: "backtest" }, "malo")).status).toBe(401);
+  });
+
+  it("valida los activos", async () => {
+    expect((await call({ action: "backtest", symbols: ["DOGEUSDT"] })).status).toBe(400);
+    expect((await call({ action: "otra" })).status).toBe(400);
+  });
+
+  it("devuelve estadísticas por activo y totales", async () => {
+    klines = series(3000, true);
+    const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });
+    expect(r.status).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(r.body.symbols[0].symbol).toBe("BTCUSDT");
+    expect(typeof r.body.total.n).toBe("number");
+    expect(r.body.params.rr).toBe(2);
+  });
+});

@@ -976,7 +976,7 @@ export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: b
   { id: "bingx", name: "BingX" },
 ];
 export const needsPassphrase = (id: string) => !!EXCHANGE_LIST.find((e) => e.id === id)?.passphrase;
-export const exchangeName = (id: string) => EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id;
+export const exchangeName = (id: string) => (id === "bot" ? tr("Bot simulado") : EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id);
 
 /** Pasos para crear la clave de solo lectura en cada exchange. */
 export function exchangeSteps(id: ExchangeId): string[] {
@@ -1408,6 +1408,34 @@ export function binanceSymbol(raw: string): { symbol: string; perp: boolean } | 
   if (!m || NOT_CRYPTO.has(m[1])) return null;
   return { symbol: `${m[1]}${m[2] === "USDC" ? "USDC" : "USDT"}`, perp };
 }
+
+// ─── Bot automático (etapa simulada) ────────────────────────────────────────
+
+export const BOT_ASSETS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
+
+/** Ajustes del bot de cada persona. Hoy solo opera en modo simulado: anota operaciones en el diario, sin tocar ningún exchange. */
+export interface BotSettings {
+  enabled: boolean;
+  symbols: string[];
+  maxOpen: number; // operaciones simuladas abiertas a la vez
+  dailyLossR: number; // pérdida máxima por día (R): al alcanzarla el bot no abre más ese día
+  lastTickAt: string | null; // última vez que el servidor lo revisó
+}
+
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null };
+
+export interface BotStatsRow {
+  n: number;
+  winRate: number;
+  expectancy: number;
+  netR: number;
+  profitFactor: number | null;
+  maxDrawdownR: number;
+}
+
+export type BotBacktest =
+  | { ok: true; days: number; total: BotStatsRow; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
+  | { ok: false; error?: string };
 
 // ─── Funciones que se prenden y apagan ──────────────────────────────────────
 
