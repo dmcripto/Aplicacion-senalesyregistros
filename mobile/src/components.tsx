@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
-import type { DailyStatus, GroupRow, Trade } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, confidenceLabel, strategyPlan, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
+import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
@@ -515,6 +515,109 @@ export function Empty({ title, text }: { title: string; text: string }) {
   );
 }
 
+
+const RULE_ICON: Record<StrategyRule["kind"], string> = { avoid: "🚫", focus: "🎯", risk: "🛡️", habit: "🧭" };
+const CONF_COLOR: Record<Confidence, string> = { high: colors.bull, medium: colors.gold, low: colors.dim };
+
+/** Estrategia sugerida: reglas armadas con las operaciones cerradas (incluidas las del exchange). */
+export function StrategyBlock({ trades }: { trades: Trade[] }) {
+  const { money } = useMoney();
+  const imported = useMemo(() => trades.filter((x) => x.source), [trades]);
+  const [onlyImported, setOnlyImported] = useState(false);
+  const use = onlyImported && imported.length ? imported : trades;
+  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, importedOnly: onlyImported }), [use, money.riskPct, onlyImported]);
+  const tone = !plan.ok ? colors.line : plan.edge === "likely" ? colors.bull : plan.edge === "unproven" ? colors.gold : colors.bear;
+  const fmtBest = (n: number) => `${fmtR(n)}R`;
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{t("ESTRATEGIA SUGERIDA")}</Text>
+      <Text style={st.sub}>{t("Reglas armadas con tus propias operaciones")}</Text>
+      {imported.length > 0 && (
+        <View style={s.segment}>
+          {([[false, t("Todas mis operaciones")], [true, t("Solo las de mi exchange")]] as const).map(([v, label]) => (
+            <TouchableOpacity key={String(v)} style={[s.segBtn, onlyImported === v && s.segBtnOn]} onPress={() => setOnlyImported(v)}>
+              <Text style={[s.segText, onlyImported === v && { color: colors.ink }]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {!plan.ok ? (
+        <Text style={st.note}>{t("Para sugerirte una estrategia necesito al menos {n} operaciones cerradas (tenés {have}). Conectá tu exchange o seguí registrando y volvé.", { n: plan.needed, have: plan.have })}</Text>
+      ) : (
+        <>
+          <View style={[st.headline, { borderColor: tone + "66", backgroundColor: tone + "18" }]}>
+            <Text style={st.headlineText}>{plan.headline}</Text>
+          </View>
+          <View style={s.tileRow}>
+            <StatTile label={t("Acierto")} value={`${Math.round(plan.profile.winRate)}%`} />
+            <StatTile label={t("Ganancia / pérdida")} value={plan.profile.payoff ? plan.profile.payoff.toFixed(1) : "—"} />
+            <StatTile label={t("Promedio por operación")} value={fmtBest(plan.profile.expectancy)} color={rColor(plan.profile.expectancy)} />
+          </View>
+          <View style={s.tileRow}>
+            <StatTile label={t("Factor de beneficio")} value={plan.profile.profitFactor == null ? "∞" : plan.profile.profitFactor.toFixed(2)} />
+            <StatTile label={t("Peor caída")} value={`${plan.profile.maxDrawdownR.toFixed(1).replace(/\.0$/, "")}R`} color={colors.bear} />
+          </View>
+          <Text style={st.note}>
+            {t("Tu estilo")}: {plan.style}
+          </Text>
+          <Text style={st.head}>{t("Tu plan sugerido")}</Text>
+          {plan.rules.length === 0 ? (
+            <Text style={st.note}>{t("Todavía no encuentro patrones claros. Seguí registrando: con más operaciones aparecen.")}</Text>
+          ) : (
+            plan.rules.map((r) => (
+              <View key={r.title} style={st.rule}>
+                <View style={st.ruleTop}>
+                  <Text style={st.ruleTitle}>
+                    {RULE_ICON[r.kind]} {r.title}
+                  </Text>
+                  <Text style={[st.badge, { color: CONF_COLOR[r.confidence], borderColor: CONF_COLOR[r.confidence] + "88" }]}>{confidenceLabel(r.confidence)}</Text>
+                </View>
+                <Text style={st.ruleWhy}>{r.why}</Text>
+              </View>
+            ))
+          )}
+          {plan.after && (
+            <View style={st.rule}>
+              <Text style={st.head}>{t("¿Y si hubieras evitado eso?")}</Text>
+              <Text style={st.ruleWhy}>{t("Habrías hecho {a} operaciones menos y tu resultado pasaba de {b} a {c}.", { a: plan.avoidedTrades, b: fmtBest(plan.before.netR), c: fmtBest(plan.after.netR) })}</Text>
+              <Text style={st.small}>{t("Es una cuenta sobre lo que ya pasó: siempre sale mejor de lo que va a salir. Mirá el control de abajo.")}</Text>
+            </View>
+          )}
+          {plan.validation && (
+            <View style={[st.headline, { borderColor: (plan.validation.held ? colors.bull : colors.bear) + "66", backgroundColor: (plan.validation.held ? colors.bull : colors.bear) + "18" }]}>
+              <Text style={st.headlineText}>
+                {plan.validation.held
+                  ? t("Control: armé las reglas con tus {a} operaciones más viejas y las probé en las {b} más nuevas. Lo que evitarías sumó {r}: la regla se sostuvo.", { a: plan.validation.trainN, b: plan.validation.testN, r: fmtBest(plan.validation.avoidedR) })
+                  : t("Control: armé las reglas con tus {a} operaciones más viejas y las probé en las {b} más nuevas. Lo que evitarías sumó {r}: la regla no se sostuvo, tomala con cuidado.", { a: plan.validation.trainN, b: plan.validation.testN, r: fmtBest(plan.validation.avoidedR) })}
+              </Text>
+            </View>
+          )}
+          <View style={s.insights}>
+            <Text style={st.head}>{t("Cómo probarlo")}</Text>
+            <Text style={s.insightText}>1. {t("Elegí 2 o 3 reglas, no todas juntas.")}</Text>
+            <Text style={s.insightText}>2. {t("Seguilas durante las próximas 20 operaciones, en demo o con el riesgo mínimo.")}</Text>
+            <Text style={s.insightText}>3. {t("Volvé acá: si tu promedio por operación mejoró, mantenelas; si no, descartalas.")}</Text>
+          </View>
+          <Text style={st.small}>{t("Son patrones de tu historial, no una garantía. Con pocas operaciones pueden ser casualidad, por eso cada regla trae su nivel de confianza. No es asesoramiento financiero.")}</Text>
+        </>
+      )}
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  sub: { color: colors.dim, fontSize: 11, marginBottom: 8 },
+  note: { color: colors.fog, fontSize: 12, lineHeight: 17, marginTop: 8 },
+  small: { color: colors.dim, fontSize: 10.5, lineHeight: 15, marginTop: 6 },
+  head: { color: colors.gold, fontSize: 10, fontWeight: "800", letterSpacing: 1.6, marginTop: 12, marginBottom: 4 },
+  headline: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 10 },
+  headlineText: { color: colors.snow, fontSize: 12.5, lineHeight: 18 },
+  rule: { backgroundColor: "rgba(16,23,32,0.85)", borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 12, marginTop: 8 },
+  ruleTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" },
+  ruleTitle: { color: colors.snow, fontSize: 13, fontWeight: "700", flex: 1, lineHeight: 18 },
+  ruleWhy: { color: colors.fog, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  badge: { fontSize: 9, fontWeight: "800", letterSpacing: 0.8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, textTransform: "uppercase" },
+});
 
 const s = StyleSheet.create({
   hero: { borderWidth: 1, borderRadius: 14, padding: 16, overflow: "hidden", backgroundColor: "rgba(16,23,32,0.85)" },
