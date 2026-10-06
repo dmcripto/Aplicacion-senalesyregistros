@@ -32,6 +32,8 @@ export interface Trade {
   autoClosed?: boolean;
   source?: string; // exchange de origen si se importó (binance | bybit | bitunix | mexc | gate | bitget | okx | kucoin | bingx)
   tags?: string[];
+  leverage?: number; // apalancamiento usado (lo informa el exchange o lo carga la persona); sin dato si falta
+  sizeUsd?: number; // valor de la posición en USDT (cantidad × precio de entrada), si se conoce
 }
 
 export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed" | "source">;
@@ -613,7 +615,7 @@ export function analyze(trades: Trade[]): Analysis {
 }
 
 /** Plan de trading armado con las operaciones cerradas (ver strategy.ts). `source` indica de qué origen son las operaciones usadas. */
-export const strategyPlan = (trades: Trade[], opts: { riskPct?: number | null; source?: string } = {}) => buildStrategy(trades, resultR, opts);
+export const strategyPlan = (trades: Trade[], opts: { riskPct?: number | null; capital?: number | null; source?: string } = {}) => buildStrategy(trades, resultR, opts);
 
 // ─── Límites diarios ────────────────────────────────────────────────────────
 

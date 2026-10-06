@@ -83,10 +83,11 @@ interface Row {
   r: number;
   open: number; // ms de apertura
   close: number; // ms de cierre (o apertura si no hay)
+  cap: number | null; // capital de la persona (para medir el tamaño de la posición contra él)
 }
 
 interface Seg {
-  dim: "symbol" | "weekday" | "hour" | "direction" | "tag";
+  dim: "symbol" | "weekday" | "hour" | "direction" | "tag" | "leverage" | "size" | "duration";
   key: string;
   label: string;
 }
@@ -137,6 +138,30 @@ function edgeOf(rs: number[]): EdgeVerdict {
   return mean / (sd / Math.sqrt(rs.length)) >= 2 ? "likely" : "unproven";
 }
 
+// ─── Cómo se gestionó la operación: apalancamiento, tamaño y duración ────────
+
+function leverageSeg(x: number): Seg {
+  if (x <= 3) return { dim: "leverage", key: "L1", label: tr("hasta 3x") };
+  if (x <= 10) return { dim: "leverage", key: "L2", label: tr("entre 4x y 10x") };
+  if (x <= 25) return { dim: "leverage", key: "L3", label: tr("entre 11x y 25x") };
+  return { dim: "leverage", key: "L4", label: tr("más de 25x") };
+}
+
+/** Tamaño de la posición contra el capital: cuántas veces el capital vale lo que se operó. */
+function sizeSeg(times: number): Seg {
+  if (times <= 0.5) return { dim: "size", key: "S1", label: tr("hasta la mitad de tu capital") };
+  if (times <= 2) return { dim: "size", key: "S2", label: tr("entre la mitad y 2 veces tu capital") };
+  if (times <= 5) return { dim: "size", key: "S3", label: tr("entre 2 y 5 veces tu capital") };
+  return { dim: "size", key: "S4", label: tr("más de 5 veces tu capital") };
+}
+
+function durationSeg(hours: number): Seg {
+  if (hours < 1) return { dim: "duration", key: "D1", label: tr("menos de 1 hora") };
+  if (hours < 4) return { dim: "duration", key: "D2", label: tr("entre 1 y 4 horas") };
+  if (hours < 24) return { dim: "duration", key: "D3", label: tr("entre 4 y 24 horas") };
+  return { dim: "duration", key: "D4", label: tr("más de 1 día") };
+}
+
 function segsOf(row: Row): Seg[] {
   const d = new Date(row.open);
   const out: Seg[] = [
@@ -146,6 +171,11 @@ function segsOf(row: Row): Seg[] {
     { dim: "direction", key: row.t.direction, label: row.t.direction === "LONG" ? tr("compras") : tr("ventas") },
   ];
   for (const tag of row.t.tags ?? []) out.push({ dim: "tag", key: tag, label: tag });
+  // Gestión de la operación: solo cuando se conoce el dato (si falta, la operación no cuenta en ese grupo).
+  if (row.t.leverage != null && row.t.leverage > 0) out.push(leverageSeg(row.t.leverage));
+  if (row.t.sizeUsd != null && row.t.sizeUsd > 0 && row.cap != null && row.cap > 0) out.push(sizeSeg(row.t.sizeUsd / row.cap));
+  const hrs = (row.close - row.open) / 3_600_000;
+  if (hrs > 0) out.push(durationSeg(hrs));
   return out;
 }
 
@@ -162,6 +192,12 @@ function phrase(s: Seg, verb: "avoid" | "focus"): string {
       return verb === "avoid" ? tr("Evitá operar entre {x}", { x: s.label }) : tr("Operá entre {x}", { x: s.label });
     case "direction":
       return verb === "avoid" ? tr("Evitá las {x} por ahora", { x: s.label }) : tr("Priorizá las {x}", { x: s.label });
+    case "leverage":
+      return verb === "avoid" ? tr("Evitá operar con {x} de apalancamiento", { x: s.label }) : tr("Con {x} de apalancamiento te va mejor: quedate en ese rango", { x: s.label });
+    case "size":
+      return verb === "avoid" ? tr("Achicá tus posiciones: las de {x} te están costando", { x: s.label }) : tr("Las posiciones de {x} te funcionan: mantené ese tamaño", { x: s.label });
+    case "duration":
+      return verb === "avoid" ? tr("Las operaciones de {x} te están costando: revisá cuándo entrás y cuándo salís", { x: s.label }) : tr("Tus mejores operaciones duran {x}: dales ese tiempo", { x: s.label });
     default:
       return verb === "avoid" ? tr("Revisá el método «{x}»: te está costando", { x: s.label }) : tr("Reforzá el método «{x}»", { x: s.label });
   }
@@ -283,9 +319,9 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
  * @param rOf resultado en R de una operación (resultR del núcleo); null/undefined = no cerrada.
  * @param riskPct riesgo por operación que usás hoy (opcional) para traducir las caídas a % del capital.
  */
-export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null, opts: { riskPct?: number | null; source?: string } = {}): StrategyPlan {
+export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null, opts: { riskPct?: number | null; capital?: number | null; source?: string } = {}): StrategyPlan {
   const rows: Row[] = trades
-    .map((t) => ({ t, r: rOf(t), open: new Date(t.date).getTime(), close: new Date(t.closedAt ?? t.date).getTime() }))
+    .map((t) => ({ t, r: rOf(t), open: new Date(t.date).getTime(), close: new Date(t.closedAt ?? t.date).getTime(), cap: opts.capital && opts.capital > 0 ? opts.capital : null }))
     .filter((x): x is Row => x.t.outcome !== "ABIERTA" && x.r != null && !Number.isNaN(x.open))
     .map((x) => ({ ...x, close: Number.isNaN(x.close) ? x.open : x.close }))
     .sort((a, b) => a.close - b.close);

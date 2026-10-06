@@ -65,6 +65,36 @@ describe("función exchanges", () => {
     expect(db.tables.trades).toHaveLength(2);
   });
 
+  it("guarda el apalancamiento y el tamaño, y completa lo que ya estaba importado sin esos datos", async () => {
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = new URL(String(url));
+      const j = (b: unknown) => new Response(JSON.stringify(b));
+      if (u.pathname === "/v5/user/query-api") return j({ retCode: 0, result: { readOnly: 1 } });
+      if (u.pathname === "/v5/position/closed-pnl") {
+        return j({ retCode: 0, result: { nextPageCursor: "", list: [
+          { symbol: "BTCUSDT", side: "Sell", orderId: "o1", closedPnl: "30", avgEntryPrice: "65000", avgExitPrice: "65300", closedSize: "0.1", createdTime: String(Date.now() - 36e5), updatedTime: String(Date.now() - 18e5), leverage: "25" },
+        ] } });
+      }
+      return new Response("{}", { status: 404 });
+    });
+    // una operación que ya estaba importada de antes (sin los datos nuevos)
+    db.tables.trades = [{ id: "old", user_id: "u1", source: "bybit", external_id: "BTCUSDT:o1", symbol: "BTCUSDT", outcome: "MANUAL" }];
+    const r = await connect();
+    expect(r.body.ok).toBe(true);
+    const t = db.tables.trades.find((x) => x.external_id === "BTCUSDT:o1")!;
+    expect(db.tables.trades).toHaveLength(1); // no se duplicó
+    expect(t.leverage).toBe(25);
+    expect(t.size_usd).toBeCloseTo(6500, 5);
+  });
+
+  it("si todavía no se corrió el SQL del apalancamiento, importa igual (sin ese dato)", async () => {
+    db.missingColumns = ["leverage", "size_usd"];
+    const r = await connect();
+    expect(r.body).toMatchObject({ ok: true, imported: 2 });
+    expect(db.tables.trades).toHaveLength(2);
+    expect(db.tables.trades.every((t) => !("leverage" in t) && !("size_usd" in t))).toBe(true);
+  });
+
   it("acepta también Bitunix y MEXC", async () => {
     vi.stubGlobal("fetch", async (url: any) => {
       const u = new URL(String(url));

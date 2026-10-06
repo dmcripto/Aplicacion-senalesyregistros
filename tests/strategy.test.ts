@@ -368,3 +368,62 @@ describe("laboratorio de variantes (núcleo)", () => {
     expect(some).toContain("modo simulado");
   });
 });
+
+describe("gestión de la operación: apalancamiento, tamaño y duración", () => {
+  // 24 operaciones: las de poco apalancamiento ganan y las de mucho pierden (mismo activo, misma dirección, horarios mezclados).
+  const mixed = (over: (i: number) => Partial<Trade>) =>
+    Array.from({ length: 24 }, (_, i) => mk(day(1 + (i % 27), 8 + (i % 3) * 5), i % 2 === 0 ? 2 : -1, over(i)));
+  const titles = (p: ReturnType<typeof strategyPlan>) => (p.ok ? p.rules.map((r) => r.title) : []);
+
+  it("detecta que el apalancamiento alto te cuesta y lo dice como consejo para vos (no aplicable al bot)", () => {
+    const trades = Array.from({ length: 24 }, (_, i) => {
+      const high = i % 2 === 1; // las impares son las que pierden
+      return mk(day(1 + i, 10), high ? -1 : 2, { leverage: high ? 40 : 2 });
+    });
+    const p = strategyPlan(trades);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    const rule = p.rules.find((r) => r.id === "avoid:leverage:L4");
+    expect(rule).toBeTruthy();
+    expect(rule!.title).toContain("más de 25x");
+    expect(rule!.action).toBeUndefined();
+    expect(ruleEvidence(p, rule!)).toBeNull(); // solo consejo: el bot no tiene apalancamiento
+    expect(rule!.why).toContain("12 operaciones");
+  });
+
+  it("sin datos de apalancamiento no inventa reglas de apalancamiento ni de tamaño", () => {
+    const p = strategyPlan(mixed(() => ({})), { capital: 1000 });
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rules.some((r) => /leverage|size/.test(r.id))).toBe(false);
+  });
+
+  it("el tamaño de la posición se mide contra tu capital y hace falta saber el capital", () => {
+    const trades = Array.from({ length: 24 }, (_, i) => {
+      const big = i % 2 === 1;
+      return mk(day(1 + i, 10), big ? -1 : 2, { sizeUsd: big ? 9000 : 400 }); // con 1000 de capital: 9 veces vs 0,4 veces
+    });
+    const withCap = strategyPlan(trades, { capital: 1000 });
+    expect(withCap.ok && withCap.rules.some((r) => r.id === "avoid:size:S4")).toBe(true);
+    const noCap = strategyPlan(trades);
+    expect(noCap.ok && noCap.rules.some((r) => r.id.includes(":size:"))).toBe(false);
+  });
+
+  it("la duración sirve con operaciones ya cerradas y dice cuánto duran", () => {
+    // las ganadoras duran 2 h (mk), las perdedoras 30 h: las largas son las que cuestan
+    const trades = Array.from({ length: 24 }, (_, i) => {
+      const lose = i % 2 === 1;
+      const t = mk(day(1 + i, 10), lose ? -1 : 2);
+      return lose ? { ...t, closedAt: new Date(new Date(t.date).getTime() + 30 * 3_600_000).toISOString() } : t;
+    });
+    const p = strategyPlan(trades);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rules.some((r) => r.id === "avoid:duration:D4" && r.title.includes("más de 1 día"))).toBe(true);
+  });
+
+  it("los textos hablan en cristiano", () => {
+    const high = Array.from({ length: 24 }, (_, i) => mk(day(1 + i, 10), i % 2 ? -1 : 2, { leverage: i % 2 ? 40 : 2 }));
+    expect(titles(strategyPlan(high)).join(" ")).toContain("Evitá operar con más de 25x de apalancamiento");
+  });
+});

@@ -67,14 +67,34 @@ async function syncOne(conn: Connection, master: string, unit: number) {
     .filter((p) => !ignored.has(p.externalId) && !seen.has(p.externalId) && !!seen.add(p.externalId))
     .map((p) => ({ ...toTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
 
+  // Las columnas de apalancamiento y tamaño pueden no existir todavía (falta correr el SQL): entonces se importa igual, sin ellas.
+  const withoutManagement = <T extends Record<string, unknown>>(r: T) => {
+    const { leverage: _l, size_usd: _s, ...rest } = r as Record<string, unknown>;
+    return rest;
+  };
+  let withManagement = true;
   let imported = 0;
   for (let i = 0; i < rows.length; i += 200) {
-    const { data, error } = await admin
-      .from("trades")
-      .upsert(rows.slice(i, i + 200), { onConflict: "user_id,source,external_id", ignoreDuplicates: true })
-      .select("id");
+    const chunk = rows.slice(i, i + 200);
+    let { data, error } = await admin.from("trades").upsert(withManagement ? chunk : chunk.map(withoutManagement), { onConflict: "user_id,source,external_id", ignoreDuplicates: true }).select("id");
+    if (error && withManagement && /leverage|size_usd/i.test(error.message)) {
+      withManagement = false;
+      ({ data, error } = await admin.from("trades").upsert(chunk.map(withoutManagement), { onConflict: "user_id,source,external_id", ignoreDuplicates: true }).select("id"));
+    }
     if (error) throw new Error(error.message);
     imported += data?.length ?? 0;
+  }
+  // Las operaciones que ya estaban importadas (de antes de existir estos datos) se completan con lo que informa el exchange.
+  if (withManagement && rows.length) {
+    try {
+      const { data: missing } = await admin.from("trades").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).is("size_usd", null).in("external_id", rows.map((r) => r.external_id)).limit(500);
+      const need = new Set((missing ?? []).map((m: { external_id: string }) => m.external_id));
+      for (const r of rows.filter((x) => need.has(x.external_id))) {
+        await admin.from("trades").update({ leverage: r.leverage, size_usd: r.size_usd }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", r.external_id).is("size_usd", null);
+      }
+    } catch (e) {
+      console.error("completar apalancamiento:", e instanceof Error ? e.message : e);
+    }
   }
   return imported;
 }

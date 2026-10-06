@@ -511,3 +511,21 @@ describe("BingX", () => {
     expect(ex.toTradeRow(p, "bingx", 5).notes).toMatch(/^BingX · /);
   });
 });
+
+describe("apalancamiento y tamaño de las posiciones importadas", () => {
+  it("lo toman los exchanges que lo informan y lo dejan vacío si no viene o no es razonable", async () => {
+    const { parseBybitClosed, parseOkxClosed, parseBingxClosed, toTradeRow } = await import("../supabase/functions/_shared/exchanges");
+    const bybit = (leverage: unknown) => parseBybitClosed([{ symbol: "BTCUSDT", side: "Sell", orderId: "o1", closedPnl: "30", avgEntryPrice: "65000", avgExitPrice: "65300", closedSize: "0.1", createdTime: "1700000000000", updatedTime: "1700003600000", leverage }])[0];
+    expect(bybit("10").leverage).toBe(10);
+    expect(bybit(undefined).leverage).toBeUndefined();
+    expect(bybit("0").leverage).toBeUndefined();
+    expect(bybit("5000").leverage).toBeUndefined(); // dato absurdo: sin dato
+    const okx = parseOkxClosed([{ instId: "BTC-USDT-SWAP", posId: "p1", direction: "long", openAvgPx: "65000", closeAvgPx: "65300", openAvgPrice: "65000", closeAvgPrice: "65300", closeTotalPos: "1", realizedPnl: "30", pnl: "30", cTime: "1700000000000", uTime: "1700003600000", lever: "20" }], { "BTC-USDT-SWAP": 0.01 });
+    if (okx.length) expect(okx[0].leverage).toBe(20);
+    expect(parseBingxClosed([])).toEqual([]);
+    const row = toTradeRow(bybit("10"), "bybit", 10);
+    expect(row.leverage).toBe(10);
+    expect(row.size_usd).toBeCloseTo(6500, 5); // 0,1 BTC × 65.000
+    expect(toTradeRow(bybit(undefined), "bybit", 10).leverage).toBeNull();
+  });
+});

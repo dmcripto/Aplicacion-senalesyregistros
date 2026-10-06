@@ -22,6 +22,8 @@ interface TradeRow {
   auto_closed?: boolean | null;
   tags?: string[] | null;
   source?: string | null;
+  leverage?: number | null;
+  size_usd?: number | null;
 }
 
 export function rowToTrade(row: TradeRow): Trade {
@@ -41,6 +43,8 @@ export function rowToTrade(row: TradeRow): Trade {
     autoClosed: row.auto_closed ?? undefined,
     tags: row.tags ?? undefined,
     source: row.source ?? undefined,
+    leverage: row.leverage == null ? undefined : Number(row.leverage),
+    sizeUsd: row.size_usd == null ? undefined : Number(row.size_usd),
   };
 }
 
@@ -63,12 +67,13 @@ export async function insertTrades(userId: string, list: NewTrade[]) {
       tp: t.tp,
       sl: t.sl,
       ...(withTargets && t.targets?.length ? { targets: t.targets } : {}),
+      ...(withTargets && t.leverage ? { leverage: t.leverage } : {}),
       date: t.date,
       notes: t.notes ?? null,
     }));
   let { error } = await supabase.from("trades").insert(rows(true));
-  // Si todavía no se corrió el SQL de los targets, se guarda igual (solo con el TP final).
-  if (error && list.some((t) => t.targets?.length)) ({ error } = await supabase.from("trades").insert(rows(false)));
+  // Si todavía no se corrió el SQL de los targets o del apalancamiento, se guarda igual (sin esos datos).
+  if (error && list.some((t) => t.targets?.length || t.leverage)) ({ error } = await supabase.from("trades").insert(rows(false)));
   if (error) throw error;
 }
 

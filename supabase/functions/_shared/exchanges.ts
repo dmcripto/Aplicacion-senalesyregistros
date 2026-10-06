@@ -19,6 +19,8 @@ export interface ClosedPosition {
   pnl: number; // resultado neto en USDT (después de comisiones cuando el exchange las informa)
   openedAt: number; // ms
   closedAt: number; // ms
+  /** Apalancamiento de la posición, solo si el exchange lo informa (si no, queda sin dato). */
+  leverage?: number;
   raw?: string; // datos tal como los informó el exchange, para verificar casos todavía sin comprobar con cuentas reales
 }
 
@@ -55,6 +57,11 @@ const qs = (params: Record<string, string | number>) =>
 const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
   return Number.isFinite(n) ? n : 0;
+};
+/** Apalancamiento informado por el exchange: solo si es un número razonable (si no, sin dato). */
+const lev = (x: unknown): number | undefined => {
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0 && n <= 1000 ? n : undefined;
 };
 
 /** Reparte [from, to] en ventanas de hasta 7 días. */
@@ -328,6 +335,7 @@ export function parseBybitClosed(list: any[]): ClosedPosition[] {
       pnl: num(r.closedPnl),
       openedAt: Number(r.createdTime ?? closedAt),
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -422,6 +430,7 @@ export function parseBitunixClosed(list: any[]): ClosedPosition[] {
       closedAt,
       // Solo si hubo funding: todavía no se sabe si realizedPNL lo incluye, y esto permite comprobarlo con un caso real.
       raw: num(r.funding) !== 0 ? `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}` : undefined,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -504,6 +513,7 @@ export function parseMexcClosed(list: any[], contractSizes: Record<string, numbe
       pnl: num(r.realised), // resultado final ya descontadas las comisiones
       openedAt: Number(r.createTime ?? closedAt),
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -602,6 +612,7 @@ export function parseGateClosed(list: any[], multipliers: Record<string, number>
       pnl,
       openedAt: Number.isFinite(openedAt) ? openedAt : closedAt,
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -694,6 +705,7 @@ export function parseBitgetClosed(list: any[]): ClosedPosition[] {
       pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.pnl) + num(r.openFee) + num(r.closeFee) + num(r.totalFunding), // neto de comisiones y funding
       openedAt: Number(r.ctime ?? closedAt),
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -783,6 +795,7 @@ export function parseOkxClosed(list: any[], contractValues: Record<string, numbe
       pnl,
       openedAt: Number(r.cTime ?? closedAt),
       closedAt,
+      leverage: lev(r.lever),
     });
   }
   return out;
@@ -904,6 +917,7 @@ export function parseKucoinClosed(list: any[], multipliers: Record<string, numbe
       pnl,
       openedAt: Number(r.openTime ?? closedAt),
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -997,6 +1011,7 @@ export function parseBingxClosed(list: any[]): ClosedPosition[] {
       pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.realisedProfit) + num(r.positionCommission) + num(r.totalFunding),
       openedAt: Number(r.openTime ?? closedAt),
       closedAt,
+      leverage: lev(r.leverage),
     });
   }
   return out;
@@ -1068,6 +1083,9 @@ export interface TradeRow {
   notes: string;
   source: ExchangeId;
   external_id: string;
+  /** Apalancamiento (si el exchange lo informa) y valor de la posición en USDT. */
+  leverage: number | null;
+  size_usd: number | null;
 }
 
 const round = (n: number) => Number(n.toPrecision(10));
@@ -1097,6 +1115,8 @@ export function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number
     notes: `${name} · cantidad ${round(p.qty)} · salida real ${round(p.exit)} · resultado neto ${p.pnl >= 0 ? "+" : "−"}${Math.abs(p.pnl).toFixed(2)} USDT${p.raw ? ` · ${p.raw}` : ""}`,
     source: exchange,
     external_id: p.externalId,
+    leverage: p.leverage ?? null,
+    size_usd: p.qty > 0 && p.entry > 0 ? round(p.qty * p.entry) : null,
   };
 }
 
