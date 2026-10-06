@@ -66,6 +66,7 @@ import AlertBuilder from "./components/AlertBuilder";
 import RiskCalculator from "./components/RiskCalculator";
 import TagStats from "./components/TagStats";
 import Analysis from "./components/Analysis";
+import StrategyCard from "./components/StrategyCard";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
 import InviteCard from "./components/InviteCard";
@@ -747,11 +748,12 @@ function Dashboard({ userId }: { userId: string }) {
               ["register", t("Registrar")],
               ["journal", t("Diario")],
               ["analysis", t("Análisis")],
+              ["strategy", t("Estrategia")],
               ["liqmap", t("Mapa")],
               ["telegram", t("Conexiones")],
             ] as const
           )
-            .filter(([id]) => !empty || (id !== "journal" && id !== "analysis"))
+            .filter(([id]) => !empty || (id !== "journal" && id !== "analysis" && id !== "strategy"))
             .map(([id, label]) => (
             <button
               key={id}
@@ -818,6 +820,9 @@ function Dashboard({ userId }: { userId: string }) {
           <div className="min-w-0 space-y-5 max-lg:contents">
             <Reveal delay={160} className="max-lg:order-6">
               <Analysis trades={trades} />
+            </Reveal>
+            <Reveal delay={165} className="max-lg:order-6">
+              <StrategyCard trades={trades} />
             </Reveal>
             {FEATURES.coach && (
               <Reveal delay={170} className="max-lg:order-6">

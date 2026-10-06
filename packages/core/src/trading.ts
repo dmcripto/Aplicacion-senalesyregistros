@@ -5,6 +5,9 @@
 
 import { getLang, locale, t as tr } from "./i18n";
 export * from "./i18n";
+import { buildStrategy } from "./strategy";
+export type { Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
+export { STRATEGY_MIN_TRADES, confidenceLabel, metricsOf } from "./strategy";
 
 export type Direction = "LONG" | "SHORT";
 export type Outcome = "ABIERTA" | "TP" | "SL" | "MANUAL";
@@ -604,6 +607,9 @@ export function analyze(trades: Trade[]): Analysis {
 
   return { closed: closed.length, bySymbol, byWeekday, byHour, byDirection, streaks: { maxWin, maxLoss, current: { type: cur, count } }, insights };
 }
+
+/** Plan de trading armado con las operaciones cerradas (ver strategy.ts). `importedOnly` marca que solo se usaron las del exchange. */
+export const strategyPlan = (trades: Trade[], opts: { riskPct?: number | null; importedOnly?: boolean } = {}) => buildStrategy(trades, resultR, opts);
 
 // ─── Límites diarios ────────────────────────────────────────────────────────
 
