@@ -54,6 +54,7 @@ export type StrategyPlan =
       after: StrategyMetrics | null; // con las reglas de "evitar" aplicadas a lo ya ocurrido
       avoidedTrades: number;
       validation: StrategyValidation | null;
+      lowSample: boolean; // menos de 30 operaciones: cualquier conclusión es provisoria
       source: string; // "all" | "manual" | id del exchange cuyas operaciones se usaron
     };
 
@@ -283,7 +284,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     const target = Math.ceil((needPayoff + 0.3) * 10) / 10;
     rules.push({
       kind: "habit",
-      title: tr("Buscá operaciones que paguen al menos {x}R por cada 1R que arriesgás", { x: num1(target) }),
+      title: tr("Buscá que tus ganancias promedio sean al menos {x} veces tu pérdida promedio", { x: num1(target) }),
       why: tr("Acertás {w}% de las veces y tus ganancias son {p} veces tus pérdidas. Con ese acierto necesitás {need} para empatar.", { w: Math.round(profile.winRate), p: num1(profile.payoff), need: num1(Math.ceil(needPayoff * 10) / 10) }),
       confidence: capConfidence(total >= 30 ? "high" : "medium", total),
     });
@@ -370,9 +371,9 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
   if (edge === "none") {
     rules.unshift({
       kind: "risk",
-      title: tr("Mientras tu promedio sea negativo, operá en demo o con el riesgo mínimo"),
+      title: tr("Mientras no veas un promedio positivo, operá en demo o con el riesgo mínimo"),
       why: tr("Hoy tu promedio es {e} por operación. No tiene sentido arriesgar más hasta que las reglas de abajo muestren que lo revierten.", { e: fmtR(profile.expectancy) }),
-      confidence: "high",
+      confidence: capConfidence("high", total), // con pocas operaciones un promedio chico puede ser casualidad
     });
   }
 
@@ -400,14 +401,17 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
       ? tr("Muchos aciertos con ganancias chicas")
       : profile.winRate < 45 && profile.payoff >= 1.8
         ? tr("Pocos aciertos pero ganancias grandes")
-        : tr("Estilo equilibrado entre aciertos y tamaño de ganancia");
+        : tr("Equilibrado entre aciertos y tamaño de ganancia");
 
+  const lowSample = total < 30;
   const headline =
     edge === "likely"
       ? tr("Tus datos muestran una ventaja que parece real: {e} por operación en {n} operaciones. Cuidala con las reglas de abajo.", { e: fmtR(profile.expectancy), n: total })
       : edge === "unproven"
         ? tr("Ganás {e} por operación, pero con {n} operaciones todavía puede ser suerte. Seguí registrando y probá las reglas.", { e: fmtR(profile.expectancy), n: total })
-        : tr("Por ahora perdés {e} por operación. Hay cosas concretas para corregir.", { e: fmtR(Math.abs(profile.expectancy)).replace("+", "") });
+        : lowSample
+          ? tr("Con {n} operaciones todavía no se puede decir si ganás o perdés: hoy tu promedio es {e} por operación. Seguí registrando y probá las reglas.", { n: total, e: fmtR(profile.expectancy) })
+          : tr("Por ahora perdés {e} por operación. Hay cosas concretas para corregir.", { e: fmtR(Math.abs(profile.expectancy)).replace("+", "") });
 
   return {
     ok: true,
@@ -420,6 +424,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     after,
     avoidedTrades: dropped.length,
     validation,
+    lowSample,
     source: opts.source ?? "all",
   };
 }

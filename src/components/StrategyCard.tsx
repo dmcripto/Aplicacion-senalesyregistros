@@ -58,7 +58,7 @@ export default function StrategyCard({ trades }: { trades: Trade[] }) {
           </p>
         ) : (
           <>
-            <p className={cx("rounded-md border p-3 text-[12.5px] leading-relaxed", plan.edge === "likely" ? "border-bull/40 bg-bull/10 text-snow" : plan.edge === "unproven" ? "border-gold/40 bg-golddeep/25 text-snow" : "border-bear/40 bg-bear/10 text-snow")}>
+            <p className={cx("rounded-md border p-3 text-[12.5px] leading-relaxed", plan.edge === "likely" ? "border-bull/40 bg-bull/10 text-snow" : plan.edge === "unproven" || plan.lowSample ? "border-gold/40 bg-golddeep/25 text-snow" : "border-bear/40 bg-bear/10 text-snow")}>
               {plan.headline}
             </p>
 

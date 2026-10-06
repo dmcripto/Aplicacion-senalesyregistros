@@ -528,7 +528,7 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
   const use = useMemo(() => filterBySource(trades, source), [trades, source]);
   const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, source }), [use, money.riskPct, source]);
   const nameOf = (id: string) => (id === "manual" ? t("A mano y señales") : exchangeName(id as never));
-  const tone = !plan.ok ? colors.line : plan.edge === "likely" ? colors.bull : plan.edge === "unproven" ? colors.gold : colors.bear;
+  const tone = !plan.ok ? colors.line : plan.edge === "likely" ? colors.bull : plan.edge === "unproven" || plan.lowSample ? colors.gold : colors.bear;
   const fmtBest = (n: number) => `${fmtR(n)}R`;
   return (
     <View style={s.section}>
