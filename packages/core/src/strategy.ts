@@ -466,6 +466,10 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     }
   }
 
+  // Primero lo que protege (riesgo), después hábitos y, al final, los filtros por activo/día/hora (los más frágiles).
+  const order: Record<StrategyRule["kind"], number> = { risk: 0, habit: 1, avoid: 2, focus: 3 };
+  rules.sort((a, b) => order[a.kind] - order[b.kind]);
+
   const style =
     profile.winRate >= 55 && profile.payoff < 1
       ? tr("Muchos aciertos con ganancias chicas")
@@ -520,3 +524,37 @@ export function strategySources(trades: Trade[]): StrategySource[] {
 
 /** Solo las operaciones de un origen ("all" = todas). */
 export const filterBySource = (trades: Trade[], source: string) => (source === "all" ? trades : trades.filter((x) => (x.source || "manual") === source));
+
+// ─── Qué tan firme es una regla para aplicarla al bot ───────────────────────
+
+/** Operaciones simuladas del propio bot que hacen falta para fiarse de filtros por activo, día u hora. */
+export const BOT_OWN_MIN = 100;
+
+export type RuleEvidence = "discipline" | "bot" | "hypothesis";
+
+/**
+ * - «discipline»: tope diario o freno por pérdidas; no dependen de adivinar nada, sirven con cualquier estrategia.
+ * - «bot»: filtro armado con 100 o más operaciones del propio bot.
+ * - «hypothesis»: filtro armado con tus operaciones (otra estrategia) o con pocas del bot: hay que comprobarlo.
+ * null = la regla no se puede aplicar al bot (solo es un consejo).
+ */
+export function ruleEvidence(plan: Extract<StrategyPlan, { ok: true }>, rule: StrategyRule): RuleEvidence | null {
+  if (!rule.action) return null;
+  if (!("dim" in rule.action)) return "discipline";
+  return plan.source === "bot" && plan.profile.n >= BOT_OWN_MIN ? "bot" : "hypothesis";
+}
+
+export interface BacktestRow {
+  n: number;
+  expectancy: number;
+}
+
+/** Frase honesta que compara el bot sin reglas contra el bot con las reglas de la persona. */
+export function backtestVerdict(base: BacktestRow, withRules: BacktestRow | null, fmt: (n: number) => string): string {
+  if (!withRules) return "";
+  if (withRules.n < 15) return tr("Con tus reglas quedan solo {n} operaciones en estos meses: no alcanza para saber si ayudan.", { n: withRules.n });
+  const d = withRules.expectancy - base.expectancy;
+  if (d > 0.05) return tr("Con tus reglas mejora: de {a} a {b} por operación. Es un buen indicio, pero hay que confirmarlo en modo simulado.", { a: fmt(base.expectancy), b: fmt(withRules.expectancy) });
+  if (d < -0.05) return tr("Con tus reglas empeora: de {a} a {b} por operación. Conviene sacarlas.", { a: fmt(base.expectancy), b: fmt(withRules.expectancy) });
+  return tr("Con tus reglas casi no cambia ({a} contra {b} por operación): no aportan nada medible.", { a: fmt(base.expectancy), b: fmt(withRules.expectancy) });
+}

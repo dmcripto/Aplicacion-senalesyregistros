@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BOT_ASSETS, actionId, confidenceLabel, cx, exchangeName, filterBySource, fmtR, strategyPlan, strategySources, t } from "../lib";
+import { BOT_ASSETS, BOT_OWN_MIN, actionId, confidenceLabel, cx, exchangeName, filterBySource, fmtR, ruleEvidence, strategyPlan, strategySources, t } from "../lib";
 import type { Confidence, StrategyRule, Trade } from "../lib";
 import { useBot } from "../botStore";
 import { useMoney } from "../money";
@@ -91,29 +91,45 @@ export default function StrategyCard({ trades, notify }: { trades: Trade[]; noti
                       <span className={cx("shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider", CONF[r.confidence])}>{confidenceLabel(r.confidence)}</span>
                     </div>
                     <p className="mt-1 text-[11.5px] leading-relaxed text-fog">{r.why}</p>
-                    {canApply && r.action && (
-                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-line/60 pt-2">
-                        <p className="text-[11px] leading-snug text-dim">
-                          🤖 {"dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key) ? t("El bot no opera este activo.") : r.effect}
-                        </p>
-                        {"dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key) ? null : bot.store.isApplied(actionId(r.action)) ? (
-                          <button onClick={() => bot.store.remove(actionId(r.action!)).catch(fail)} className="shrink-0 rounded-md border border-bull/50 bg-bull/10 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-bull">
-                            ✓ {t("Aplicada")} · {t("Quitar")}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => bot.store.apply(r.action!).then(() => notify?.(t("Regla aplicada al bot."), "ok")).catch(fail)}
-                            className="shrink-0 rounded-md border border-gold bg-gold px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
-                          >
-                            {t("Aplicar al bot")}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    {canApply && r.action && (() => {
+                      const notBot = "dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key);
+                      const ev = plan.ok ? ruleEvidence(plan, r) : null;
+                      const applied = bot.store.isApplied(actionId(r.action));
+                      return (
+                        <div className="mt-2 space-y-1.5 border-t border-line/60 pt-2">
+                          {ev === "hypothesis" && !notBot && (
+                            <p className="text-[10.5px] leading-snug text-gold">
+                              🧪 <b className="uppercase tracking-wider">{t("Hipótesis a probar")}</b> · {t("Sale de tus operaciones, no del bot (que usa otra estrategia). Comprobala con «Probar con los últimos 4 meses» en Bot automático.")}
+                            </p>
+                          )}
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] leading-snug text-dim">🤖 {notBot ? t("El bot no opera este activo.") : r.effect}</p>
+                            {notBot ? null : applied ? (
+                              <button onClick={() => bot.store.remove(actionId(r.action!)).catch(fail)} className="shrink-0 rounded-md border border-bull/50 bg-bull/10 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-bull">
+                                ✓ {t("Aplicada")} · {t("Quitar")}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => bot.store.apply(r.action!).then(() => notify?.(t("Regla aplicada al bot."), "ok")).catch(fail)}
+                                className={cx("shrink-0 rounded-md border px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider transition-all hover:brightness-110", ev === "hypothesis" ? "border-gold/60 bg-gold/10 text-gold" : "border-gold bg-gold text-ink")}
+                              >
+                                {ev === "hypothesis" ? t("Probar en el bot") : t("Aplicar al bot")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))
               )}
             </div>
+
+            {source === "bot" && plan.profile.n < BOT_OWN_MIN && plan.rules.some((r) => r.action && "dim" in r.action) && (
+              <p className="rounded-md border border-gold/30 bg-golddeep/25 p-3 text-[11.5px] leading-relaxed text-fog">
+                {t("Con {n} operaciones del bot todavía no alcanza para fiarse de filtros por activo, día u hora: hacen falta unas {m}. Las reglas de tope diario y de frenar tras pérdidas sí se pueden usar desde ya.", { n: plan.profile.n, m: BOT_OWN_MIN })}
+              </p>
+            )}
 
             {canApply && plan.rules.some((r) => r.action) && (
               <p className="text-[11px] leading-relaxed text-dim">

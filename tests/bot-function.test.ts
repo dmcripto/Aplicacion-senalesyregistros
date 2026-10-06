@@ -210,6 +210,22 @@ describe("función bot · prueba con historial", () => {
     expect((await call({ action: "otra" })).status).toBe(400);
   });
 
+  it("compara el bot sin reglas y con las reglas guardadas de la persona", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, rules: [{ op: "skip", dim: "symbol", key: "BTCUSDT" }, { op: "skip", dim: "weekday", key: "9" }] });
+    const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });
+    expect(r.body.rulesApplied).toBe(1); // la regla mal formada se descarta
+    expect(r.body.withRules.n).toBe(0); // sin BTC no queda ninguna operación
+    expect(r.body.total.n).toBeGreaterThanOrEqual(r.body.withRules.n);
+  });
+
+  it("sin reglas guardadas no hay comparación", async () => {
+    klines = series(3000, true);
+    const r = await call({ action: "backtest", symbols: ["BTCUSDT"] });
+    expect(r.body.withRules).toBeNull();
+    expect(r.body.rulesApplied).toBe(0);
+  });
+
   it("devuelve estadísticas por activo y totales", async () => {
     klines = series(3000, true);
     const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });

@@ -142,7 +142,7 @@ export function backtest(bars: Bar[], p: BotParams = DEFAULT_PARAMS): BacktestRe
     const gross = hit.outcome === "TP" ? p.rr : -1;
     const cost = ((p.feePct / 100) * sig.entry) / risk; // comisión y deslizamiento medidos en R
     trades.push({ t: sig.t, direction: sig.direction, entry: sig.entry, outcome: hit.outcome, r: gross - cost });
-    i = hit.index + 1;
+    i = hit.index; // la operación salió dentro de esa vela: al cierre ya puede entrar otra (igual que en vivo)
   }
   return { bars: bars.length, trades, open };
 }
@@ -297,3 +297,86 @@ export const capOf = (actions: BotAction[], op: "maxPerDay" | "stopAfterLosses")
   const ns = actions.filter((a): a is Extract<BotAction, { n: number }> => a.op === op).map((a) => a.n);
   return ns.length ? Math.min(...ns) : null;
 };
+
+// ─── Simulación del bot completo (varios activos, topes y reglas) ───────────
+// Es la misma lógica que la corrida en vivo, pero recorriendo el historial hora por hora. Sirve para comparar
+// «sin reglas» contra «con las reglas que eligió la persona» sobre precios que esas reglas no vieron al armarse.
+
+export interface SimSettings {
+  symbols: string[];
+  maxOpen: number;
+  dailyLossR: number;
+  rules: BotAction[];
+  timeZone: string | null;
+}
+
+export interface SimTrade {
+  symbol: string;
+  t: number; // apertura de la vela que dio la señal
+  direction: "LONG" | "SHORT";
+  outcome: "TP" | "SL";
+  r: number; // ya con el costo de ida y vuelta
+  closedAt: number;
+}
+
+interface OpenSim {
+  sig: BotSignal;
+  openedAt: number;
+}
+
+const DAY_MS = 24 * 3_600_000;
+
+export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p: BotParams = DEFAULT_PARAMS): { trades: SimTrade[]; open: number } {
+  const symbols = s.symbols.filter((x) => barsBySymbol[x]?.length);
+  const ind = new Map(symbols.map((x) => [x, indicators(barsBySymbol[x], p)]));
+  const at = new Map(symbols.map((x) => [x, new Map(barsBySymbol[x].map((b, i) => [b.t, i]))]));
+  const times = [...new Set(symbols.flatMap((x) => barsBySymbol[x].map((b) => b.t)))].sort((a, b) => a - b);
+  const maxPerDay = capOf(s.rules, "maxPerDay");
+  const stopAfter = capOf(s.rules, "stopAfterLosses");
+
+  const open = new Map<string, OpenSim>();
+  const done: SimTrade[] = [];
+  const opened: number[] = []; // aperturas (ms) para el tope por día
+
+  const costR = (sig: BotSignal) => ((p.feePct / 100) * sig.entry) / Math.abs(sig.entry - sig.sl);
+
+  for (const T of times) {
+    const now = T + BAR_MS; // la vela T ya cerró
+    // 1) cerrar lo que esta vela tocó
+    for (const symbol of symbols) {
+      const o = open.get(symbol);
+      const i = at.get(symbol)!.get(T);
+      if (!o || i == null) continue;
+      const bar = barsBySymbol[symbol][i];
+      const hit = resolveFrom([bar], 0, o.sig);
+      if (!hit) continue;
+      open.delete(symbol);
+      done.push({ symbol, t: o.sig.t, direction: o.sig.direction, outcome: hit.outcome, r: (hit.outcome === "TP" ? p.rr : -1) - costR(o.sig), closedAt: now });
+    }
+    // 2) señales nuevas con los límites de la persona
+    const recent = done.filter((d) => d.closedAt > now - DAY_MS && d.closedAt <= now);
+    const lossToday = recent.reduce((a, d) => a + d.r, 0);
+    if (lossToday <= -s.dailyLossR) continue;
+    if (stopAfter != null) {
+      let streak = 0;
+      for (const d of [...recent].sort((a, b) => b.closedAt - a.closedAt)) {
+        if (d.outcome !== "SL") break;
+        streak++;
+      }
+      if (streak >= stopAfter) continue;
+    }
+    for (const symbol of symbols) {
+      if (open.size >= s.maxOpen || open.has(symbol)) continue;
+      const i = at.get(symbol)!.get(T);
+      if (i == null) continue;
+      const sig = signalAt(barsBySymbol[symbol], ind.get(symbol)!, i, p);
+      if (!sig) continue;
+      if (maxPerDay != null && opened.filter((x) => x > now - DAY_MS).length >= maxPerDay) continue;
+      const when = localParts(now, s.timeZone);
+      if (!allowedByActions(s.rules, { symbol, direction: sig.direction, weekday: when.weekday, block: when.block })) continue;
+      open.set(symbol, { sig, openedAt: now });
+      opened.push(now);
+    }
+  }
+  return { trades: done, open: open.size };
+}

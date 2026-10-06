@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BOT_ASSETS, actionId, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
+import { BOT_ASSETS, actionId, backtestVerdict, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest } from "../tradesApi";
@@ -155,6 +155,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
               ))}
             </ul>
           )}
+          {s.rules.length > 0 && <p className="mt-1.5 text-[10.5px] leading-relaxed text-dim">{t("Para saber si te ayudan, corré «Probar con los últimos 4 meses»: compara el bot con y sin tus reglas.")}</p>}
         </div>
 
         <details className="rounded-md border border-line bg-ink/40 text-[11.5px]">
@@ -175,6 +176,24 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           {test?.ok && (
             <div className="space-y-2.5">
               <p className="rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-relaxed text-snow">{verdict(test)}</p>
+              {test.withRules && (
+                <div className="space-y-1.5 rounded-md border border-gold/40 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-snow">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Con y sin tus reglas")}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      [t("Sin reglas"), test.total],
+                      [t("Con tus {n} reglas", { n: test.rulesApplied }), test.withRules],
+                    ].map(([name, st]) => (
+                      <div key={name as string} className="rounded-md border border-line bg-ink/50 p-2.5">
+                        <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-dim">{name as string}</p>
+                        <p className={cx("num text-base font-bold", (st as BotStatsRow).expectancy > 0 ? "text-bull" : (st as BotStatsRow).expectancy < 0 ? "text-bear" : "text-fog")}>{fmtR((st as BotStatsRow).expectancy)}R</p>
+                        <p className="num text-[10.5px] text-fog">{(st as BotStatsRow).n} {t("ops")} · {Math.round((st as BotStatsRow).winRate)}%</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p>{backtestVerdict(test.total, test.withRules, (n) => `${fmtR(n)}R`)}</p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Tile name={t("Operaciones")} value={String(test.total.n)} />
                 <Tile name={t("Acierto")} value={`${Math.round(test.total.winRate)}%`} />
@@ -189,6 +208,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                   </li>
                 ))}
               </ul>
+              {!test.withRules && s.rules.length > 0 && <p className="text-[11px] text-dim">{t("La prueba no trae la comparación con tus reglas: falta actualizar la función del servidor.")}</p>}
               <p className="text-[10.5px] leading-relaxed text-dim">
                 {t("Prueba sobre los últimos {d} días de precios reales, con un costo de comisión y deslizamiento incluido. Si una vela toca stop y objetivo a la vez se cuenta el stop. El pasado no garantiza el futuro: la prueba de verdad es el modo simulado, día a día.", { d: test.days })}
               </p>

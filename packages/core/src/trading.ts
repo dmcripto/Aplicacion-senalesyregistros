@@ -10,7 +10,8 @@ export type { BotAction, BotDim, Confidence, EdgeVerdict, StrategyMetrics, Strat
 export type { StrategySource } from "./strategy";
 export { createBotStore } from "./botStore";
 export type { BotApi, BotLoaded, BotState, BotStore } from "./botStore";
-export { STRATEGY_MIN_TRADES, actionId, confidenceLabel, filterBySource, metricsOf, ruleSentence, strategySources } from "./strategy";
+export { BOT_OWN_MIN, STRATEGY_MIN_TRADES, actionId, backtestVerdict, confidenceLabel, filterBySource, metricsOf, ruleEvidence, ruleSentence, strategySources } from "./strategy";
+export type { RuleEvidence } from "./strategy";
 
 export type Direction = "LONG" | "SHORT";
 export type Outcome = "ABIERTA" | "TP" | "SL" | "MANUAL";
@@ -1439,7 +1440,7 @@ export interface BotStatsRow {
 }
 
 export type BotBacktest =
-  | { ok: true; days: number; total: BotStatsRow; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
+  | { ok: true; days: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
   | { ok: false; error?: string };
 
 // ─── Funciones que se prenden y apagan ──────────────────────────────────────

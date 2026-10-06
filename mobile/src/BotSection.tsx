@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, actionId, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
+import { BOT_ASSETS, actionId, backtestVerdict, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { runBotBacktest } from "./tradesApi";
@@ -125,6 +125,8 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
         ))
       )}
 
+      {s.rules.length > 0 && <Text style={st.dim}>{t("Para saber si te ayudan, corré «Probar con los últimos 4 meses»: compara el bot con y sin tus reglas.")}</Text>}
+
       <Text style={st.label}>{t("Cómo decide")}</Text>
       <Text style={st.hint}>• {t("Mira velas de 1 hora ya cerradas, nunca el futuro.")}</Text>
       <Text style={st.hint}>• {t("Solo compra si la tendencia es alcista (media de 50 velas sobre la de 200) y solo vende si es bajista.")}</Text>
@@ -140,6 +142,21 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
           <View style={st.notice}>
             <Text style={[st.hint, { color: colors.snow }]}>{verdict(test)}</Text>
           </View>
+          {test.withRules && (
+            <View style={st.notice}>
+              <Text style={st.label}>{t("Con y sin tus reglas")}</Text>
+              <View style={st.row}>
+                <Text style={st.hint}>
+                  {t("Sin reglas")}: <Text style={{ color: rColor(test.total.expectancy), fontWeight: "800" }}>{fmtR(test.total.expectancy)}R</Text> · {test.total.n} {t("ops")}
+                </Text>
+                <Text style={st.hint}>
+                  {t("Con tus {n} reglas", { n: test.rulesApplied })}: <Text style={{ color: rColor(test.withRules.expectancy), fontWeight: "800" }}>{fmtR(test.withRules.expectancy)}R</Text> · {test.withRules.n} {t("ops")}
+                </Text>
+              </View>
+              <Text style={[st.hint, { color: colors.snow }]}>{backtestVerdict(test.total, test.withRules, (n) => `${fmtR(n)}R`)}</Text>
+            </View>
+          )}
+          {!test.withRules && s.rules.length > 0 && <Text style={st.dim}>{t("La prueba no trae la comparación con tus reglas: falta actualizar la función del servidor.")}</Text>}
           <View style={st.row}>
             <Text style={st.hint}>{t("Operaciones")}: {test.total.n}</Text>
             <Text style={st.hint}>{t("Acierto")}: {Math.round(test.total.winRate)}%</Text>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BOT_ASSETS, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -586,22 +586,38 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
                 </View>
                 <Text style={st.ruleWhy}>{r.why}</Text>
                 {canApply && r.action && (
-                  <View style={st.botRow}>
-                    <Text style={[st.small, { flex: 1, marginTop: 0 }]}>🤖 {notBot ? t("El bot no opera este activo.") : r.effect}</Text>
-                    {notBot ? null : applied ? (
-                      <TouchableOpacity style={[st.apply, { borderColor: colors.bull + "88", backgroundColor: colors.bull + "18" }]} onPress={() => bot.store.remove(actionId(r.action!)).catch(oops)}>
-                        <Text style={[st.applyText, { color: colors.bull }]}>✓ {t("Aplicada")} · {t("Quitar")}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity style={[st.apply, { backgroundColor: colors.gold, borderColor: colors.gold }]} onPress={() => bot.store.apply(r.action!).catch(oops)}>
-                        <Text style={[st.applyText, { color: colors.ink }]}>{t("Aplicar al bot")}</Text>
-                      </TouchableOpacity>
+                  <View style={{ borderTopWidth: 1, borderTopColor: colors.line, marginTop: 8, paddingTop: 8, gap: 6 }}>
+                    {plan.ok && ruleEvidence(plan, r) === "hypothesis" && !notBot && (
+                      <Text style={[st.small, { color: colors.gold, marginTop: 0 }]}>
+                        🧪 {t("Hipótesis a probar")} · {t("Sale de tus operaciones, no del bot (que usa otra estrategia). Comprobala con «Probar con los últimos 4 meses» en Bot automático.")}
+                      </Text>
                     )}
+                    <View style={[st.botRow, { borderTopWidth: 0, marginTop: 0, paddingTop: 0 }]}>
+                      <Text style={[st.small, { flex: 1, marginTop: 0 }]}>🤖 {notBot ? t("El bot no opera este activo.") : r.effect}</Text>
+                      {notBot ? null : applied ? (
+                        <TouchableOpacity style={[st.apply, { borderColor: colors.bull + "88", backgroundColor: colors.bull + "18" }]} onPress={() => bot.store.remove(actionId(r.action!)).catch(oops)}>
+                          <Text style={[st.applyText, { color: colors.bull }]}>✓ {t("Aplicada")} · {t("Quitar")}</Text>
+                        </TouchableOpacity>
+                      ) : plan.ok && ruleEvidence(plan, r) === "hypothesis" ? (
+                        <TouchableOpacity style={[st.apply, { borderColor: colors.gold + "99", backgroundColor: colors.gold + "18" }]} onPress={() => bot.store.apply(r.action!).catch(oops)}>
+                          <Text style={[st.applyText, { color: colors.gold }]}>{t("Probar en el bot")}</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity style={[st.apply, { backgroundColor: colors.gold, borderColor: colors.gold }]} onPress={() => bot.store.apply(r.action!).catch(oops)}>
+                          <Text style={[st.applyText, { color: colors.ink }]}>{t("Aplicar al bot")}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 )}
               </View>
               );
             })
+          )}
+          {source === "bot" && plan.profile.n < BOT_OWN_MIN && plan.rules.some((r) => r.action && "dim" in r.action) && (
+            <Text style={[st.small, { color: colors.gold }]}>
+              {t("Con {n} operaciones del bot todavía no alcanza para fiarse de filtros por activo, día u hora: hacen falta unas {m}. Las reglas de tope diario y de frenar tras pérdidas sí se pueden usar desde ya.", { n: plan.profile.n, m: BOT_OWN_MIN })}
+            </Text>
           )}
           {canApply && plan.rules.some((r) => r.action) && (
             <Text style={st.small}>

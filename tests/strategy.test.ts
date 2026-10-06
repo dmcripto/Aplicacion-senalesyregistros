@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionId, filterBySource, metricsOf, strategyPlan, strategySources } from "../packages/core/src/trading";
+import { BOT_OWN_MIN, actionId, backtestVerdict, filterBySource, metricsOf, ruleEvidence, strategyPlan, strategySources } from "../packages/core/src/trading";
 import { cleanActions } from "../supabase/functions/_shared/botStrategy";
 import type { Trade } from "../packages/core/src/trading";
 
@@ -236,5 +236,74 @@ describe("reglas que el bot puede aplicar", () => {
     const p = strategyPlan(mkSet());
     if (!p.ok) throw new Error("sin plan");
     expect(new Set(p.rules.map((r) => r.id)).size).toBe(p.rules.length);
+  });
+});
+
+describe("qué tan firme es cada regla para el bot", () => {
+  const hist = () => {
+    const trades: Trade[] = [];
+    for (let d = 1; d <= 6; d++) for (let k = 0; k < 4; k++) trades.push(mk(day(d, 8 + k), -1, { symbol: "ETHUSDT" }));
+    for (let d = 8; d <= 20; d++) trades.push(mk(day(d, 10), 2, { symbol: "BTCUSDT" }));
+    return trades;
+  };
+
+  it("los filtros por activo, día u hora son hipótesis si salen de tus operaciones", () => {
+    const p = strategyPlan(hist());
+    if (!p.ok) throw new Error("sin plan");
+    const filters = p.rules.filter((r) => r.action && "dim" in r.action);
+    expect(filters.length).toBeGreaterThan(0);
+    for (const r of filters) expect(ruleEvidence(p, r)).toBe("hypothesis");
+  });
+
+  it("el tope diario y el freno por pérdidas son disciplina, no hipótesis", () => {
+    const p = strategyPlan(hist());
+    if (!p.ok) throw new Error("sin plan");
+    const disc = p.rules.filter((r) => r.action && !("dim" in r.action));
+    expect(disc.length).toBeGreaterThan(0);
+    for (const r of disc) expect(ruleEvidence(p, r)).toBe("discipline");
+  });
+
+  it("con 100 o más operaciones del propio bot los filtros dejan de ser hipótesis", () => {
+    const bot: Trade[] = [];
+    for (let i = 0; i < BOT_OWN_MIN + 20; i++) bot.push(mk(day(1 + (i % 28), 8 + (i % 4)), i % 3 === 0 ? -1 : 2, { symbol: i % 2 ? "BTCUSDT" : "SOLUSDT", source: "bot" }));
+    for (let i = 0; i < 30; i++) bot.push(mk(day(1 + (i % 28), 22), i % 6 === 0 ? 1 : -1, { symbol: "XRPUSDT", source: "bot" }));
+    const p = strategyPlan(filterBySource(bot, "bot"), { source: "bot" });
+    if (!p.ok) throw new Error("sin plan");
+    expect(p.profile.n).toBeGreaterThanOrEqual(BOT_OWN_MIN);
+    const f = p.rules.find((r) => r.action && "dim" in r.action);
+    expect(f).toBeTruthy();
+    expect(ruleEvidence(p, f!)).toBe("bot");
+    // pero con pocas operaciones del bot vuelve a ser hipótesis
+    const few = strategyPlan(filterBySource(bot, "bot").slice(0, 40), { source: "bot" });
+    if (few.ok) for (const r of few.rules.filter((x) => x.action && "dim" in x.action)) expect(ruleEvidence(few, r)).toBe("hypothesis");
+  });
+
+  it("un consejo sin acción no se aplica al bot", () => {
+    const p = strategyPlan(hist());
+    if (!p.ok) throw new Error("sin plan");
+    for (const r of p.rules.filter((x) => !x.action)) expect(ruleEvidence(p, r)).toBeNull();
+  });
+
+  it("el riesgo va primero y los filtros al final", () => {
+    const p = strategyPlan(hist());
+    if (!p.ok) throw new Error("sin plan");
+    const order = { risk: 0, habit: 1, avoid: 2, focus: 3 } as const;
+    const ks = p.rules.map((r) => order[r.kind]);
+    expect(ks).toEqual([...ks].sort((a, b) => a - b));
+  });
+});
+
+describe("veredicto de la prueba con y sin reglas", () => {
+  const f = (n: number) => `${n.toFixed(2)}R`;
+  it("no dice nada si no hay reglas", () => {
+    expect(backtestVerdict({ n: 50, expectancy: 0.1 }, null, f)).toBe("");
+  });
+  it("con muy pocas operaciones no concluye", () => {
+    expect(backtestVerdict({ n: 60, expectancy: 0 }, { n: 8, expectancy: 0.9 }, f)).toContain("no alcanza");
+  });
+  it("distingue mejora, empeora y casi igual", () => {
+    expect(backtestVerdict({ n: 60, expectancy: 0 }, { n: 40, expectancy: 0.2 }, f)).toContain("mejora");
+    expect(backtestVerdict({ n: 60, expectancy: 0.1 }, { n: 40, expectancy: -0.1 }, f)).toContain("empeora");
+    expect(backtestVerdict({ n: 60, expectancy: 0.1 }, { n: 40, expectancy: 0.12 }, f)).toContain("casi no cambia");
   });
 });
