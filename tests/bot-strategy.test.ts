@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
+import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -428,5 +428,66 @@ describe("velas de 4 horas y laboratorio", () => {
   it("las variantes de 4 horas no tocan los perfiles del bot", () => {
     expect(BOT_PROFILES.balanced.tf).toBeUndefined();
     expect(LAB_VARIANTS.find((x) => x.id === "h1-balanced")!.params).toEqual(BOT_PROFILES.balanced);
+  });
+});
+
+describe("escaneo del mercado", () => {
+  const tk = (rows: Array<[string, number]>) => rows.map(([symbol, v]) => ({ symbol, quoteVolume: String(v) }));
+
+  it("arma la lista por volumen y deja afuera stablecoins, vencimientos y poco volumen", async () => {
+    const fetchFn = (async () =>
+      new Response(JSON.stringify(tk([["ETHUSDT", 5e9], ["BTCUSDT", 9e9], ["USDCUSDT", 8e9], ["BTCUSDT_261225", 7e9], ["TINYUSDT", 1e6], ["1000PEPEUSDT", 6e8], ["BTCBUSD", 9e9], ["SOLUSDT", 2e9]])))) as unknown as typeof fetch;
+    expect(await fetchUniverse(3, fetchFn)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
+    expect(await fetchUniverse(20, fetchFn)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT", "1000PEPEUSDT"]);
+  });
+
+  it("si Binance falla usa Bybit, y si fallan los dos avisa", async () => {
+    const list = Array.from({ length: 12 }, (_, i) => ({ symbol: `C${i}USDT`, turnover24h: String(1e9 - i * 1e6) }));
+    const ok = (async (url: string) => (url.includes("binance") ? new Response("no", { status: 451 }) : new Response(JSON.stringify({ result: { list } })))) as unknown as typeof fetch;
+    expect((await fetchUniverse(5, ok))[0]).toBe("C0USDT");
+    const bad = (async () => new Response("no", { status: 500 })) as unknown as typeof fetch;
+    await expect(fetchUniverse(5, bad)).rejects.toThrow("lista de activos");
+  });
+
+  it("valida los tamaños del escaneo y los símbolos", () => {
+    expect([0, 20, 40, 7, "20", null, undefined, 999].map(scanSizeOf)).toEqual([0, 20, 40, 0, 20, 0, 0, 0]);
+    expect(isTradableSymbol("DOGEUSDT")).toBe(true);
+    expect(isTradableSymbol("BTCUSDT_261225")).toBe(false);
+    expect(isTradableSymbol("btcusdt")).toBe(false);
+    expect(isTradableSymbol("'; drop--")).toBe(false);
+  });
+
+  it("mapPool nunca corre más pedidos a la vez que el límite y los completa todos", async () => {
+    let running = 0, peak = 0, done = 0;
+    await mapPool(Array.from({ length: 30 }, (_, i) => i), 8, async () => {
+      running++;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 2));
+      running--;
+      done++;
+    });
+    expect(done).toBe(30);
+    expect(peak).toBeLessThanOrEqual(8);
+  });
+
+  it("con lugar para una sola operación, la simulación elige la señal más fuerte", () => {
+    // Dos activos con el mismo recorrido; en uno la ruptura final es mucho más grande.
+    const mk = (jump: number): Bar[] => {
+      const bars: Bar[] = [];
+      let p = 100;
+      for (let i = 0; i < 300; i++) {
+        const c = p + 0.1 + Math.sin(i / 3) * 0.08;
+        bars.push({ t: T0 + i * BAR_MS, o: p, h: Math.max(p, c) + 0.3, l: Math.min(p, c) - 0.3, c });
+        p = c;
+      }
+      const l = bars[bars.length - 1];
+      bars[bars.length - 1] = { ...l, h: l.c + jump + 0.2, c: l.c + jump };
+      bars.push({ t: T0 + 300 * BAR_MS, o: bars[299].c, h: bars[299].c + 30, l: bars[299].c - 0.1, c: bars[299].c + 20 }); // la vela siguiente toca el objetivo y cierra la operación
+      return bars;
+    };
+    const data = { AAAUSDT: mk(1.5), BBBUSDT: mk(6) };
+    const r = simulate(data, { symbols: ["AAAUSDT", "BBBUSDT"], maxOpen: 1, dailyLossR: 20, rules: [], timeZone: "UTC" });
+    const first = [...r.trades].sort((a, b) => a.t - b.t).find((t) => t.t === T0 + 299 * BAR_MS);
+    expect(first?.symbol).toBe("BBBUSDT");
   });
 });

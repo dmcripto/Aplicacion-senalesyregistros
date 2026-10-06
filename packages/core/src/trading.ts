@@ -1461,9 +1461,14 @@ export interface BotSettings {
   rules: BotAction[]; // reglas de «Estrategia sugerida» que la persona eligió aplicar al bot
   profile: BotProfileId; // perfil de estrategia
   notify: boolean; // avisar de cada operación del bot (app y Telegram propios)
+  scanTop: BotScan; // 0 = solo sus activos; 20 o 40 = además mira los futuros más operados
 }
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true };
+/** Cuántos futuros (los de más volumen) mira el bot además de los elegidos. */
+export type BotScan = 0 | 20 | 40;
+export const BOT_SCAN_LIST: BotScan[] = [0, 20, 40];
+
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0 };
 
 export interface BotStatsRow {
   n: number;
@@ -1475,7 +1480,7 @@ export interface BotStatsRow {
 }
 
 export type BotBacktest =
-  | { ok: true; days: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
+  | { ok: true; days: number; scanned?: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
   | { ok: false; error?: string };
 
 // ─── Laboratorio de variantes del bot ───────────────────────────────────────

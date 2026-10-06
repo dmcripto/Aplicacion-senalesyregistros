@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab } from "../tradesApi";
@@ -28,7 +28,7 @@ function StatsLine({ s }: { s: BotStatsRow }) {
 }
 
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
-  const { status, settings: s, store, profileSupported, notifySupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
@@ -155,6 +155,28 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           </div>
         </div>
 
+        {scanSupported && (
+          <div>
+            <span className={label}>{t("Alcance")}</span>
+            <div className="grid grid-cols-3 gap-2">
+              {BOT_SCAN_LIST.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => update({ scanTop: n })}
+                  className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.scanTop === n ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
+                >
+                  {n === 0 ? t("Solo mis activos") : t("Top {n} por volumen", { n })}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-dim">
+              {s.scanTop === 0
+                ? t("El bot mira solo los activos que elegiste arriba.")
+                : t("Además de tus activos, el bot mira los {n} futuros más operados y, si hay varias señales a la vez, toma primero las más fuertes. Sigue siendo simulado.", { n: s.scanTop })}
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <label>
             <span className={label}>{t("Operaciones abiertas a la vez")}</span>
@@ -256,6 +278,11 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                   </ul>
                   <p className="text-[10.5px] leading-relaxed text-dim">{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</p>
                 </div>
+              )}
+              {!!test.scanned && (
+                <p className="rounded-md border border-line bg-ink/40 p-2.5 text-[11px] leading-relaxed text-dim">
+                  {t("La prueba incluye {n} activos (los más operados de hoy). Ojo: elegir los de más volumen de hoy favorece a los que ya subieron, así que el resultado del pasado sale algo más lindo que el real. Abajo se ven los 10 con más operaciones.", { n: test.scanned })}
+                </p>
               )}
               <ul className="space-y-1 text-[12px] text-fog">
                 {test.symbols.map((x) => (

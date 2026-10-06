@@ -60,6 +60,7 @@ export interface BotSignal {
   sl: number;
   tp: number;
   t: number; // apertura de la vela que dio la señal
+  strength: number; // cuánto se pasó de la ruptura, en ATR (para elegir primero la señal más fuerte cuando hay varias)
 }
 
 /** EMA (serie completa); los primeros valores usan el promedio simple como arranque. */
@@ -112,8 +113,8 @@ export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams =
     lo = Math.min(lo, bars[k].l);
   }
   const dist = a * p.atrMult;
-  if (c > hi && f > s && c > s) return { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t };
-  if (c < lo && f < s && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t };
+  if (c > hi && f > s && c > s) return { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t, strength: (c - hi) / a };
+  if (c < lo && f < s && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
   return null;
 }
 
@@ -197,6 +198,13 @@ export function botStats(rs: number[]): BotStats {
 /** Velas cerradas: descarta la última si todavía está en curso. */
 export const closedBars = (bars: Bar[], now = Date.now(), barMs = BAR_MS) => bars.filter((b) => b.t + barMs <= now);
 
+/** Cualquier futuro USDT razonable (el escaneo del mercado trae activos que no están en la lista fija de 5). */
+export const isTradableSymbol = (s: unknown): s is string => typeof s === "string" && /^[A-Z0-9]{2,15}USDT$/.test(s);
+
+/** Cuántos activos mira el bot cuando escanea el mercado (0 = solo los que eligió la persona). */
+export const SCAN_SIZES = [0, 20, 40] as const;
+export const scanSizeOf = (x: unknown): number => (SCAN_SIZES as readonly number[]).includes(Number(x)) ? Number(x) : 0;
+
 export const isBotSymbol = (s: unknown): s is (typeof BOT_SYMBOLS)[number] => typeof s === "string" && (BOT_SYMBOLS as readonly string[]).includes(s);
 
 // ─── Velas públicas ─────────────────────────────────────────────────────────
@@ -258,6 +266,49 @@ async function bybitBars(symbol: string, count: number, fetchFn: Fetch, tf: BotT
 function dedupe(bars: Bar[]): Bar[] {
   const seen = new Set<number>();
   return bars.filter((b) => (seen.has(b.t) ? false : (seen.add(b.t), true))).sort((a, b) => a.t - b.t);
+}
+
+// ─── Universo del escaneo: los futuros más operados ─────────────────────────
+
+const STABLES = new Set(["USDC", "FDUSD", "TUSD", "BUSD", "DAI", "USDP", "EUR", "USDE"]);
+const MIN_VOLUME_USDT = 30_000_000; // por debajo de este volumen diario el precio real se aleja mucho del que se ve
+
+/** Los `n` futuros USDT con más volumen en 24 h (Binance y, si falla, Bybit). Sin stablecoins ni contratos con vencimiento. */
+export async function fetchUniverse(n: number, fetchFn: Fetch = fetch): Promise<string[]> {
+  const pick = (rows: Array<{ symbol: string; vol: number }>) =>
+    rows
+      .filter((r) => isTradableSymbol(r.symbol) && !STABLES.has(r.symbol.slice(0, -4)) && Number.isFinite(r.vol) && r.vol >= MIN_VOLUME_USDT)
+      .sort((a, b) => b.vol - a.vol)
+      .slice(0, n)
+      .map((r) => r.symbol);
+  const errors: string[] = [];
+  try {
+    const rows = (await getJson(fetchFn, "https://fapi.binance.com/fapi/v1/ticker/24hr")) as Array<{ symbol: string; quoteVolume: string }>;
+    const list = pick(rows.map((r) => ({ symbol: r.symbol, vol: Number(r.quoteVolume) })));
+    if (list.length >= Math.min(n, 3)) return list;
+    errors.push("pocos activos");
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  try {
+    const j = (await getJson(fetchFn, "https://api.bybit.com/v5/market/tickers?category=linear")) as { result?: { list?: Array<{ symbol: string; turnover24h: string }> } };
+    const list = pick((j.result?.list ?? []).map((r) => ({ symbol: r.symbol, vol: Number(r.turnover24h) })));
+    if (list.length >= Math.min(n, 3)) return list;
+    errors.push("pocos activos");
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  throw new Error(`No se pudo armar la lista de activos (${errors.join(", ")})`);
+}
+
+/** Corre `fn` sobre cada elemento con a lo sumo `limit` pedidos a la vez (para no saturar al exchange). */
+export async function mapPool<T>(items: T[], limit: number, fn: (x: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) await fn(items[next++]);
+    }),
+  );
 }
 
 // ─── Reglas elegidas por la persona (desde «Estrategia sugerida») ───────────
@@ -388,12 +439,18 @@ export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p:
       }
       if (streak >= stopAfter) continue;
     }
+    // Todas las señales de esta vela; si hay más que lugares, entran primero las más fuertes.
+    const found: Array<{ symbol: string; sig: BotSignal }> = [];
     for (const symbol of symbols) {
-      if (open.size >= s.maxOpen || open.has(symbol)) continue;
+      if (open.has(symbol)) continue;
       const i = at.get(symbol)!.get(T);
       if (i == null) continue;
       const sig = signalAt(barsBySymbol[symbol], ind.get(symbol)!, i, p);
-      if (!sig) continue;
+      if (sig) found.push({ symbol, sig });
+    }
+    found.sort((a, b) => b.sig.strength - a.sig.strength);
+    for (const { symbol, sig } of found) {
+      if (open.size >= s.maxOpen) break;
       if (maxPerDay != null && opened.filter((x) => x > now - DAY_MS).length >= maxPerDay) continue;
       const when = localParts(now, s.timeZone);
       if (!allowedByActions(s.rules, { symbol, direction: sig.direction, weekday: when.weekday, block: when.block })) continue;
