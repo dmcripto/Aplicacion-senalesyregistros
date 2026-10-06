@@ -10,12 +10,19 @@ import { actionId } from "./strategy";
 export interface BotLoaded extends BotSettings {
   /** false si el servidor todavía no tiene la columna de reglas (falta correr el SQL nuevo). */
   rulesSupported: boolean;
+  /** false si el servidor todavía no tiene la columna del perfil. */
+  profileSupported: boolean;
+}
+
+export interface BotCaps {
+  rules: boolean;
+  profile: boolean;
 }
 
 export interface BotApi {
   /** Lee los ajustes de la persona; tira un error si el servidor todavía no tiene la tabla del bot. */
   load(): Promise<BotLoaded>;
-  save(s: BotSettings, rulesSupported: boolean): Promise<void>;
+  save(s: BotSettings, caps: BotCaps): Promise<void>;
 }
 
 export interface BotState {
@@ -23,10 +30,11 @@ export interface BotState {
   status: "idle" | "loading" | "ready" | "missing";
   settings: BotSettings;
   rulesSupported: boolean;
+  profileSupported: boolean;
 }
 
 export function createBotStore(api: BotApi) {
-  let state: BotState = { status: "idle", settings: DEFAULT_BOT, rulesSupported: false };
+  let state: BotState = { status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false };
   const listeners = new Set<() => void>();
   const set = (next: BotState) => {
     state = next;
@@ -43,15 +51,15 @@ export function createBotStore(api: BotApi) {
     },
     /** Vuelve al estado de fábrica (al cerrar sesión o cambiar de cuenta, para no mostrar lo de otra persona). */
     reset() {
-      set({ status: "idle", settings: DEFAULT_BOT, rulesSupported: false });
+      set({ status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false });
     },
     /** Carga una sola vez (las demás llamadas esperan a la primera). */
     async load(force = false) {
       if (!force && state.status !== "idle") return;
       set({ ...state, status: "loading" });
       try {
-        const { rulesSupported, ...settings } = await api.load();
-        set({ status: "ready", settings, rulesSupported });
+        const { rulesSupported, profileSupported, ...settings } = await api.load();
+        set({ status: "ready", settings, rulesSupported, profileSupported });
       } catch {
         set({ ...state, status: "missing" });
       }
@@ -62,7 +70,7 @@ export function createBotStore(api: BotApi) {
       const next = { ...state.settings, ...patch };
       set({ ...state, settings: next });
       try {
-        await api.save(next, state.rulesSupported);
+        await api.save(next, { rules: state.rulesSupported, profile: state.profileSupported });
       } catch (e) {
         set(prev);
         throw e;

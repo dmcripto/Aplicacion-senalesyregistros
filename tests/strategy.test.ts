@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BOT_OWN_MIN, actionId, backtestVerdict, filterBySource, metricsOf, ruleEvidence, strategyPlan, strategySources } from "../packages/core/src/trading";
-import { cleanActions } from "../supabase/functions/_shared/botStrategy";
+import { BOT_PROFILES as CORE_PROFILES, BOT_OWN_MIN, botHowItDecides, botProfileInfo, actionId, backtestVerdict, filterBySource, metricsOf, ruleEvidence, strategyPlan, strategySources } from "../packages/core/src/trading";
+import { BOT_PROFILES as SERVER_PROFILES, cleanActions } from "../supabase/functions/_shared/botStrategy";
 import type { Trade } from "../packages/core/src/trading";
 
 // Operación ya cerrada: entrada 100, riesgo 1 → TP = +rr, SL = −1.
@@ -305,5 +305,31 @@ describe("veredicto de la prueba con y sin reglas", () => {
     expect(backtestVerdict({ n: 60, expectancy: 0 }, { n: 40, expectancy: 0.2 }, f)).toContain("mejora");
     expect(backtestVerdict({ n: 60, expectancy: 0.1 }, { n: 40, expectancy: -0.1 }, f)).toContain("empeora");
     expect(backtestVerdict({ n: 60, expectancy: 0.1 }, { n: 40, expectancy: 0.12 }, f)).toContain("casi no cambia");
+  });
+});
+
+describe("perfiles del bot: pantalla y servidor", () => {
+  it("los números de cada perfil son los mismos en el núcleo y en la función del servidor", () => {
+    for (const id of ["conservative", "balanced", "dynamic"] as const) {
+      const c = CORE_PROFILES[id], s = SERVER_PROFILES[id];
+      expect({ lookback: s.lookback, emaFast: s.emaFast, emaSlow: s.emaSlow, atrMult: s.atrMult, rr: s.rr }).toEqual(c);
+    }
+  });
+
+  it("«Cómo decide» usa los números del perfil", () => {
+    const bal = botHowItDecides("balanced").join(" ");
+    expect(bal).toContain("últimas 20 velas");
+    expect(bal).toContain("1,5 veces el ATR");
+    expect(bal).toContain("2R");
+    const dyn = botHowItDecides("dynamic").join(" ");
+    expect(dyn).toContain("últimas 10 velas");
+    expect(dyn).toContain("1,5R");
+    expect(dyn).toContain("media de 20 velas sobre la de 100");
+  });
+
+  it("cada perfil tiene nombre y explicación", () => {
+    expect(botProfileInfo("conservative").name).toBe("Conservador");
+    expect(botProfileInfo("balanced").name).toBe("Equilibrado");
+    expect(botProfileInfo("dynamic").blurb.length).toBeGreaterThan(10);
   });
 });

@@ -9,7 +9,7 @@ import { buildStrategy } from "./strategy";
 export type { BotAction, BotDim, Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
 export type { StrategySource } from "./strategy";
 export { createBotStore } from "./botStore";
-export type { BotApi, BotLoaded, BotState, BotStore } from "./botStore";
+export type { BotApi, BotCaps, BotLoaded, BotState, BotStore } from "./botStore";
 export { BOT_OWN_MIN, STRATEGY_MIN_TRADES, actionId, backtestVerdict, confidenceLabel, filterBySource, metricsOf, ruleEvidence, ruleSentence, strategySources } from "./strategy";
 export type { RuleEvidence } from "./strategy";
 
@@ -1416,6 +1416,39 @@ import type { BotAction } from "./strategy";
 
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
+/** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
+export type BotProfileId = "conservative" | "balanced" | "dynamic";
+export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic"];
+export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number }> = {
+  conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2 },
+  balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2 },
+  dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 1.2, rr: 1.5 },
+};
+
+export function botProfileInfo(id: BotProfileId): { name: string; blurb: string } {
+  switch (id) {
+    case "conservative":
+      return { name: tr("Conservador"), blurb: tr("Menos señales: espera rupturas más grandes y deja más espacio al stop.") };
+    case "dynamic":
+      return { name: tr("Dinámico"), blurb: tr("Más señales: reacciona antes y busca un objetivo más cercano.") };
+    default:
+      return { name: tr("Equilibrado"), blurb: tr("El punto medio: ni muchas ni pocas señales.") };
+  }
+}
+
+/** Cómo decide el bot con ese perfil, en frases (los números salen del perfil, así nunca quedan desactualizados). */
+export function botHowItDecides(id: BotProfileId): string[] {
+  const p = BOT_PROFILES[id];
+  const n = (x: number) => String(x).replace(".", getLang() === "es" ? "," : ".");
+  return [
+    tr("Mira velas de 1 hora ya cerradas, nunca el futuro."),
+    tr("Solo compra si la tendencia es alcista (media de {a} velas sobre la de {b}) y solo vende si es bajista.", { a: p.emaFast, b: p.emaSlow }),
+    tr("Entra cuando el precio rompe el máximo (o mínimo) de las últimas {n} velas.", { n: p.lookback }),
+    tr("Stop a {x} veces el ATR (el rango normal del activo). Objetivo: {r} veces lo arriesgado ({r}R).", { x: n(p.atrMult), r: n(p.rr) }),
+    tr("Una operación por activo a la vez. Si llegás a la pérdida máxima del día, no abre más hasta mañana."),
+  ];
+}
+
 export const BOT_ASSETS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
 
 /** Ajustes del bot de cada persona. Hoy solo opera en modo simulado: anota operaciones en el diario, sin tocar ningún exchange. */
@@ -1426,9 +1459,10 @@ export interface BotSettings {
   dailyLossR: number; // pérdida máxima por día (R): al alcanzarla el bot no abre más ese día
   lastTickAt: string | null; // última vez que el servidor lo revisó
   rules: BotAction[]; // reglas de «Estrategia sugerida» que la persona eligió aplicar al bot
+  profile: BotProfileId; // perfil de estrategia
 }
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [] };
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced" };
 
 export interface BotStatsRow {
   n: number;
@@ -1440,7 +1474,7 @@ export interface BotStatsRow {
 }
 
 export type BotBacktest =
-  | { ok: true; days: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
+  | { ok: true; days: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
   | { ok: false; error?: string };
 
 // ─── Funciones que se prenden y apagan ──────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BOT_ASSETS, actionId, backtestVerdict, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
+import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest } from "../tradesApi";
@@ -28,7 +28,7 @@ function StatsLine({ s }: { s: BotStatsRow }) {
 }
 
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
-  const { status, settings: s, store } = useBot();
+  const { status, settings: s, store, profileSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
@@ -98,6 +98,24 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}
         </p>
 
+        {profileSupported && (
+          <div>
+            <span className={label}>{t("Perfil de estrategia")}</span>
+            <div className="grid grid-cols-3 gap-1.5">
+              {BOT_PROFILE_LIST.map((id) => (
+                <button
+                  key={id}
+                  onClick={() => update({ profile: id })}
+                  className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.profile === id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
+                >
+                  {botProfileInfo(id).name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{botProfileInfo(s.profile).blurb}</p>
+          </div>
+        )}
+
         <div>
           <span className={label}>{t("Activos")}</span>
           <div className="flex flex-wrap gap-1.5">
@@ -161,11 +179,9 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
         <details className="rounded-md border border-line bg-ink/40 text-[11.5px]">
           <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">{t("Cómo decide")}</summary>
           <ul className="list-disc space-y-1 border-t border-line px-3 py-3 pl-7 leading-relaxed text-fog">
-            <li>{t("Mira velas de 1 hora ya cerradas, nunca el futuro.")}</li>
-            <li>{t("Solo compra si la tendencia es alcista (media de 50 velas sobre la de 200) y solo vende si es bajista.")}</li>
-            <li>{t("Entra cuando el precio rompe el máximo (o mínimo) de las últimas 20 velas.")}</li>
-            <li>{t("Stop a 1,5 veces el ATR (el rango normal del activo). Objetivo: el doble de lo arriesgado (2R).")}</li>
-            <li>{t("Una operación por activo a la vez. Si llegás a la pérdida máxima del día, no abre más hasta mañana.")}</li>
+            {botHowItDecides(s.profile).map((x) => (
+              <li key={x}>{x}</li>
+            ))}
           </ul>
         </details>
 
@@ -200,6 +216,23 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                 <Tile name={t("Promedio por operación")} value={`${fmtR(test.total.expectancy)}R`} tone={test.total.expectancy > 0 ? "bull" : test.total.expectancy < 0 ? "bear" : undefined} />
                 <Tile name={t("Peor caída")} value={`${test.total.maxDrawdownR.toFixed(1).replace(/\.0$/, "")}R`} tone="bear" />
               </div>
+              {test.byProfile && (
+                <div className="space-y-1.5 rounded-md border border-line bg-ink/40 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Los tres perfiles, sin reglas")}</p>
+                  <ul className="space-y-1 text-[12px] text-fog">
+                    {test.byProfile.map((x) => (
+                      <li key={x.id} className="flex justify-between gap-2">
+                        <span className={cx("font-semibold", x.current ? "text-gold" : "text-snow")}>
+                          {botProfileInfo(x.id).name}
+                          {x.current ? ` · ${t("el tuyo")}` : ""}
+                        </span>
+                        <StatsLine s={x.stats} />
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10.5px] leading-relaxed text-dim">{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</p>
+                </div>
+              )}
               <ul className="space-y-1 text-[12px] text-fog">
                 {test.symbols.map((x) => (
                   <li key={x.symbol} className="flex justify-between gap-2">

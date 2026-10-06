@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAR_MS, DEFAULT_PARAMS, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
+import { BAR_MS, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -300,5 +300,56 @@ describe("simulación del bot completo", () => {
     const base = simulate(data, free);
     const strict = simulate(data, { ...free, rules: [{ op: "only", dim: "symbol", key: "BTCUSDT" }, { op: "maxPerDay", n: 1 }] });
     expect(strict.trades.length).toBeLessThan(base.trades.length);
+  });
+});
+
+describe("perfiles de estrategia", () => {
+  it("hay tres perfiles distintos y el equilibrado es el de siempre", () => {
+    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic"]);
+    expect(BOT_PROFILES.balanced).toEqual(DEFAULT_PARAMS);
+    const keys = BOT_PROFILE_IDS.map((id) => JSON.stringify(BOT_PROFILES[id]));
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  it("un perfil desconocido cae en el equilibrado", () => {
+    expect(isProfileId("dynamic")).toBe(true);
+    expect(isProfileId("agresivo")).toBe(false);
+    expect(paramsOf("agresivo")).toEqual(DEFAULT_PARAMS);
+    expect(paramsOf(undefined)).toEqual(DEFAULT_PARAMS);
+    expect(paramsOf("conservative").lookback).toBe(40);
+  });
+
+  it("todos los perfiles son coherentes: el dinámico da más señales que el conservador", () => {
+    const counts = Object.fromEntries(
+      BOT_PROFILE_IDS.map((id) => {
+        let n = 0;
+        for (let seed = 1; seed <= 6; seed++) {
+          let s = seed >>> 0;
+          const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+          let p = 100;
+          const bars: Bar[] = [];
+          for (let i = 0; i < 3000; i++) {
+            const o = p;
+            let c = o, h = o, l = o;
+            for (let k = 0; k < 4; k++) {
+              c *= 1 + 0.0004 + Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd()) * 0.004;
+              h = Math.max(h, c);
+              l = Math.min(l, c);
+            }
+            bars.push({ t: T0 + i * BAR_MS, o, h, l, c });
+            p = c;
+          }
+          n += backtest(bars, BOT_PROFILES[id]).trades.length;
+        }
+        return [id, n];
+      }),
+    );
+    expect(counts.dynamic).toBeGreaterThan(counts.balanced);
+    expect(counts.balanced).toBeGreaterThan(counts.conservative);
+  });
+
+  it("describe la estrategia con sus números", () => {
+    expect(describeParams(BOT_PROFILES.balanced)).toBe("ruptura de 20 velas a favor de la tendencia (EMA 50/200) · stop 1,5 ATR · objetivo 2R");
+    expect(describeParams(BOT_PROFILES.dynamic)).toContain("ruptura de 10 velas");
   });
 });

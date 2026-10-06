@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, actionId, backtestVerdict, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { runBotBacktest } from "./tradesApi";
@@ -22,7 +22,7 @@ function Line({ s }: { s: BotStatsRow }) {
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
 export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
-  const { status, settings: s, store } = useBot();
+  const { status, settings: s, store, profileSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
@@ -84,6 +84,20 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
         </Text>
       </View>
 
+      {profileSupported && (
+        <>
+          <Text style={st.label}>{t("Perfil de estrategia")}</Text>
+          <View style={st.wrap}>
+            {BOT_PROFILE_LIST.map((id) => (
+              <TouchableOpacity key={id} style={[st.chip, s.profile === id && st.chipOn]} onPress={() => update({ profile: id })}>
+                <Text style={[st.chipText, s.profile === id && { color: colors.ink }]}>{botProfileInfo(id).name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={st.dim}>{botProfileInfo(s.profile).blurb}</Text>
+        </>
+      )}
+
       <Text style={st.label}>{t("Activos")}</Text>
       <View style={st.wrap}>
         {BOT_ASSETS.map((a) => (
@@ -128,11 +142,9 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
       {s.rules.length > 0 && <Text style={st.dim}>{t("Para saber si te ayudan, corré «Probar con los últimos 4 meses»: compara el bot con y sin tus reglas.")}</Text>}
 
       <Text style={st.label}>{t("Cómo decide")}</Text>
-      <Text style={st.hint}>• {t("Mira velas de 1 hora ya cerradas, nunca el futuro.")}</Text>
-      <Text style={st.hint}>• {t("Solo compra si la tendencia es alcista (media de 50 velas sobre la de 200) y solo vende si es bajista.")}</Text>
-      <Text style={st.hint}>• {t("Entra cuando el precio rompe el máximo (o mínimo) de las últimas 20 velas.")}</Text>
-      <Text style={st.hint}>• {t("Stop a 1,5 veces el ATR (el rango normal del activo). Objetivo: el doble de lo arriesgado (2R).")}</Text>
-      <Text style={st.hint}>• {t("Una operación por activo a la vez. Si llegás a la pérdida máxima del día, no abre más hasta mañana.")}</Text>
+      {botHowItDecides(s.profile).map((x) => (
+        <Text key={x} style={st.hint}>• {x}</Text>
+      ))}
 
       <TouchableOpacity style={st.outline} onPress={probar} disabled={busy || !ready}>
         {busy ? <ActivityIndicator color={colors.gold} /> : <Text style={st.outlineText}>{t("Probar con los últimos 4 meses")}</Text>}
@@ -169,6 +181,21 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
               {t("Peor caída")}: <Text style={{ color: colors.bear, fontWeight: "800" }}>{test.total.maxDrawdownR.toFixed(1).replace(/\.0$/, "")}R</Text>
             </Text>
           </View>
+          {test.byProfile && (
+            <View style={st.notice}>
+              <Text style={st.label}>{t("Los tres perfiles, sin reglas")}</Text>
+              {test.byProfile.map((x) => (
+                <View key={x.id} style={st.row}>
+                  <Text style={[st.name, x.current && { color: colors.gold }]}>
+                    {botProfileInfo(x.id).name}
+                    {x.current ? ` · ${t("el tuyo")}` : ""}
+                  </Text>
+                  <Line s={x.stats} />
+                </View>
+              ))}
+              <Text style={st.dim}>{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</Text>
+            </View>
+          )}
           {test.symbols.map((x) => (
             <View key={x.symbol} style={st.row}>
               <Text style={st.name}>{short(x.symbol)}</Text>
