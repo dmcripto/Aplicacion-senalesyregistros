@@ -392,13 +392,13 @@ async function announce(chatId: number, link: { user_id: string }, lang: Lang, a
   return say(
     chatId,
     es
-      ? `👆 Así se vería. Publicalo solo cuando la app nueva esté lanzada y el bot abierto.\n\nPara publicarlo: entrá al grupo, abrí el tema donde lo querés (por ejemplo «APPS») y escribí ahí:\n/anunciar ${id} confirmar\n\nSolo funciona si sos administrador y el grupo está conectado a tu cuenta.`
-      : `👆 This is how it would look. Publish it only when the new app is released and the bot is open.\n\nTo publish it: go to the group, open the topic where you want it (for example “APPS”) and type there:\n/announce ${id} confirm\n\nIt only works if you are an admin and the group is connected to your account.`,
+      ? `👆 Así se vería. Publicalo solo cuando la app nueva esté lanzada y el bot abierto.\n\nPara publicarlo: entrá al grupo, abrí el tema donde lo querés (por ejemplo «Noticias») y escribí ahí:\n/anunciar ${id} confirmar\n\nSolo funciona si sos administrador y el grupo está conectado a tu cuenta.`
+      : `👆 This is how it would look. Publish it only when the new app is released and the bot is open.\n\nTo publish it: go to the group, open the topic where you want it (for example “News”) and type there:\n/announce ${id} confirm\n\nIt only works if you are an admin and the group is connected to your account.`,
   );
 }
 
 /**
- * /anunciar ID confirmar, escrito DENTRO de un grupo (en el tema donde se quiere el aviso, por ejemplo «APPS»).
+ * /anunciar ID confirmar, escrito DENTRO de un grupo (en el tema donde se quiere el aviso, por ejemplo «Noticias»).
  * Publica ahí mismo. Solo lo puede usar un administrador del grupo, y solo si el grupo está conectado a una cuenta habilitada.
  * Para cualquier otra persona o grupo no hace nada (el comando no existe).
  */

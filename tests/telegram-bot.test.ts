@@ -203,7 +203,7 @@ describe("/anunciar: publicar el aviso oficial en las comunidades", () => {
     owner(); link(); community();
     await msg("/anunciar bot");
     expect(to(555).some((x) => x.payload.text.includes("BOT AUTOMÁTICO"))).toBe(true);
-    expect(lastText()).toContain("«APPS»");
+    expect(lastText()).toContain("«Noticias»");
     expect(lastText()).toContain("/anunciar bot confirmar");
     await msg("/anunciar bot confirmar");
     expect(to(-1001)).toHaveLength(0); // ni siquiera con «confirmar»: se publica desde el grupo
@@ -222,7 +222,7 @@ describe("/anunciar: publicar el aviso oficial en las comunidades", () => {
   });
 });
 
-describe("/anunciar escrito dentro del grupo (en el tema APPS)", () => {
+describe("/anunciar escrito dentro del grupo (en el tema Noticias)", () => {
   const group = (text: string, opts: { thread?: number; from?: number } = {}) =>
     update({ update_id: ++uid, message: { message_id: 9, chat: { id: -1002, type: "supergroup" }, from: { id: opts.from ?? 77, language_code: "es" }, text, ...(opts.thread ? { is_topic_message: true, message_thread_id: opts.thread } : {}) } });
   const posted = () => sent.filter((x) => x.method === "sendMessage" && x.payload.chat_id === -1002);
