@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
-import type { BotBacktest, BotSettings, BotStatsRow } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
-import { runBotBacktest } from "./tradesApi";
+import { runBotBacktest, runBotLab } from "./tradesApi";
 import { colors } from "./theme";
 
 const short = (s: string) => s.replace("USDT", "");
@@ -26,6 +26,8 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
+  const [labBusy, setLabBusy] = useState(false);
+  const [lab, setLab] = useState<Extract<BotLab, { ok: true }> | null>(null);
 
   const update = async (patch: Partial<BotSettings>) => {
     if (patch.symbols && !patch.symbols.length) return Alert.alert(t("Error"), t("Dejá al menos un activo."));
@@ -37,6 +39,18 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
   };
 
   const toggleSymbol = (a: string) => update({ symbols: s.symbols.includes(a) ? s.symbols.filter((x) => x !== a) : [...s.symbols, a] });
+
+  const probarLab = async () => {
+    setLabBusy(true);
+    setLab(null);
+    try {
+      const r = await runBotLab(s.symbols);
+      if (!r.ok) Alert.alert(t("Error"), r.error ?? t("No se pudo hacer la prueba."));
+      else setLab(r as Extract<BotLab, { ok: true }>);
+    } finally {
+      setLabBusy(false);
+    }
+  };
 
   const probar = async () => {
     setBusy(true);
@@ -215,6 +229,28 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
           <Text style={st.dim}>
             {t("Prueba sobre los últimos {d} días de precios reales, con un costo de comisión y deslizamiento incluido. Si una vela toca stop y objetivo a la vez se cuenta el stop. El pasado no garantiza el futuro: la prueba de verdad es el modo simulado, día a día.", { d: test.days })}
           </Text>
+        </View>
+      )}
+      <TouchableOpacity style={[st.outline, { borderColor: colors.line }]} onPress={probarLab} disabled={labBusy || !ready}>
+        {labBusy ? <ActivityIndicator color={colors.fog} /> : <Text style={[st.outlineText, { color: colors.fog }]}>{t("Probar variantes de 4 horas (1 año)")}</Text>}
+      </TouchableOpacity>
+      {lab && (
+        <View style={st.notice}>
+          <Text style={st.label}>{t("Laboratorio de variantes")}</Text>
+          <Text style={[st.hint, { color: colors.snow }]}>{labVerdict(lab.variants)}</Text>
+          {lab.variants.map((v) => (
+            <View key={v.id} style={[st.ruleRow, { flexDirection: "column", alignItems: "stretch", gap: 4 }, labPasses(v) && { borderColor: colors.bull }]}>
+              <Text style={st.name}>
+                {labVariantInfo(v.id).name}
+                {labPasses(v) ? ` · ${t("pasa la vara")}` : ""}
+              </Text>
+              <Text style={st.dim}>{labVariantInfo(v.id).blurb}</Text>
+              <View style={st.row}><Text style={st.dim}>{t("Año completo")}</Text><Line s={v.whole} /></View>
+              <View style={st.row}><Text style={st.dim}>{t("1.ª mitad")}</Text><Line s={v.first} /></View>
+              <View style={st.row}><Text style={st.dim}>{t("2.ª mitad")}</Text><Line s={v.second} /></View>
+            </View>
+          ))}
+          <Text style={st.dim}>{t("Pasa la vara solo si gana en el año completo y en cada mitad, con operaciones suficientes. Probar muchas versiones y quedarse con la mejor engaña: por eso nada de esto se usa en serio sin confirmarlo antes en modo simulado.")}</Text>
         </View>
       )}
       <Text style={st.dim}>{t("Es una herramienta de práctica y estudio. No es asesoramiento financiero ni garantiza ganancias.")}</Text>

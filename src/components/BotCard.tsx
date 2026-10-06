@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
-import type { BotBacktest, BotSettings, BotStatsRow } from "../lib";
+import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
-import { runBotBacktest } from "../tradesApi";
+import { runBotBacktest, runBotLab } from "../tradesApi";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -32,6 +32,8 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
+  const [labBusy, setLabBusy] = useState(false);
+  const [lab, setLab] = useState<Extract<BotLab, { ok: true }> | null>(null);
 
   const update = async (patch: Partial<BotSettings>) => {
     const next = { ...s, ...patch };
@@ -45,6 +47,18 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   };
 
   const toggleSymbol = (sym: string) => update({ symbols: s.symbols.includes(sym) ? s.symbols.filter((x) => x !== sym) : [...s.symbols, sym] });
+
+  const probarLab = async () => {
+    setLabBusy(true);
+    setLab(null);
+    try {
+      const r = await runBotLab(s.symbols);
+      if (!r.ok) notify(r.error ?? t("No se pudo hacer la prueba."), "err");
+      else setLab(r as Extract<BotLab, { ok: true }>);
+    } finally {
+      setLabBusy(false);
+    }
+  };
 
   const probar = async () => {
     setBusy(true);
@@ -254,6 +268,37 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
               {!test.withRules && s.rules.length > 0 && <p className="text-[11px] text-dim">{t("La prueba no trae la comparación con tus reglas: falta actualizar la función del servidor.")}</p>}
               <p className="text-[10.5px] leading-relaxed text-dim">
                 {t("Prueba sobre los últimos {d} días de precios reales, con un costo de comisión y deslizamiento incluido. Si una vela toca stop y objetivo a la vez se cuenta el stop. El pasado no garantiza el futuro: la prueba de verdad es el modo simulado, día a día.", { d: test.days })}
+              </p>
+            </div>
+          )}
+          <button onClick={probarLab} disabled={labBusy || !ready} className="w-full rounded-md border border-line px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-fog transition-colors hover:border-line2 hover:text-snow disabled:opacity-40">
+            {labBusy ? t("Probando variantes con un año de precios…") : t("Probar variantes de 4 horas (1 año)")}
+          </button>
+          {lab && (
+            <div className="space-y-2.5 rounded-md border border-line bg-ink/40 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Laboratorio de variantes")}</p>
+              <p className="text-[12px] leading-relaxed text-snow">{labVerdict(lab.variants)}</p>
+              <ul className="space-y-2">
+                {lab.variants.map((v) => (
+                  <li key={v.id} className={cx("rounded-md border p-2.5", labPasses(v) ? "border-bull/50 bg-bull/5" : "border-line bg-ink/50")}>
+                    <p className="text-[12px] font-bold text-snow">
+                      {labVariantInfo(v.id).name}
+                      {labPasses(v) ? ` · ${t("pasa la vara")}` : ""}
+                    </p>
+                    <p className="text-[10.5px] leading-relaxed text-dim">{labVariantInfo(v.id).blurb}</p>
+                    <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px] text-fog">
+                      {([[t("Año completo"), v.whole], [t("1.ª mitad"), v.first], [t("2.ª mitad"), v.second]] as Array<[string, BotStatsRow]>).map(([name, st]) => (
+                        <div key={name}>
+                          <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-dim">{name}</p>
+                          <StatsLine s={st} />
+                        </div>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[10.5px] leading-relaxed text-dim">
+                {t("Pasa la vara solo si gana en el año completo y en cada mitad, con operaciones suficientes. Probar muchas versiones y quedarse con la mejor engaña: por eso nada de esto se usa en serio sin confirmarlo antes en modo simulado.")}
               </p>
             </div>
           )}

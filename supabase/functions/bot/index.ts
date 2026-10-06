@@ -2,6 +2,8 @@
 //
 //   · POST con la sesión de la persona   { "action": "backtest", "symbols": [...], "days": 120 }
 //       → prueba la estrategia con el historial real de precios y devuelve el resultado (no toca nada).
+//   · POST con la sesión de la persona   { "action": "lab", "symbols": [...] }
+//       → laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades.
 //   · POST con el encabezado x-cron-secret (pg_cron, cada 5 minutos)
 //       → para cada persona con el bot encendido: cierra sus operaciones simuladas que tocaron stop u objetivo,
 //         y anota una operación nueva si la última vela cerrada dio señal y los límites lo permiten.
@@ -9,8 +11,8 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, indicators, isBotSymbol, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
-import type { BotProfileId, Indicators } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, indicators, isBotSymbol, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import type { BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
 import { esc, notifyTelegram } from "../_shared/telegram.ts";
@@ -96,11 +98,11 @@ async function notifyClosed(userId: string, tradeId: string, t: { symbol: string
 const BACKTEST_TTL = 30 * 60_000;
 const barsCache = new Map<string, { at: number; bars: Bar[] }>();
 
-async function barsFor(symbol: string, count: number): Promise<Bar[]> {
-  const key = `${symbol}:${count}`;
+async function barsFor(symbol: string, count: number, tf: BotTimeframe = "1h"): Promise<Bar[]> {
+  const key = `${symbol}:${count}:${tf}`;
   const hit = barsCache.get(key);
   if (hit && Date.now() - hit.at < BACKTEST_TTL) return hit.bars;
-  const bars = closedBars(await fetchBars(symbol, count));
+  const bars = closedBars(await fetchBars(symbol, count, fetch, tf), Date.now(), barMsOf({ tf }));
   barsCache.set(key, { at: Date.now(), bars });
   return bars;
 }
@@ -144,6 +146,36 @@ async function runBacktest(userId: string, symbols: string[], days: number) {
     rulesApplied: rules.length,
     symbols: symbols.map((symbol) => ({ symbol, stats: botStats(without.trades.filter((t) => t.symbol === symbol).map((t) => t.r)), error: errors[symbol] })),
   };
+}
+
+/**
+ * Laboratorio: varias versiones de la estrategia (velas de 1 y de 4 horas) sobre un año de precios reales, sin reglas,
+ * con los mismos topes de la persona. Cada una se mide entera y por mitades (la primera y la segunda parte del año).
+ */
+async function runLabTest(userId: string, symbols: string[]) {
+  const { data: cfg } = await admin.from("bot_settings").select("max_open, daily_loss_r").eq("user_id", userId).maybeSingle();
+  const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
+  const base = { maxOpen: Number(cfg?.max_open ?? 3), dailyLossR: Number(cfg?.daily_loss_r ?? 3), timeZone: (prof?.timezone as string | null) ?? null };
+
+  const bars: Record<BotTimeframe, Record<string, Bar[]>> = { "1h": {}, "4h": {} };
+  const errors: Record<string, string> = {};
+  await Promise.all(
+    symbols.flatMap((symbol) =>
+      (["1h", "4h"] as const).map(async (tf) => {
+        const perDay = tf === "4h" ? 6 : 24;
+        try {
+          bars[tf][symbol] = await barsFor(symbol, LAB_DAYS * perDay + MAX_WARMUP, tf);
+        } catch (e) {
+          errors[symbol] = e instanceof Error ? e.message : "error";
+        }
+      }),
+    ),
+  );
+  const ok = symbols.filter((x) => bars["1h"][x] && bars["4h"][x]);
+  if (!ok.length) return { ok: false, error: "No se pudieron bajar los precios. Probá de nuevo en unos minutos." };
+  const usable = (tf: BotTimeframe) => Object.fromEntries(ok.map((x) => [x, bars[tf][x]]));
+  const mid = Date.now() - (LAB_DAYS / 2) * 24 * 3_600_000;
+  return { ok: true, days: LAB_DAYS, variants: runLab(usable, { symbols: ok, ...base }, mid), symbols: ok };
 }
 
 // ─── Corrida periódica ──────────────────────────────────────────────────────
@@ -329,9 +361,10 @@ Deno.serve(async (req) => {
   } catch {
     /* sin cuerpo */
   }
-  if (body.action !== "backtest") return json({ ok: false, error: "Acción no válida" }, 400);
+  if (body.action !== "backtest" && body.action !== "lab") return json({ ok: false, error: "Acción no válida" }, 400);
   const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 5);
   if (!symbols.length) return json({ ok: false, error: "Elegí al menos un activo." }, 400);
+  if (body.action === "lab") return json(await runLabTest(auth.user.id, symbols));
   const days = Math.min(120, Math.max(30, Number(body.days) || 120));
   return json(await runBacktest(auth.user.id, symbols, days));
 });
