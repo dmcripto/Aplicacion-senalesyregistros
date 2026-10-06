@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, confidenceLabel, filterBySource, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
+import { BOT_ASSETS, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
+import { useBot } from "./botStore";
 import { useMoney } from "./money";
 import { t } from "@dmcripto/core";
 
@@ -522,6 +523,8 @@ const CONF_COLOR: Record<Confidence, string> = { high: colors.bull, medium: colo
 /** Estrategia sugerida: reglas armadas con las operaciones cerradas (incluidas las del exchange). */
 export function StrategyBlock({ trades }: { trades: Trade[] }) {
   const { money } = useMoney();
+  const bot = useBot();
+  const canApply = bot.status === "ready" && bot.rulesSupported;
   const sources = useMemo(() => strategySources(trades), [trades]);
   const [picked, setPicked] = useState("all");
   const source = sources.some((x) => x.id === picked) ? picked : "all";
@@ -569,8 +572,12 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
           {plan.rules.length === 0 ? (
             <Text style={st.note}>{t("Todavía no encuentro patrones claros. Seguí registrando: con más operaciones aparecen.")}</Text>
           ) : (
-            plan.rules.map((r) => (
-              <View key={r.title} style={st.rule}>
+            plan.rules.map((r) => {
+              const notBot = !!r.action && "dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key);
+              const applied = !!r.action && bot.store.isApplied(actionId(r.action));
+              const oops = (e: unknown) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
+              return (
+              <View key={r.id} style={st.rule}>
                 <View style={st.ruleTop}>
                   <Text style={st.ruleTitle}>
                     {RULE_ICON[r.kind]} {r.title}
@@ -578,8 +585,29 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
                   <Text style={[st.badge, { color: CONF_COLOR[r.confidence], borderColor: CONF_COLOR[r.confidence] + "88" }]}>{confidenceLabel(r.confidence)}</Text>
                 </View>
                 <Text style={st.ruleWhy}>{r.why}</Text>
+                {canApply && r.action && (
+                  <View style={st.botRow}>
+                    <Text style={[st.small, { flex: 1, marginTop: 0 }]}>🤖 {notBot ? t("El bot no opera este activo.") : r.effect}</Text>
+                    {notBot ? null : applied ? (
+                      <TouchableOpacity style={[st.apply, { borderColor: colors.bull + "88", backgroundColor: colors.bull + "18" }]} onPress={() => bot.store.remove(actionId(r.action!)).catch(oops)}>
+                        <Text style={[st.applyText, { color: colors.bull }]}>✓ {t("Aplicada")} · {t("Quitar")}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity style={[st.apply, { backgroundColor: colors.gold, borderColor: colors.gold }]} onPress={() => bot.store.apply(r.action!).catch(oops)}>
+                        <Text style={[st.applyText, { color: colors.ink }]}>{t("Aplicar al bot")}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </View>
-            ))
+              );
+            })
+          )}
+          {canApply && plan.rules.some((r) => r.action) && (
+            <Text style={st.small}>
+              {bot.settings.enabled ? t("Las reglas que apliques las usa el bot desde la próxima señal.") : t("El bot está apagado: las reglas se guardan y las usa cuando lo enciendas, en Conexiones → Bot automático.")}{" "}
+              {t("Salen de tus operaciones, pero el bot usa su propia estrategia: probalas en modo simulado antes de confiar en ellas.")}
+            </Text>
           )}
           {plan.after && (
             <View style={st.rule}>
@@ -625,6 +653,9 @@ const st = StyleSheet.create({
   ruleTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" },
   ruleTitle: { color: colors.snow, fontSize: 13, fontWeight: "700", flex: 1, lineHeight: 18 },
   ruleWhy: { color: colors.fog, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  botRow: { flexDirection: "row", alignItems: "center", gap: 8, borderTopWidth: 1, borderTopColor: colors.line, marginTop: 8, paddingTop: 8 },
+  apply: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  applyText: { fontSize: 10.5, fontWeight: "800", letterSpacing: 0.5, textTransform: "uppercase" },
   badge: { fontSize: 9, fontWeight: "800", letterSpacing: 0.8, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, textTransform: "uppercase" },
 });
 

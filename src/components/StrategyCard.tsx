@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { confidenceLabel, cx, exchangeName, filterBySource, fmtR, strategyPlan, strategySources, t } from "../lib";
+import { BOT_ASSETS, actionId, confidenceLabel, cx, exchangeName, filterBySource, fmtR, strategyPlan, strategySources, t } from "../lib";
 import type { Confidence, StrategyRule, Trade } from "../lib";
+import { useBot } from "../botStore";
 import { useMoney } from "../money";
 import Panel from "./Panel";
 
@@ -14,8 +15,13 @@ const Tile = ({ label, value, tone }: { label: string; value: string; tone?: "bu
   </div>
 );
 
-export default function StrategyCard({ trades }: { trades: Trade[] }) {
+type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
+
+export default function StrategyCard({ trades, notify }: { trades: Trade[]; notify?: Notify }) {
   const { money } = useMoney();
+  const bot = useBot();
+  const canApply = bot.status === "ready" && bot.rulesSupported;
+  const fail = (e: unknown) => notify?.(e instanceof Error ? e.message : t("No se pudo guardar el cambio."), "err");
   const sources = useMemo(() => strategySources(trades), [trades]);
   const [picked, setPicked] = useState("all");
   const source = sources.some((x) => x.id === picked) ? picked : "all";
@@ -77,7 +83,7 @@ export default function StrategyCard({ trades }: { trades: Trade[] }) {
                 <p className="text-[12px] text-fog">{t("Todavía no encuentro patrones claros. Seguí registrando: con más operaciones aparecen.")}</p>
               ) : (
                 plan.rules.map((r) => (
-                  <div key={r.title} className="rounded-md border border-line bg-ink/40 p-3">
+                  <div key={r.id} className="rounded-md border border-line bg-ink/40 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-[12.5px] font-bold leading-snug text-snow">
                         {ICON[r.kind]} {r.title}
@@ -85,10 +91,36 @@ export default function StrategyCard({ trades }: { trades: Trade[] }) {
                       <span className={cx("shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wider", CONF[r.confidence])}>{confidenceLabel(r.confidence)}</span>
                     </div>
                     <p className="mt-1 text-[11.5px] leading-relaxed text-fog">{r.why}</p>
+                    {canApply && r.action && (
+                      <div className="mt-2 flex items-center justify-between gap-2 border-t border-line/60 pt-2">
+                        <p className="text-[11px] leading-snug text-dim">
+                          🤖 {"dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key) ? t("El bot no opera este activo.") : r.effect}
+                        </p>
+                        {"dim" in r.action && r.action.dim === "symbol" && !(BOT_ASSETS as readonly string[]).includes(r.action.key) ? null : bot.store.isApplied(actionId(r.action)) ? (
+                          <button onClick={() => bot.store.remove(actionId(r.action!)).catch(fail)} className="shrink-0 rounded-md border border-bull/50 bg-bull/10 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-bull">
+                            ✓ {t("Aplicada")} · {t("Quitar")}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => bot.store.apply(r.action!).then(() => notify?.(t("Regla aplicada al bot."), "ok")).catch(fail)}
+                            className="shrink-0 rounded-md border border-gold bg-gold px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110"
+                          >
+                            {t("Aplicar al bot")}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
             </div>
+
+            {canApply && plan.rules.some((r) => r.action) && (
+              <p className="text-[11px] leading-relaxed text-dim">
+                {bot.settings.enabled ? t("Las reglas que apliques las usa el bot desde la próxima señal.") : t("El bot está apagado: las reglas se guardan y las usa cuando lo enciendas, en Conexiones → Bot automático.")}{" "}
+                {t("Salen de tus operaciones, pero el bot usa su propia estrategia: probalas en modo simulado antes de confiar en ellas.")}
+              </p>
+            )}
 
             {plan.after && (
               <div className="rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-relaxed text-fog">

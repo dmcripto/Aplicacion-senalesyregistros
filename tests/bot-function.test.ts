@@ -137,6 +137,64 @@ describe("función bot · corrida periódica", () => {
   });
 });
 
+describe("función bot · reglas elegidas desde la estrategia sugerida", () => {
+  it("no opera un activo que la persona decidió evitar", async () => {
+    enable({ rules: [{ op: "skip", dim: "symbol", key: "BTCUSDT" }] });
+    expect((await tick()).body.opened).toBe(0);
+    expect(db.tables.trades).toHaveLength(0);
+  });
+
+  it("«solo compras» deja pasar una señal de compra y bloquea las ventas", async () => {
+    enable({ rules: [{ op: "only", dim: "direction", key: "LONG" }] });
+    expect((await tick()).body.opened).toBe(1);
+    resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+    enable({ rules: [{ op: "only", dim: "direction", key: "SHORT" }] });
+    expect((await tick()).body.opened).toBe(0);
+  });
+
+  it("respeta el día y la franja en la zona horaria de la persona", async () => {
+    // la señal sale ahora: se bloquea justo el día y la franja actuales en esa zona
+    const tz = "America/Argentina/Buenos_Aires";
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", hourCycle: "h23" }).formatToParts(new Date());
+    const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(parts.find((p) => p.type === "weekday")!.value);
+    const block = Math.floor(Number(parts.find((p) => p.type === "hour")!.value) / 3);
+    db.tables.profiles.push({ id: "u1", timezone: tz });
+    enable({ rules: [{ op: "skip", dim: "weekday", key: String(weekday) }] });
+    expect((await tick()).body.opened).toBe(0);
+    resetDb({ bot_settings: [], bot_signals: [], trades: [], profiles: [{ id: "u1", timezone: tz }] });
+    enable({ rules: [{ op: "skip", dim: "hour", key: String(block) }] });
+    expect((await tick()).body.opened).toBe(0);
+    resetDb({ bot_settings: [], bot_signals: [], trades: [], profiles: [{ id: "u1", timezone: tz }] });
+    enable({ rules: [{ op: "only", dim: "weekday", key: String(weekday) }, { op: "only", dim: "hour", key: String(block) }] });
+    expect((await tick()).body.opened).toBe(1);
+  });
+
+  it("tope de operaciones por día", async () => {
+    enable({ symbols: ["BTCUSDT"], rules: [{ op: "maxPerDay", n: 1 }] });
+    db.tables.trades.push({ id: "p", user_id: "u1", symbol: "ETHUSDT", source: "bot", outcome: "SL", entry: 10, sl: 9, tp: 12, date: new Date(Date.now() - 3 * 36e5).toISOString(), closed_at: new Date(Date.now() - 2 * 36e5).toISOString() });
+    expect((await tick()).body.opened).toBe(0);
+  });
+
+  it("frena tras pérdidas seguidas", async () => {
+    enable({ rules: [{ op: "stopAfterLosses", n: 2 }] });
+    for (let i = 0; i < 2; i++) db.tables.trades.push({ id: `l${i}`, user_id: "u1", symbol: "SOLUSDT", source: "bot", outcome: "SL", entry: 10, sl: 9, tp: 12, date: new Date(Date.now() - (5 - i) * 36e5).toISOString(), closed_at: new Date(Date.now() - (4 - i) * 36e5).toISOString() });
+    expect((await tick()).body.opened).toBe(0);
+    // si la última fue ganadora, la racha se corta y puede operar
+    resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+    enable({ rules: [{ op: "stopAfterLosses", n: 2 }] });
+    const t0 = Date.now();
+    db.tables.trades.push({ id: "a", user_id: "u1", symbol: "SOLUSDT", source: "bot", outcome: "SL", entry: 10, sl: 9, tp: 12, date: new Date(t0 - 6 * 36e5).toISOString(), closed_at: new Date(t0 - 5 * 36e5).toISOString() });
+    db.tables.trades.push({ id: "b", user_id: "u1", symbol: "SOLUSDT", source: "bot", outcome: "SL", entry: 10, sl: 9, tp: 12, date: new Date(t0 - 5 * 36e5).toISOString(), closed_at: new Date(t0 - 4 * 36e5).toISOString() });
+    db.tables.trades.push({ id: "c", user_id: "u1", symbol: "SOLUSDT", source: "bot", outcome: "TP", entry: 10, sl: 9, tp: 12, date: new Date(t0 - 4 * 36e5).toISOString(), closed_at: new Date(t0 - 3 * 36e5).toISOString() });
+    expect((await tick()).body.opened).toBe(1);
+  });
+
+  it("ignora reglas mal formadas en lugar de romperse", async () => {
+    enable({ rules: [{ op: "skip", dim: "symbol", key: "XXX" }, "basura", { op: "maxPerDay", n: -3 }] });
+    expect((await tick()).body.opened).toBe(1);
+  });
+});
+
 describe("función bot · prueba con historial", () => {
   const call = async (body: unknown, token = "good") => {
     const r = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }));

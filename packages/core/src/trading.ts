@@ -6,9 +6,11 @@
 import { getLang, locale, t as tr } from "./i18n";
 export * from "./i18n";
 import { buildStrategy } from "./strategy";
-export type { Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
+export type { BotAction, BotDim, Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
 export type { StrategySource } from "./strategy";
-export { STRATEGY_MIN_TRADES, confidenceLabel, filterBySource, metricsOf, strategySources } from "./strategy";
+export { createBotStore } from "./botStore";
+export type { BotApi, BotLoaded, BotState, BotStore } from "./botStore";
+export { STRATEGY_MIN_TRADES, actionId, confidenceLabel, filterBySource, metricsOf, ruleSentence, strategySources } from "./strategy";
 
 export type Direction = "LONG" | "SHORT";
 export type Outcome = "ABIERTA" | "TP" | "SL" | "MANUAL";
@@ -1409,6 +1411,8 @@ export function binanceSymbol(raw: string): { symbol: string; perp: boolean } | 
   return { symbol: `${m[1]}${m[2] === "USDC" ? "USDC" : "USDT"}`, perp };
 }
 
+import type { BotAction } from "./strategy";
+
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
 export const BOT_ASSETS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
@@ -1420,9 +1424,10 @@ export interface BotSettings {
   maxOpen: number; // operaciones simuladas abiertas a la vez
   dailyLossR: number; // pérdida máxima por día (R): al alcanzarla el bot no abre más ese día
   lastTickAt: string | null; // última vez que el servidor lo revisó
+  rules: BotAction[]; // reglas de «Estrategia sugerida» que la persona eligió aplicar al bot
 }
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null };
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [] };
 
 export interface BotStatsRow {
   n: number;

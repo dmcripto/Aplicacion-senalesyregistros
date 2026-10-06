@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { BOT_ASSETS, DEFAULT_BOT, cx, fmtDateTime, fmtR, t } from "../lib";
+import { useState } from "react";
+import { BOT_ASSETS, actionId, cx, fmtDateTime, fmtR, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotSettings, BotStatsRow } from "../lib";
-import { fetchBotSettings, runBotBacktest, saveBotSettings } from "../tradesApi";
+import { useBot } from "../botStore";
+import { runBotBacktest } from "../tradesApi";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -27,32 +28,18 @@ function StatsLine({ s }: { s: BotStatsRow }) {
 }
 
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
-  const [s, setS] = useState<BotSettings>(DEFAULT_BOT);
-  const [ready, setReady] = useState(false);
-  const [available, setAvailable] = useState(false); // solo se muestra si el servidor ya tiene la tabla del bot
+  const { status, settings: s, store } = useBot();
+  const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
-
-  useEffect(() => {
-    fetchBotSettings(userId)
-      .then((v) => {
-        setS(v);
-        setAvailable(true);
-      })
-      .catch(() => setAvailable(false)) // la tabla todavía no existe en el servidor: no se muestra nada
-      .finally(() => setReady(true));
-  }, [userId]);
 
   const update = async (patch: Partial<BotSettings>) => {
     const next = { ...s, ...patch };
     if (!next.symbols.length) return notify(t("Dejá al menos un activo."), "err");
-    const prev = s;
-    setS(next);
     try {
-      await saveBotSettings(userId, next);
+      await store.update(patch);
       if (patch.enabled !== undefined) notify(next.enabled ? t("Bot encendido (modo simulado).") : t("Bot apagado."), "info");
     } catch (err) {
-      setS(prev);
       notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
     }
   };
@@ -79,7 +66,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
     return t("Dio {e} por operación en {n} operaciones. Es una prueba sobre el pasado: lo que importa es cómo se comporta de ahora en adelante en modo simulado.", { e: `${fmtR(tot.expectancy)}R`, n: tot.n });
   };
 
-  if (!available) return null;
+  if (status === "missing" || status === "idle" || status === "loading") return null; // todavía no está el bot en el servidor
 
   return (
     <Panel id="bot" title={t("BOT AUTOMÁTICO")} subtitle={t("Modo simulado · sin plata real")} summary={s.enabled ? t("Encendido") : t("Apagado")} defaultOpen={false}>
@@ -147,6 +134,27 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
               ))}
             </select>
           </label>
+        </div>
+
+        <div>
+          <span className={label}>{t("Reglas de tu estrategia sugerida")}</span>
+          {s.rules.length === 0 ? (
+            <p className="text-[11.5px] leading-relaxed text-dim">{t("Ninguna todavía. En «Estrategia sugerida» podés elegir reglas y el bot las aplica.")}</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {s.rules.map((r) => (
+                <li key={actionId(r)} className="flex items-center justify-between gap-2 rounded-md border border-line bg-ink/40 px-3 py-2 text-[12px] text-snow">
+                  <span>{ruleSentence(r)}</span>
+                  <button
+                    onClick={() => store.remove(actionId(r)).catch((e: unknown) => notify(e instanceof Error ? e.message : t("No se pudo guardar el cambio."), "err"))}
+                    className="shrink-0 rounded border border-line px-2 py-0.5 text-[10.5px] font-semibold text-dim hover:border-bear/50 hover:text-bear"
+                  >
+                    {t("Quitar")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <details className="rounded-md border border-line bg-ink/40 text-[11.5px]">
