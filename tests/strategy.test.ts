@@ -86,7 +86,25 @@ describe("estrategia sugerida", () => {
     if (!p.ok) return;
     expect(p.edge).toBe("none");
     expect(p.rules[0].kind).toBe("risk");
+    expect(p.rules[0].confidence).toBe("low"); // con 14 operaciones nunca se afirma con fuerza
+    expect(p.lowSample).toBe(true);
+    expect(p.headline).toContain("todavía no se puede decir");
+  });
+
+  it("con muchas operaciones y promedio negativo sí lo afirma", () => {
+    const trades = Array.from({ length: 45 }, (_, i) => mk(day(1 + (i % 28)), i % 4 === 0 ? 1 : -1));
+    const p = strategyPlan(trades);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.lowSample).toBe(false);
     expect(p.rules[0].confidence).toBe("high");
+    expect(p.headline).toContain("Por ahora perdés");
+  });
+
+  it("la regla de ganancia/pérdida habla de pérdida promedio, no de 1R", () => {
+    const trades = Array.from({ length: 14 }, (_, i) => mk(day(1 + i), i % 4 === 0 ? 1 : -1));
+    const p = strategyPlan(trades);
+    expect(p.ok && p.rules.some((r) => r.title.includes("pérdida promedio"))).toBe(true);
   });
 
   it("una ventaja con pocas operaciones se marca como no comprobada, no como real", () => {
