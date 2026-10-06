@@ -190,3 +190,38 @@ describe("targets múltiples (TP1, TP2, TP3…)", () => {
     expect(texts().every((m) => !m.includes("antes del Target"))).toBe(true);
   });
 });
+
+describe("el cierre automático y las operaciones que no son de la persona", () => {
+  const TEST_NOTE = "Señal de prueba de VELTRIX: no es una operación real.";
+  const chats = () => sent.filter((x) => x.method === "sendMessage").map((x) => x.payload.chat_id);
+
+  it("no toca las operaciones del bot simulado (las sigue la función del bot): ni las cierra ni las publica", async () => {
+    db.tables.trades = [trade({ source: "bot" })];
+    candles = [row(5, 131, 99)]; // tocó el TP
+    await run();
+    expect(db.tables.trades[0].outcome).toBe("ABIERTA");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("una señal de prueba se cierra y avisa a su dueño, pero nunca a la comunidad", async () => {
+    db.tables.trades = [trade({ notes: TEST_NOTE, tags: ["Prueba"] })];
+    candles = [row(5, 131, 99)];
+    await run();
+    expect(db.tables.trades[0]).toMatchObject({ outcome: "TP", auto_closed: true });
+    expect(chats()).toContain(555);
+    expect(chats()).not.toContain(-100);
+  });
+
+  it("el aviso de Target 1 de una señal de prueba tampoco va a la comunidad", async () => {
+    db.tables.trades = [trade({ notes: TEST_NOTE })];
+    await run(); // tocó 110 y sigue abierta
+    expect(chats()).toContain(555);
+    expect(chats()).not.toContain(-100);
+  });
+
+  it("una operación real sigue publicándose en la comunidad como antes", async () => {
+    candles = [row(5, 131, 99)];
+    await run();
+    expect(chats()).toContain(-100);
+  });
+});

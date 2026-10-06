@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
 import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchPartialAlerts, setPartialAlerts, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, setAutoClose, setDailySummary } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchPartialAlerts, setPartialAlerts, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, sendTestSignal, setAutoClose, setDailySummary } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
@@ -68,6 +68,19 @@ export default function SettingsScreen({
   const mark = (key: string) => ({ onLayout: (e: { nativeEvent: { layout: { y: number } } }) => { pos.current[key] = e.nativeEvent.layout.y; } });
   const jump = (key: string) => scroller.current?.scrollTo({ y: Math.max(0, (pos.current[key] ?? 0) - 4), animated: true });
   const botReady = useBot().status === "ready";
+  const [testing, setTesting] = useState(false);
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const r = await sendTestSignal();
+      if (r.ok) Alert.alert(t("Listo"), t("Listo: te mandamos una señal de prueba. Tiene que aparecer arriba y llegarte el aviso."));
+      else Alert.alert(t("Error"), r.error ?? t("No se pudo mandar la señal de prueba."));
+    } catch (e) {
+      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo mandar la señal de prueba."));
+    } finally {
+      setTesting(false);
+    }
+  };
   const shortcuts: Array<{ key: string; label: string; accent?: boolean }> = [
     { key: "exchange", label: t("Exchanges"), accent: true },
     ...(botReady ? [{ key: "bot", label: t("Bot"), accent: true }] : []),
@@ -331,6 +344,14 @@ export default function SettingsScreen({
             <Text style={[styles.signOutText, { color: colors.gold }]}>{t("Enviar prueba")}</Text>
           </TouchableOpacity>
         </View>
+        {botReady && (
+          <>
+            <TouchableOpacity style={styles.signOut} onPress={sendTest} disabled={testing}>
+              <Text style={[styles.signOutText, { color: colors.gold }]}>{"🧪 "}{testing ? t("Mandando…") : t("Mandarme una señal de prueba")}</Text>
+            </TouchableOpacity>
+            <Text style={styles.hint}>{t("Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.")}</Text>
+          </>
+        )}
       </View>
 
       <View {...mark("account")} />
