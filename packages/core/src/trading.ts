@@ -859,6 +859,101 @@ export const fmtR = (r: number, dec = 1) =>
 
 export const fmtPct = (n: number, dec = 0) => `${n.toFixed(dec)}%`;
 
+// ─── Señales para ejecutar: lo que el usuario necesita ver de un vistazo ────
+
+/** «hace 5 min», «hace 2 h»… para una fecha ISO. */
+export function ago(iso: string, now = Date.now()): string {
+  const s = Math.max(0, (now - new Date(iso).getTime()) / 1000);
+  if (s < 60) return tr("ahora");
+  if (s < 3600) return tr("hace {n} min", { n: Math.floor(s / 60) });
+  if (s < 86400) return tr("hace {n} h", { n: Math.floor(s / 3600) });
+  return tr("hace {n} d", { n: Math.floor(s / 86400) });
+}
+
+export interface SignalGuide {
+  long: boolean;
+  sideLabel: string; // «COMPRA» / «VENTA»
+  simulated: boolean; // la generó el bot simulado: no se ejecuta en ningún exchange
+  rr: number | null;
+  stopPct: number | null;
+  /** Cuánto comprar o vender para arriesgar lo que la persona eligió (null si todavía no cargó su capital). */
+  position: { units: number; notional: number; riskAmount: number; profitAtTp: number | null; base: string } | null;
+  steps: string[];
+  copyText: string;
+}
+
+const baseOf = (symbol: string) => symbol.replace(/(USDT|USDC|BUSD|USD)$/, "") || symbol;
+const fmtUnits = (n: number) => (n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toFixed(4));
+
+/** La señal explicada en pasos simples, con el tamaño de la posición según el capital y el riesgo de la persona. */
+export function signalGuide(t: Pick<Trade, "symbol" | "direction" | "entry" | "sl" | "tp" | "source" | "targets">, money: MoneySettings): SignalGuide {
+  const long = t.direction === "LONG";
+  const simulated = t.source === "bot";
+  const sideLabel = long ? tr("COMPRA") : tr("VENTA");
+  const pos = money.capital && money.riskPct ? calcPosition({ capital: money.capital, riskPct: money.riskPct, entry: t.entry, sl: t.sl, tp: t.tp }) : null;
+  const risk = Math.abs(t.entry - t.sl);
+  const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : null;
+  const stopPct = t.entry > 0 && risk > 0 ? (risk / t.entry) * 100 : null;
+  const base = baseOf(t.symbol);
+  const position = pos ? { units: pos.units, notional: pos.notional, riskAmount: pos.riskAmount, profitAtTp: pos.profitAtTp, base } : null;
+
+  const steps: string[] = simulated
+    ? [tr("Es una señal del bot simulado: no se ejecuta en ningún exchange. Sirve para ver cómo le va a la estrategia.")]
+    : [
+        tr("Abrí {symbol} en los futuros de tu exchange y elegí {side}.", { symbol: t.symbol, side: long ? tr("Comprar (Long)") : tr("Vender (Short)") }),
+        tr("Entrá cerca de {entry}. Poné el stop en {sl} y el objetivo (TP) en {tp}.", { entry: fmtPrice(t.entry), sl: fmtPrice(t.sl), tp: fmtPrice(t.tp) }),
+        position
+          ? tr("Con tu capital y un riesgo de {risk}%, el tamaño es de unos {units} {base} (valor {notional}). Si toca el stop perdés unos {loss}{gain}.", {
+              risk: String(money.riskPct),
+              units: fmtUnits(position.units),
+              base,
+              notional: fmtCurrency(position.notional, money.currency, false),
+              loss: fmtCurrency(position.riskAmount, money.currency, false),
+              gain: position.profitAtTp != null ? tr("; si toca el objetivo ganás unos {win}", { win: fmtCurrency(position.profitAtTp, money.currency, false) }) : "",
+            })
+          : tr("Cargá tu capital en «Capital y dinero» y te calculamos cuánto comprar."),
+      ];
+
+  const lines = [
+    `${t.symbol} · ${sideLabel}`,
+    `${tr("Entrada")}: ${fmtPrice(t.entry)}`,
+    `Stop: ${fmtPrice(t.sl)}`,
+    `TP: ${fmtPrice(t.tp)}`,
+    ...(t.targets?.length ? [t.targets.map((n, i) => `TP${i + 1}: ${fmtPrice(n)}`).join(" · ")] : []),
+    ...(rr != null ? [`R:R 1:${rr.toFixed(2)}`] : []),
+  ];
+  return { long, sideLabel, simulated, rr, stopPct, position, steps, copyText: lines.join("\n") };
+}
+
+/** Página para operar ese activo en futuros del exchange (para unos se abre el par exacto; para el resto, la sección de futuros). */
+export function exchangeTradeUrl(id: string, symbol: string): string | null {
+  const sym = symbol.toUpperCase();
+  const base = baseOf(sym).toLowerCase();
+  const B = baseOf(sym);
+  switch (id) {
+    case "binance":
+      return `https://www.binance.com/en/futures/${sym}`;
+    case "bybit":
+      return `https://www.bybit.com/trade/usdt/${sym}`;
+    case "okx":
+      return `https://www.okx.com/trade-swap/${base}-usdt-swap`;
+    case "bitget":
+      return `https://www.bitget.com/futures/usdt/${sym}`;
+    case "gate":
+      return `https://www.gate.io/futures/USDT/${B}_USDT`;
+    case "mexc":
+      return `https://futures.mexc.com/exchange/${B}_USDT`;
+    case "bingx":
+      return `https://bingx.com/en/perpetual/${B}-USDT/`;
+    case "kucoin":
+      return "https://www.kucoin.com/futures";
+    case "bitunix":
+      return "https://www.bitunix.com/";
+    default:
+      return null;
+  }
+}
+
 export const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
   return (

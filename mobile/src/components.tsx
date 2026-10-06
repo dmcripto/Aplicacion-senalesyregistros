@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl , exchangeTradeUrl, signalGuide} from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
-import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
+import { closeTradeManually, deleteTradeById, fetchConnections, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
 import { COMMUNITY_URL, openLink } from "./legal";
 import { colors } from "./theme";
@@ -366,6 +367,59 @@ function NotesModal({ trade, onClose }: { trade: Trade | null; onClose: () => vo
   );
 }
 
+// Exchanges conectados (se consultan una sola vez y se comparten entre las tarjetas).
+let connectedCache: Promise<string[]> | null = null;
+const connectedExchanges = () => (connectedCache ??= fetchConnections().then((c) => c.map((x) => x.exchange as string)).catch(() => { connectedCache = null; return [] as string[]; }));
+
+/** Señal abierta explicada en pasos simples, con el tamaño según el capital y botones para copiar y abrir el exchange. */
+function SignalGuideBlock({ trade }: { trade: Trade }) {
+  const { money } = useMoney();
+  const [exchanges, setExchanges] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    connectedExchanges().then((c) => alive && setExchanges(c));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const g = signalGuide(trade, money);
+  const own = trade.source && trade.source !== "bot" ? trade.source : null;
+  const ex = g.simulated ? null : (own && exchanges.includes(own) ? own : exchanges[0]) ?? null;
+  const url = ex ? exchangeTradeUrl(ex, trade.symbol) : null;
+  return (
+    <View style={s.guide}>
+      <Text style={s.guideTitle}>{g.simulated ? "🤖 " + t("Señal simulada") : t("CÓMO EJECUTARLA")}</Text>
+      {g.steps.map((x, i) => (
+        <View key={i} style={{ flexDirection: "row", gap: 8 }}>
+          {!g.simulated && (
+            <View style={s.guideNum}>
+              <Text style={s.guideNumText}>{i + 1}</Text>
+            </View>
+          )}
+          <Text style={[s.date, { flex: 1, color: colors.fog, lineHeight: 17 }]}>{x}</Text>
+        </View>
+      ))}
+      {!g.simulated && (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+          <TouchableOpacity
+            style={s.btn}
+            onPress={() => {
+              Clipboard.setStringAsync(g.copyText).then(() => Alert.alert(t("Listo"), t("Datos copiados."))).catch(() => {});
+            }}
+          >
+            <Text style={s.btnText}>{"📋 "}{t("Copiar datos")}</Text>
+          </TouchableOpacity>
+          {url && ex && (
+            <TouchableOpacity style={[s.btn, { borderColor: colors.gold + "88" }]} onPress={() => openLink(url)}>
+              <Text style={[s.btnText, { color: colors.gold }]}>{"↗ "}{t("Abrir en {name}", { name: exchangeName(ex) })}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean; onCalculate?: (t: Trade) => void }) {
   const [closing, setClosing] = useState<Trade | null>(null);
   const [editingNotes, setEditingNotes] = useState<Trade | null>(null);
@@ -421,6 +475,7 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
           <Level label={t("STOP LOSS")} value={fmtPrice(trade.sl)} color={colors.bear} />
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
+        {abierta && <SignalGuideBlock trade={trade} />}
         {!!trade.targets?.length && <Text style={[s.date, { color: colors.bull }]}>{trade.targets.map((n, i) => `T${i + 1} ${fmtPrice(n)}`).join(" · ")}</Text>}
         {trade.exit != null && <Text style={s.date}>{t("Salida")} {fmtPrice(trade.exit)}</Text>}
         {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>{t("⚡ Cerrada automáticamente")}</Text>}
@@ -676,6 +731,10 @@ const st = StyleSheet.create({
 });
 
 const s = StyleSheet.create({
+  guide: { marginTop: 12, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.ink + "99", gap: 8 },
+  guideTitle: { color: colors.gold, fontSize: 10, fontWeight: "800", letterSpacing: 1.2 },
+  guideNum: { width: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", backgroundColor: colors.gold + "26" },
+  guideNumText: { color: colors.gold, fontSize: 11, fontWeight: "800" },
   hero: { borderWidth: 1, borderRadius: 14, padding: 16, overflow: "hidden", backgroundColor: "rgba(16,23,32,0.85)" },
   heroLabel: { color: colors.fog, fontSize: 10, fontWeight: "800", letterSpacing: 2 },
   heroMoney: { fontSize: 13, fontWeight: "800", marginTop: 6 },
