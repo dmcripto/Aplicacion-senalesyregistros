@@ -434,11 +434,28 @@ describe("velas de 4 horas y laboratorio", () => {
 describe("escaneo del mercado", () => {
   const tk = (rows: Array<[string, number]>) => rows.map(([symbol, v]) => ({ symbol, quoteVolume: String(v) }));
 
-  it("arma la lista por volumen y deja afuera stablecoins, vencimientos y poco volumen", async () => {
-    const fetchFn = (async () =>
-      new Response(JSON.stringify(tk([["ETHUSDT", 5e9], ["BTCUSDT", 9e9], ["USDCUSDT", 8e9], ["BTCUSDT_261225", 7e9], ["TINYUSDT", 1e6], ["1000PEPEUSDT", 6e8], ["BTCBUSD", 9e9], ["SOLUSDT", 2e9]])))) as unknown as typeof fetch;
+  const info = (extra: Array<Record<string, unknown>> = []) => ({
+    symbols: [
+      ...["BTCUSDT", "ETHUSDT", "SOLUSDT", "1000PEPEUSDT", "USDCUSDT", "TINYUSDT"].map((symbol) => ({ symbol, status: "TRADING", contractType: "PERPETUAL", underlyingType: "COIN" })),
+      { symbol: "BTCUSDT_261225", status: "TRADING", contractType: "CURRENT_QUARTER", underlyingType: "COIN" },
+      { symbol: "XAUUSDT", status: "TRADING", contractType: "PERPETUAL", underlyingType: "COMMODITY" },
+      { symbol: "NVDAUSDT", status: "TRADING", contractType: "PERPETUAL", underlyingType: "COIN", underlyingSubType: ["TradFi"] },
+      { symbol: "OLDUSDT", status: "SETTLING", contractType: "PERPETUAL", underlyingType: "COIN" },
+      ...extra,
+    ],
+  });
+  const routed = (rows: Array<[string, number]>, infoBody: unknown = info()) =>
+    (async (url: string) => (url.includes("exchangeInfo") ? new Response(JSON.stringify(infoBody)) : new Response(JSON.stringify(tk(rows))))) as unknown as typeof fetch;
+
+  it("arma la lista por volumen y deja afuera stablecoins, vencimientos, poco volumen y lo que no es cripto", async () => {
+    const fetchFn = routed([["ETHUSDT", 5e9], ["BTCUSDT", 9e9], ["USDCUSDT", 8e9], ["BTCUSDT_261225", 7e9], ["TINYUSDT", 1e6], ["1000PEPEUSDT", 6e8], ["BTCBUSD", 9e9], ["SOLUSDT", 2e9], ["XAUUSDT", 9e9], ["NVDAUSDT", 9e9], ["CLUSDT", 9e9], ["OLDUSDT", 9e9]]);
     expect(await fetchUniverse(3, fetchFn)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
     expect(await fetchUniverse(20, fetchFn)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT", "1000PEPEUSDT"]);
+  });
+
+  it("aunque Binance no diga el tipo, los tickers de petróleo, oro y acciones quedan afuera", async () => {
+    const fetchFn = routed([["BTCUSDT", 9e9], ["ETHUSDT", 8e9], ["SOLUSDT", 7e9], ["SOXLUSDT", 6e9], ["SPCXUSDT", 6e9]], { symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "SOXLUSDT", "SPCXUSDT"].map((symbol) => ({ symbol, status: "TRADING", contractType: "PERPETUAL" })) });
+    expect(await fetchUniverse(20, fetchFn)).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
   });
 
   it("si Binance falla usa Bybit, y si fallan los dos avisa", async () => {

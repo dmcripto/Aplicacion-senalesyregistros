@@ -271,20 +271,32 @@ function dedupe(bars: Bar[]): Bar[] {
 // ─── Universo del escaneo: los futuros más operados ─────────────────────────
 
 const STABLES = new Set(["USDC", "FDUSD", "TUSD", "BUSD", "DAI", "USDP", "EUR", "USDE"]);
+// Binance también lista futuros de petróleo, oro, acciones y ETF. No son cripto: el escaneo los deja afuera.
+const NOT_CRYPTO = new Set(["CL", "BZ", "NG", "HG", "XAU", "XAG", "XPT", "XPD", "NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "SOXL", "SPCX", "SNDK", "QQQ", "SPY", "TQQQ", "SQQQ"]);
+const NON_CRYPTO_KIND = /tradfi|stock|equity|commodit|index|forex|fx|etf/i;
 const MIN_VOLUME_USDT = 30_000_000; // por debajo de este volumen diario el precio real se aleja mucho del que se ve
 
-/** Los `n` futuros USDT con más volumen en 24 h (Binance y, si falla, Bybit). Sin stablecoins ni contratos con vencimiento. */
+/** Los `n` futuros cripto USDT con más volumen en 24 h (Binance y, si falla, Bybit). Sin stablecoins, vencimientos, acciones ni materias primas. */
 export async function fetchUniverse(n: number, fetchFn: Fetch = fetch): Promise<string[]> {
-  const pick = (rows: Array<{ symbol: string; vol: number }>) =>
+  const pick = (rows: Array<{ symbol: string; vol: number }>, allowed: Set<string> | null) =>
     rows
-      .filter((r) => isTradableSymbol(r.symbol) && !STABLES.has(r.symbol.slice(0, -4)) && Number.isFinite(r.vol) && r.vol >= MIN_VOLUME_USDT)
+      .filter((r) => isTradableSymbol(r.symbol) && !STABLES.has(r.symbol.slice(0, -4)) && !NOT_CRYPTO.has(r.symbol.slice(0, -4)) && (!allowed || allowed.has(r.symbol)) && Number.isFinite(r.vol) && r.vol >= MIN_VOLUME_USDT)
       .sort((a, b) => b.vol - a.vol)
       .slice(0, n)
       .map((r) => r.symbol);
   const errors: string[] = [];
   try {
-    const rows = (await getJson(fetchFn, "https://fapi.binance.com/fapi/v1/ticker/24hr")) as Array<{ symbol: string; quoteVolume: string }>;
-    const list = pick(rows.map((r) => ({ symbol: r.symbol, vol: Number(r.quoteVolume) })));
+    const [rows, info] = await Promise.all([
+      getJson(fetchFn, "https://fapi.binance.com/fapi/v1/ticker/24hr") as Promise<Array<{ symbol: string; quoteVolume: string }>>,
+      getJson(fetchFn, "https://fapi.binance.com/fapi/v1/exchangeInfo") as Promise<{ symbols?: Array<{ symbol: string; status?: string; contractType?: string; underlyingType?: string; underlyingSubType?: string[] }> }>,
+    ]);
+    // Solo perpetuos en operación cuyo subyacente es una moneda (no una acción, un índice ni una materia prima).
+    const allowed = new Set(
+      (info.symbols ?? [])
+        .filter((x) => x.status === "TRADING" && x.contractType === "PERPETUAL" && (x.underlyingType == null || x.underlyingType === "COIN") && !(x.underlyingSubType ?? []).some((k) => NON_CRYPTO_KIND.test(k)))
+        .map((x) => x.symbol),
+    );
+    const list = pick(rows.map((r) => ({ symbol: r.symbol, vol: Number(r.quoteVolume) })), allowed);
     if (list.length >= Math.min(n, 3)) return list;
     errors.push("pocos activos");
   } catch (e) {
@@ -292,7 +304,7 @@ export async function fetchUniverse(n: number, fetchFn: Fetch = fetch): Promise<
   }
   try {
     const j = (await getJson(fetchFn, "https://api.bybit.com/v5/market/tickers?category=linear")) as { result?: { list?: Array<{ symbol: string; turnover24h: string }> } };
-    const list = pick((j.result?.list ?? []).map((r) => ({ symbol: r.symbol, vol: Number(r.turnover24h) })));
+    const list = pick((j.result?.list ?? []).map((r) => ({ symbol: r.symbol, vol: Number(r.turnover24h) })), null);
     if (list.length >= Math.min(n, 3)) return list;
     errors.push("pocos activos");
   } catch (e) {
