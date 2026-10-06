@@ -476,6 +476,13 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
         {abierta && <SignalGuideBlock trade={trade} />}
+        {(trade.leverage != null || trade.sizeUsd != null) && (
+          <Text style={[s.date, { color: colors.fog }]}>
+            {trade.leverage != null ? `${t("Apalancamiento")} ${trade.leverage}x` : ""}
+            {trade.leverage != null && trade.sizeUsd != null ? " · " : ""}
+            {trade.sizeUsd != null ? `${t("Tamaño")} ${fmtCurrency(trade.sizeUsd, "USD", false)}` : ""}
+          </Text>
+        )}
         {!!trade.targets?.length && <Text style={[s.date, { color: colors.bull }]}>{trade.targets.map((n, i) => `T${i + 1} ${fmtPrice(n)}`).join(" · ")}</Text>}
         {trade.exit != null && <Text style={s.date}>{t("Salida")} {fmtPrice(trade.exit)}</Text>}
         {trade.autoClosed && <Text style={[s.date, { color: colors.cyan }]}>{t("⚡ Cerrada automáticamente")}</Text>}
@@ -584,7 +591,7 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
   const [picked, setPicked] = useState("all");
   const source = sources.some((x) => x.id === picked) ? picked : "all";
   const use = useMemo(() => filterBySource(trades, source), [trades, source]);
-  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, source }), [use, money.riskPct, source]);
+  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, capital: money.capital, source }), [use, money.riskPct, money.capital, source]);
   const nameOf = (id: string) => (id === "manual" ? t("A mano y señales") : exchangeName(id as never));
   const tone = !plan.ok ? colors.line : plan.edge === "likely" ? colors.bull : plan.edge === "unproven" || plan.lowSample ? colors.gold : colors.bear;
   const fmtBest = (n: number) => `${fmtR(n)}R`;

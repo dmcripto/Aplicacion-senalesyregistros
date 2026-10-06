@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cx, exchangeName, fmtDateTime, fmtPrice, locale, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "../lib";
+import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, locale, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "../lib";
 import type { Trade } from "../lib";
 import {
   DirBadge,
@@ -272,6 +272,12 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                   </dl>
                   {abierta && <LevelBar trade={tr} price={prices?.[tr.id]} />}
                   {tr.notes && <p className="text-[12px] italic leading-snug text-dim">{tr.notes}</p>}
+                  {(tr.leverage != null || tr.sizeUsd != null) && (
+                    <div className="flex flex-wrap gap-1">
+                      {tr.leverage != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{tr.leverage}x</span>}
+                      {tr.sizeUsd != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{t("Tamaño")} {fmtCurrency(tr.sizeUsd, "USD", false)}</span>}
+                    </div>
+                  )}
                   {!!tr.tags?.length && (
                     <div className="flex flex-wrap gap-1">
                       {tr.tags.map((tag) => (
@@ -320,7 +326,13 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                         </span>
                       )}
                       {tr.notes && <p className="mt-0.5 max-w-[220px] truncate text-[10.5px] italic text-dim" title={tr.notes}>{tr.notes}</p>}
-                      {!!tr.tags?.length && (
+                      {(tr.leverage != null || tr.sizeUsd != null) && (
+                    <div className="flex flex-wrap gap-1">
+                      {tr.leverage != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{tr.leverage}x</span>}
+                      {tr.sizeUsd != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{t("Tamaño")} {fmtCurrency(tr.sizeUsd, "USD", false)}</span>}
+                    </div>
+                  )}
+                  {!!tr.tags?.length && (
                         <div className="mt-1 flex max-w-[240px] flex-wrap gap-1">
                           {tr.tags.map((tag) => (
                             <span key={tag} className="rounded-full border border-gold/40 bg-gold/10 px-2 py-px text-[9.5px] font-semibold text-gold">

@@ -26,7 +26,7 @@ export default function StrategyCard({ trades, notify }: { trades: Trade[]; noti
   const [picked, setPicked] = useState("all");
   const source = sources.some((x) => x.id === picked) ? picked : "all";
   const use = useMemo(() => filterBySource(trades, source), [trades, source]);
-  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, source }), [use, money.riskPct, source]);
+  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, capital: money.capital, source }), [use, money.riskPct, money.capital, source]);
   const showPicker = sources.some((x) => x.id !== "manual");
   const nameOf = (id: string) => (id === "manual" ? t("A mano y señales") : exchangeName(id as never));
 

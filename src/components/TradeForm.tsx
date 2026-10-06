@@ -51,6 +51,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
   const [sl, setSl] = useState("");
   const [date, setDate] = useState(() => toLocalInput(new Date()));
   const [notes, setNotes] = useState("");
+  const [leverage, setLeverage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const nums = useMemo(() => {
@@ -82,6 +83,8 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
         errs.tp = t("En SHORT el TP debe estar abajo de la entrada y el SL arriba.");
     }
     if (!date) errs.date = t("Elegí fecha y hora.");
+    const lev = leverage.trim() ? Number(leverage.replace(",", ".").replace(/x$/i, "")) : null;
+    if (lev != null && !(Number.isFinite(lev) && lev >= 1 && lev <= 1000)) errs.leverage = t("Apalancamiento inválido (ej: 10).");
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -94,8 +97,10 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
         sl: s,
         date: new Date(date).toISOString(),
         notes: notes.trim() || undefined,
+        ...(lev != null ? { leverage: lev } : {}),
       },
     ]);
+    setLeverage("");
     setSymbol("");
     setEntry("");
     setTp("");
@@ -265,14 +270,29 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
               ))}
             </div>
             <div className="grid grid-cols-1 gap-2.5">
-              <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">{t("Fecha y hora")}</label>
-                <input
-                  type="datetime-local"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className={cx("field num", errors.date && "field-error")}
-                />
+              <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-2.5">
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">{t("Fecha y hora")}</label>
+                  <input
+                    type="datetime-local"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className={cx("field num", errors.date && "field-error")}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">
+                    {t("Apalancamiento")} <span className="normal-case text-dim">x</span>
+                  </label>
+                  <input
+                    value={leverage}
+                    onChange={(e) => setLeverage(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={t("opcional")}
+                    className={cx("field num", errors.leverage && "field-error")}
+                  />
+                  {errors.leverage && <p className="mt-1 text-[11px] leading-tight text-bear">{errors.leverage}</p>}
+                </div>
               </div>
               <div>
                 <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.14em] text-fog">

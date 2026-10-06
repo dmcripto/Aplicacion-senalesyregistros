@@ -3,12 +3,13 @@
 
 type Row = Record<string, any>;
 
-export const db: { tables: Record<string, Row[]>; users: Record<string, { id: string }> } = { tables: {}, users: {} };
+export const db: { tables: Record<string, Row[]>; users: Record<string, { id: string }>; missingColumns: string[] } = { tables: {}, users: {}, missingColumns: [] };
 
 /** Deja la base vacía con las tablas indicadas (y un usuario "good" → u1). */
 export function resetDb(tables: Record<string, Row[]> = {}) {
   db.tables = { profiles: [], trades: [], device_tokens: [], ...tables };
   db.users = { good: { id: "u1" } };
+  db.missingColumns = []; // columnas que «todavía no existen» (para probar qué pasa si falta correr un SQL)
   seq = 0;
 }
 
@@ -61,6 +62,11 @@ class Query {
   private run() {
     const tbl = db.tables[this.table];
     let out: Row[] = [];
+    // Si se escribe una columna que «no existe», responde como la base real.
+    if ((this.op === "insert" || this.op === "upsert") && db.missingColumns.length) {
+      const bad = db.missingColumns.find((c) => this.rows.some((r) => c in r));
+      if (bad) return { data: null, count: null, error: { message: `Could not find the '${bad}' column of '${this.table}' in the schema cache` } };
+    }
     if (this.op === "select") {
       out = tbl.filter((r) => this.match(r));
     } else if (this.op === "insert") {

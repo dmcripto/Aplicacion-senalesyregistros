@@ -27,6 +27,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
   const [entry, setEntry] = useState("");
   const [tp, setTp] = useState("");
   const [sl, setSl] = useState("");
+  const [leverage, setLeverage] = useState("");
 
   const doSave = async (list: NewTrade[]) => {
     setBusy(true);
@@ -76,11 +77,14 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
 
   const saveManual = async () => {
     const n = (v: string) => Number(v.replace(",", "."));
-    const list = [{ symbol: symbol.trim().toUpperCase(), direction, entry: n(entry), tp: n(tp), sl: n(sl), date: new Date().toISOString() }];
+    const lev = leverage.trim() ? n(leverage.replace(/x$/i, "")) : null;
+    const list: NewTrade[] = [{ symbol: symbol.trim().toUpperCase(), direction, entry: n(entry), tp: n(tp), sl: n(sl), date: new Date().toISOString(), ...(lev != null && Number.isFinite(lev) && lev >= 1 && lev <= 1000 ? { leverage: lev } : {}) }];
     if (!list[0].symbol || ![list[0].entry, list[0].tp, list[0].sl].every((x) => Number.isFinite(x) && x > 0)) {
       return Alert.alert(t("Faltan datos"), t("Completá símbolo, entrada, TP y SL con números válidos."));
     }
+    if (lev != null && !(Number.isFinite(lev) && lev >= 1 && lev <= 1000)) return Alert.alert(t("Faltan datos"), t("Apalancamiento inválido (ej: 10)."));
     await save(list);
+    setLeverage("");
     setSymbol("");
     setEntry("");
     setTp("");
@@ -206,6 +210,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
               {field(t("TAKE PROFIT"), tp, setTp, { numeric: true })}
               {field(t("STOP LOSS"), sl, setSl, { numeric: true })}
             </View>
+            {field(t("APALANCAMIENTO (x, opcional)"), leverage, setLeverage, { numeric: true, placeholder: "10" })}
             <TouchableOpacity style={[s.btn, s.btnGold]} onPress={saveManual} disabled={busy}>
               <Text style={[s.btnText, { color: colors.ink }]}>{t("Guardar operación")}</Text>
             </TouchableOpacity>
