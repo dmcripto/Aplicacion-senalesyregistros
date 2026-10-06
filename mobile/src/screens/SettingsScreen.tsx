@@ -13,6 +13,7 @@ import { disclaimer, LEGAL_LINKS, openLink } from "../legal";
 import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
+import BotSection from "../BotSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
 import WhatsAppSection from "../WhatsAppSection";
@@ -253,6 +254,8 @@ export default function SettingsScreen({
 
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection onSaveMoney={onSaveMoney} />
+
+      <BotSection userId={userId} titleStyle={styles.sectionTitle} />
 
       <InviteSection />
 
