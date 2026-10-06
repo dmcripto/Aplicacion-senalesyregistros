@@ -9,7 +9,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_SYMBOLS, DEFAULT_PARAMS, WARMUP, allowedByActions, backtest, botStats, capOf, cleanActions, closedBars, fetchBars, indicators, isBotSymbol, localParts, resolveFrom, signalAt } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_SYMBOLS, DEFAULT_PARAMS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, fetchBars, indicators, isBotSymbol, localParts, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
 import type { BotAction } from "../_shared/botStrategy.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
@@ -31,43 +31,49 @@ const TAG = "Bot simulado";
 // ─── Prueba con historial ───────────────────────────────────────────────────
 
 const BACKTEST_TTL = 30 * 60_000;
-const cache = new Map<string, { at: number; value: BacktestPart }>();
+const barsCache = new Map<string, { at: number; bars: Bar[] }>();
 
-interface BacktestPart {
-  symbol: string;
-  trades: number[];
-  open: number;
-  error?: string;
+async function barsFor(symbol: string, count: number): Promise<Bar[]> {
+  const key = `${symbol}:${count}`;
+  const hit = barsCache.get(key);
+  if (hit && Date.now() - hit.at < BACKTEST_TTL) return hit.bars;
+  const bars = closedBars(await fetchBars(symbol, count));
+  barsCache.set(key, { at: Date.now(), bars });
+  return bars;
 }
 
-async function runBacktest(symbols: string[], days: number) {
-  const bars = Math.min(24 * days, 3000) + WARMUP();
-  const per = await Promise.all(
-    symbols.map(async (symbol): Promise<BacktestPart> => {
-      const key = `${symbol}:${bars}`;
-      const hit = cache.get(key);
-      if (hit && Date.now() - hit.at < BACKTEST_TTL) return hit.value;
-      let value: BacktestPart;
+/**
+ * Simula el bot completo (con los topes y las reglas guardadas de la persona) sobre el historial real y lo compara
+ * con el mismo bot sin reglas. Las reglas salen de operaciones de la persona, no de estos precios: es una prueba justa.
+ */
+async function runBacktest(userId: string, symbols: string[], days: number) {
+  const count = Math.min(24 * days, 3000) + WARMUP();
+  const { data: cfg } = await admin.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
+  const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
+  const rules = cleanActions(cfg?.rules);
+  const base = { maxOpen: Number(cfg?.max_open ?? 3), dailyLossR: Number(cfg?.daily_loss_r ?? 3), timeZone: (prof?.timezone as string | null) ?? null };
+
+  const bars: Record<string, Bar[]> = {};
+  const errors: Record<string, string> = {};
+  await Promise.all(
+    symbols.map(async (symbol) => {
       try {
-        const data = closedBars(await fetchBars(symbol, bars));
-        const r = backtest(data);
-        // Solo cuentan las operaciones que abrieron después del tramo de arranque de los indicadores.
-        const from = data[Math.min(WARMUP(), data.length - 1)]?.t ?? 0;
-        value = { symbol, trades: r.trades.filter((t) => t.t >= from).map((t) => t.r), open: r.open };
+        bars[symbol] = await barsFor(symbol, count);
       } catch (e) {
-        value = { symbol, trades: [], open: 0, error: e instanceof Error ? e.message : "error" };
+        errors[symbol] = e instanceof Error ? e.message : "error";
       }
-      if (!value.error) cache.set(key, { at: Date.now(), value });
-      return value;
     }),
   );
-  const all = per.flatMap((p) => p.trades);
+  const without = simulate(bars, { symbols, rules: [], ...base });
+  const withRules = rules.length ? simulate(bars, { symbols, rules, ...base }) : null;
   return {
     ok: true,
     days,
     params: DEFAULT_PARAMS,
-    total: botStats(all),
-    symbols: per.map((p) => ({ symbol: p.symbol, stats: botStats(p.trades), error: p.error })),
+    total: botStats(without.trades.map((t) => t.r)),
+    withRules: withRules ? botStats(withRules.trades.map((t) => t.r)) : null,
+    rulesApplied: rules.length,
+    symbols: symbols.map((symbol) => ({ symbol, stats: botStats(without.trades.filter((t) => t.symbol === symbol).map((t) => t.r)), error: errors[symbol] })),
   };
 }
 
@@ -241,5 +247,5 @@ Deno.serve(async (req) => {
   const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 5);
   if (!symbols.length) return json({ ok: false, error: "Elegí al menos un activo." }, 400);
   const days = Math.min(120, Math.max(30, Number(body.days) || 120));
-  return json(await runBacktest(symbols, days));
+  return json(await runBacktest(auth.user.id, symbols, days));
 });

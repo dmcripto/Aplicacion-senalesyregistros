@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAR_MS, DEFAULT_PARAMS, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt } from "../supabase/functions/_shared/botStrategy";
+import { BAR_MS, DEFAULT_PARAMS, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -225,5 +225,80 @@ describe("reglas elegidas por la persona", () => {
   it("topes: usa el más estricto", () => {
     expect(capOf([{ op: "maxPerDay", n: 5 }, { op: "maxPerDay", n: 2 }], "maxPerDay")).toBe(2);
     expect(capOf([], "stopAfterLosses")).toBeNull();
+  });
+});
+
+describe("simulación del bot completo", () => {
+  function rng(seed: number) {
+    let s = seed >>> 0;
+    return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  }
+  const gauss = (r: () => number) => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
+  /** Mercado con tendencias que cambian de signo: genera muchas señales. */
+  function market(seed: number, n = 3000): Bar[] {
+    const r = rng(seed);
+    let p = 100, drift = 0.0008;
+    const bars: Bar[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i % 400 === 0) drift = -drift * (r() > 0.4 ? 1 : -1);
+      const o = p;
+      let c = o, h = o, l = o;
+      for (let k = 0; k < 4; k++) {
+        c *= 1 + drift / 4 + gauss(r) * 0.004;
+        h = Math.max(h, c);
+        l = Math.min(l, c);
+      }
+      bars.push({ t: T0 + i * BAR_MS, o, h, l, c });
+      p = c;
+    }
+    return bars;
+  }
+  const data = { BTCUSDT: market(7), ETHUSDT: market(11) };
+  const free = { symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 10, dailyLossR: 20, rules: [], timeZone: "UTC" };
+
+  it("con un solo activo y sin límites da lo mismo que la prueba simple", () => {
+    const one = simulate({ BTCUSDT: data.BTCUSDT }, { ...free, symbols: ["BTCUSDT"] });
+    const plain = backtest(data.BTCUSDT);
+    expect(one.trades.length).toBeGreaterThan(20);
+    expect(one.trades.map((t) => t.t)).toEqual(plain.trades.map((t) => t.t));
+    expect(one.trades.map((t) => +t.r.toFixed(9))).toEqual(plain.trades.map((t) => +t.r.toFixed(9)));
+  });
+
+  it("una regla «no operar» saca ese activo por completo", () => {
+    const r = simulate(data, { ...free, rules: [{ op: "skip", dim: "symbol", key: "ETHUSDT" }] });
+    expect(r.trades.length).toBeGreaterThan(10);
+    expect(r.trades.every((t) => t.symbol === "BTCUSDT")).toBe(true);
+  });
+
+  it("«solo compras» no deja ninguna venta", () => {
+    const r = simulate(data, { ...free, rules: [{ op: "only", dim: "direction", key: "LONG" }] });
+    expect(r.trades.length).toBeGreaterThan(5);
+    expect(r.trades.every((t) => t.direction === "LONG")).toBe(true);
+  });
+
+  it("un día de la semana vetado nunca abre operaciones ese día (en la zona de la persona)", () => {
+    const tz = "America/Argentina/Buenos_Aires";
+    const r = simulate(data, { ...free, timeZone: tz, rules: [{ op: "skip", dim: "weekday", key: "1" }] });
+    expect(r.trades.length).toBeGreaterThan(10);
+    for (const t of r.trades) expect(localParts(t.t + BAR_MS, tz).weekday).not.toBe(1);
+  });
+
+  it("el máximo de operaciones abiertas a la vez se respeta", () => {
+    const r = simulate(data, { ...free, maxOpen: 1 });
+    const sorted = [...r.trades].sort((a, b) => a.t - b.t);
+    for (let i = 1; i < sorted.length; i++) expect(sorted[i].t + BAR_MS).toBeGreaterThanOrEqual(sorted[i - 1].closedAt);
+  });
+
+  it("el tope por día limita las aperturas en 24 h", () => {
+    const r = simulate(data, { ...free, rules: [{ op: "maxPerDay", n: 1 }] });
+    const opens = r.trades.map((t) => t.t + BAR_MS).sort((a, b) => a - b);
+    for (let i = 1; i < opens.length; i++) expect(opens[i] - opens[i - 1]).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < opens.length; i++) expect(opens.filter((x) => x > opens[i] - 24 * 3_600_000 && x <= opens[i]).length).toBeLessThanOrEqual(1);
+  });
+
+  it("las reglas no pueden inventar más operaciones que sin reglas en la primera señal posible", () => {
+    const base = simulate(data, free);
+    const strict = simulate(data, { ...free, rules: [{ op: "only", dim: "symbol", key: "BTCUSDT" }, { op: "maxPerDay", n: 1 }] });
+    expect(strict.trades.length).toBeLessThan(base.trades.length);
   });
 });
