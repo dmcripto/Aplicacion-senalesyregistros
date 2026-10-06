@@ -305,6 +305,11 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
             <div className="space-y-2.5 rounded-md border border-line bg-ink/40 p-3">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Laboratorio de variantes")}</p>
               <p className="text-[12px] leading-relaxed text-snow">{labVerdict(lab.variants)}</p>
+              {!!lab.scanned && (
+                <p className="rounded-md border border-line bg-ink/50 p-2.5 text-[11px] leading-relaxed text-dim">
+                  {t("Esta prueba usa {n} activos (los más operados de hoy), solo con velas de 4 horas. Elegir los de más volumen de hoy favorece a los que ya subieron: el resultado del pasado sale algo más lindo que el real.", { n: lab.scanned })}
+                </p>
+              )}
               <ul className="space-y-2">
                 {lab.variants.map((v) => (
                   <li key={v.id} className={cx("rounded-md border p-2.5", labPasses(v) ? "border-bull/50 bg-bull/5" : "border-line bg-ink/50")}>
