@@ -11,6 +11,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { BAR_MS, BOT_PROFILES, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, indicators, isBotSymbol, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
 import type { BotProfileId, Indicators } from "../_shared/botStrategy.ts";
+import { sendExpoPush } from "../_shared/expoPush.ts";
+import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
+import { esc, notifyTelegram } from "../_shared/telegram.ts";
+import type { Lang } from "../_shared/telegram.ts";
 import type { BotAction } from "../_shared/botStrategy.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
@@ -30,6 +34,62 @@ const MAX_WARMUP = Math.max(...BOT_PROFILE_IDS.map((id) => WARMUP(BOT_PROFILES[i
 const TICK_BARS = MAX_WARMUP + 80; // lo justo para calcular los indicadores de cualquier perfil y resolver operaciones recientes
 const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${id === "conservative" ? "perfil conservador" : id === "dynamic" ? "perfil dinámico" : "perfil equilibrado"}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
 const TAG = "Bot simulado";
+
+// ─── Avisos personales ──────────────────────────────────────────────────────
+// Push en la app y mensaje por Telegram al chat vinculado de la propia persona. Nunca se publica en comunidades:
+// son operaciones simuladas y no deben confundirse con señales reales.
+
+const PROFILE_NAME: Record<BotProfileId, { es: string; en: string }> = {
+  conservative: { es: "conservador", en: "conservative" },
+  balanced: { es: "equilibrado", en: "balanced" },
+  dynamic: { es: "dinámico", en: "dynamic" },
+};
+
+const notifyPref = new Map<string, boolean>();
+async function wantsNotify(userId: string): Promise<boolean> {
+  if (notifyPref.has(userId)) return notifyPref.get(userId)!;
+  const { data, error } = await admin.from("bot_settings").select("notify").eq("user_id", userId).maybeSingle();
+  const v = error ? true : (data as { notify?: boolean } | null)?.notify !== false; // sin la columna nueva se avisa igual
+  notifyPref.set(userId, v);
+  return v;
+}
+
+async function langOf(userId: string): Promise<Lang> {
+  const { data } = await admin.from("profiles").select("lang").eq("id", userId).maybeSingle();
+  return (data as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+}
+
+async function push(userId: string, title: string, body: string, tradeId: string) {
+  const { data: tokens } = await admin.from("device_tokens").select("expo_push_token").eq("user_id", userId);
+  if (tokens?.length) await sendExpoPush((tokens as Array<{ expo_push_token: string }>).map((t) => ({ to: t.expo_push_token, title, body, data: { tradeId } })));
+}
+
+async function notifyOpened(userId: string, tradeId: string, t: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }, profile: BotProfileId) {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const lang = await langOf(userId);
+    const en = lang === "en";
+    const pn = PROFILE_NAME[profile][lang];
+    await push(userId, `🤖 ${t.symbol} · ${t.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA"} (${en ? "simulated" : "simulado"})`, `${en ? "Entry" : "Entrada"} ${t.entry} · TP ${t.tp} · SL ${t.sl}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => `${signalCardHtml(t, l, { header: "🤖", disclaimer: false })}\n\n<i>${esc(l === "en" ? `Simulated bot (${pn} profile): nothing was traded on any exchange.` : `Bot simulado (perfil ${pn}): no se operó en ningún exchange.`)}</i>`);
+  } catch (e) {
+    console.error("aviso bot:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function notifyClosed(userId: string, tradeId: string, t: { symbol: string; entry: number; tp: number; sl: number }, outcome: "TP" | "SL") {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const lang = await langOf(userId);
+    const en = lang === "en";
+    const r = rOf(t, outcome);
+    const rs = `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
+    await push(userId, `🤖 ${t.symbol} · ${outcome === "TP" ? (en ? "TP hit" : "TP alcanzado") : en ? "SL hit" : "SL alcanzado"} (${en ? "simulated" : "simulado"})`, `${en ? "Result" : "Resultado"}: ${rs}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: l === "en" ? "Result (simulated bot)" : "Resultado (bot simulado)" }));
+  } catch (e) {
+    console.error("aviso bot:", e instanceof Error ? e.message : e);
+  }
+}
 
 // ─── Prueba con historial ───────────────────────────────────────────────────
 
@@ -110,6 +170,7 @@ interface OpenBotTrade {
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
+  notifyPref.clear(); // la preferencia de avisos se vuelve a leer en cada corrida (la instancia de la función puede vivir varios minutos)
   const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).order("last_tick_at", { ascending: true, nullsFirst: true }).limit(MAX_USERS);
   const settings = (rows ?? []) as Settings[];
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
@@ -150,7 +211,10 @@ async function tick() {
       .eq("id", t.id)
       .eq("outcome", "ABIERTA")
       .select("id");
-    if (upd?.length) closed++;
+    if (upd?.length) {
+      closed++;
+      await notifyClosed(t.user_id, t.id, t, hit.outcome);
+    }
   }
 
   // 2) Señales nuevas.
@@ -228,6 +292,7 @@ async function tick() {
         continue;
       }
       await admin.from("bot_signals").update({ trade_id: trade.id }).eq("id", signal.id);
+      await notifyOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl }, profile);
       opened++;
       count++;
       openedToday++;

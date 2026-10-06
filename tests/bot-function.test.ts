@@ -7,7 +7,7 @@ const SECRET = "secreto-de-segundo-plano-123";
 
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_CRON_SECRET: SECRET } as Record<string, string>)[k] },
+    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_CRON_SECRET: SECRET, TELEGRAM_BOT_TOKEN: "123:ABC" } as Record<string, string>)[k] },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/bot/index");
@@ -36,11 +36,21 @@ function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {
 }
 
 let klines: number[][] = [];
+let sent: { telegram: any[]; push: any[] } = { telegram: [], push: [] };
 beforeEach(() => {
   resetDb({ bot_settings: [], bot_signals: [], trades: [] });
   klines = series(285, true);
-  vi.stubGlobal("fetch", async (url: any) => {
+  sent = { telegram: [], push: [] };
+  vi.stubGlobal("fetch", async (url: any, init?: any) => {
     const u = new URL(String(url));
+    if (u.hostname === "api.telegram.org") {
+      sent.telegram.push(JSON.parse(String(init?.body ?? "{}")));
+      return new Response(JSON.stringify({ ok: true }));
+    }
+    if (u.hostname === "exp.host") {
+      sent.push.push(...JSON.parse(String(init?.body ?? "[]")));
+      return new Response("{}");
+    }
     if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
     return new Response("{}", { status: 404 });
   });
@@ -192,6 +202,96 @@ describe("función bot · reglas elegidas desde la estrategia sugerida", () => {
   it("ignora reglas mal formadas en lugar de romperse", async () => {
     enable({ rules: [{ op: "skip", dim: "symbol", key: "XXX" }, "basura", { op: "maxPerDay", n: -3 }] });
     expect((await tick()).body.opened).toBe(1);
+  });
+});
+
+describe("función bot · avisos de cada operación", () => {
+  const withChannels = () => {
+    db.tables.telegram_links = [{ user_id: "u1", chat_id: 777 }];
+    db.tables.device_tokens = [{ user_id: "u1", expo_push_token: "ExponentPushToken[abc]" }];
+    db.tables.profiles = [{ id: "u1", lang: "es" }];
+  };
+
+  it("avisa por la app y por Telegram cuando abre una operación, aclarando que es simulada", async () => {
+    withChannels();
+    enable();
+    await tick();
+    expect(sent.push).toHaveLength(1);
+    expect(sent.push[0].title).toContain("BTCUSDT");
+    expect(sent.push[0].title).toContain("simulado");
+    expect(sent.push[0].data.tradeId).toBe(db.tables.trades[0].id);
+    expect(sent.telegram).toHaveLength(1);
+    expect(sent.telegram[0].chat_id).toBe(777);
+    expect(sent.telegram[0].text).toContain("BTC/USD");
+    expect(sent.telegram[0].text).toContain("Bot simulado");
+    expect(sent.telegram[0].text).toContain("no se operó en ningún exchange");
+  });
+
+  it("no repite el aviso si la corrida se repite", async () => {
+    withChannels();
+    enable();
+    await tick();
+    await tick();
+    expect(sent.push).toHaveLength(1);
+    expect(sent.telegram).toHaveLength(1);
+  });
+
+  it("respeta el interruptor de avisos", async () => {
+    withChannels();
+    enable({ notify: false });
+    await tick();
+    expect(db.tables.trades).toHaveLength(1); // opera igual
+    expect(sent.push).toHaveLength(0);
+    expect(sent.telegram).toHaveLength(0);
+  });
+
+  it("avisa también cuando la operación se cierra, con el resultado", async () => {
+    withChannels();
+    const rows = series(285, false);
+    const signalT = rows[rows.length - 5][0];
+    const entry = rows[rows.length - 5][4];
+    rows[rows.length - 2] = [rows[rows.length - 2][0], entry, entry + 3, entry - 0.1, entry + 2.5]; // toca el objetivo (2 de ganancia por 1 de riesgo)
+    klines = rows;
+    enable({ enabled: false }); // aunque haya apagado el bot, se avisa del cierre de lo que quedó abierto
+    db.tables.trades.push({ id: "t1", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 2 });
+    db.tables.bot_signals.push({ id: "s1", user_id: "u1", symbol: "BTCUSDT", candle_time: new Date(signalT).toISOString(), trade_id: "t1" });
+    await tick();
+    expect(sent.push).toHaveLength(1);
+    expect(sent.push[0].title).toContain("TP alcanzado");
+    expect(sent.push[0].body).toContain("+2.0R");
+    expect(sent.telegram[0].text).toContain("TP ALCANZADO");
+  });
+
+  it("en inglés para quien lo tiene configurado", async () => {
+    withChannels();
+    db.tables.profiles = [{ id: "u1", lang: "en" }];
+    enable();
+    await tick();
+    expect(sent.push[0].title).toContain("BUY");
+    expect(sent.push[0].title).toContain("simulated");
+    expect(sent.telegram[0].text).toContain("NEW SIGNAL");
+    expect(sent.telegram[0].text).toContain("nothing was traded on any exchange");
+  });
+
+  it("nunca publica en comunidades: solo el chat de la propia persona", async () => {
+    withChannels();
+    db.tables.telegram_communities = [{ user_id: "u1", chat_id: -1001, enabled: true }];
+    enable();
+    await tick();
+    expect(sent.telegram.every((m) => m.chat_id === 777)).toBe(true);
+  });
+
+  it("si Telegram o la app fallan, la operación se anota igual", async () => {
+    withChannels();
+    enable();
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = new URL(String(url));
+      if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
+      throw new Error("sin red");
+    });
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades).toHaveLength(1);
   });
 });
 

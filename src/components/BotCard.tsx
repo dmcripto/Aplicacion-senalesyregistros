@@ -28,7 +28,7 @@ function StatsLine({ s }: { s: BotStatsRow }) {
 }
 
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
-  const { status, settings: s, store, profileSupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
@@ -93,6 +93,16 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
             <span className={cx("absolute top-0.5 h-6 w-6 rounded-full transition-all", s.enabled ? "left-[26px] bg-bull" : "left-0.5 bg-fog")} />
           </button>
         </div>
+
+        {notifySupported && (
+          <label className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3.5 py-3">
+            <span>
+              <span className="block text-[12.5px] font-bold text-snow">{t("Avisarme de cada operación")}</span>
+              <span className="block text-[11px] leading-snug text-dim">{t("Cuando el bot anota o cierra una operación, te llega a la app y a tu Telegram (si lo vinculaste). Son avisos solo tuyos: no se publica en ninguna comunidad.")}</span>
+            </span>
+            <input type="checkbox" checked={s.notify} onChange={(e) => update({ notify: e.target.checked })} className="h-5 w-5 shrink-0 accent-[#2ec4f1]" />
+          </label>
+        )}
 
         <p className="rounded-md border border-gold/30 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-fog">
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}
