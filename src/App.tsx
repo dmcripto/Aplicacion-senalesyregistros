@@ -823,7 +823,7 @@ function Dashboard({ userId }: { userId: string }) {
               <Analysis trades={trades} />
             </Reveal>
             <Reveal delay={165} className="max-lg:order-6">
-              <StrategyCard trades={trades} />
+              <StrategyCard trades={trades} notify={notify} />
             </Reveal>
             {FEATURES.coach && (
               <Reveal delay={170} className="max-lg:order-6">

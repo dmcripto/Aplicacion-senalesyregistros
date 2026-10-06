@@ -9,7 +9,8 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_SYMBOLS, DEFAULT_PARAMS, WARMUP, backtest, botStats, closedBars, fetchBars, indicators, isBotSymbol, resolveFrom, signalAt } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_SYMBOLS, DEFAULT_PARAMS, WARMUP, allowedByActions, backtest, botStats, capOf, cleanActions, closedBars, fetchBars, indicators, isBotSymbol, localParts, resolveFrom, signalAt } from "../_shared/botStrategy.ts";
+import type { BotAction } from "../_shared/botStrategy.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -77,6 +78,7 @@ interface Settings {
   symbols: string[];
   max_open: number;
   daily_loss_r: number;
+  rules?: unknown;
 }
 
 interface OpenBotTrade {
@@ -92,7 +94,7 @@ interface OpenBotTrade {
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
-  const { data: rows } = await admin.from("bot_settings").select("user_id, symbols, max_open, daily_loss_r").eq("enabled", true).limit(BATCH);
+  const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).limit(BATCH);
   const settings = (rows ?? []) as Settings[];
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
   const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
@@ -138,13 +140,34 @@ async function tick() {
   // 2) Señales nuevas.
   let opened = 0;
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const { data: profs } = settings.length
+    ? await admin.from("profiles").select("id, timezone").in("id", settings.map((x) => x.user_id))
+    : { data: [] as Array<{ id: string; timezone: string | null }> };
+  const tzOf = new Map((profs ?? []).map((p: { id: string; timezone: string | null }) => [p.id, p.timezone]));
   for (const s of settings) {
+    const rules: BotAction[] = cleanActions(s.rules);
     const { data: openNow } = await admin.from("trades").select("symbol").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
     const openSymbols = new Set((openNow ?? []).map((r: { symbol: string }) => r.symbol));
     const { data: recent } = await admin.from("trades").select("entry, sl, tp, outcome").eq("user_id", s.user_id).eq("source", "bot").neq("outcome", "ABIERTA").gte("closed_at", since);
     const lossToday = (recent ?? []).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
     await admin.from("bot_settings").update({ last_tick_at: new Date().toISOString() }).eq("user_id", s.user_id);
     if (lossToday <= -s.daily_loss_r) continue; // límite diario alcanzado: por hoy no opera más
+    // Reglas elegidas en «Estrategia sugerida»: tope de operaciones por día y freno tras pérdidas seguidas (últimas 24 h).
+    const maxPerDay = capOf(rules, "maxPerDay");
+    const stopAfter = capOf(rules, "stopAfterLosses");
+    const { data: today } = maxPerDay != null || stopAfter != null
+      ? await admin.from("trades").select("outcome, closed_at, date").eq("user_id", s.user_id).eq("source", "bot").gte("date", since).order("date", { ascending: false })
+      : { data: [] as Array<{ outcome: string; closed_at: string | null; date: string }> };
+    let openedToday = (today ?? []).length;
+    if (stopAfter != null) {
+      const closedRows = (today ?? []).filter((r: { outcome: string }) => r.outcome !== "ABIERTA").sort((a: { closed_at: string | null }, b: { closed_at: string | null }) => String(b.closed_at).localeCompare(String(a.closed_at)));
+      let streak = 0;
+      for (const r of closedRows) {
+        if (r.outcome !== "SL") break;
+        streak++;
+      }
+      if (streak >= stopAfter) continue;
+    }
     let count = openSymbols.size;
     for (const symbol of s.symbols) {
       if (count >= s.max_open || openSymbols.has(symbol)) continue;
@@ -155,6 +178,9 @@ async function tick() {
       if (i < 0) continue;
       const sig = signalAt(done, indicators(done), i);
       if (!sig || sig.t !== done[i].t) continue;
+      if (maxPerDay != null && openedToday >= maxPerDay) continue;
+      const when = localParts(sig.t + BAR_MS, tzOf.get(s.user_id) ?? null);
+      if (!allowedByActions(rules, { symbol, direction: sig.direction, weekday: when.weekday, block: when.block })) continue;
       if (Date.now() - (sig.t + BAR_MS) > 2 * BAR_MS) continue; // señal vieja (la función estuvo caída): no se persigue
       // Primero la señal (única por vela): si otra corrida ya la anotó, no se duplica.
       const { data: already } = await admin.from("bot_signals").select("id").eq("user_id", s.user_id).eq("symbol", symbol).eq("candle_time", new Date(sig.t).toISOString()).maybeSingle();
@@ -177,6 +203,7 @@ async function tick() {
       await admin.from("bot_signals").update({ trade_id: trade.id }).eq("id", signal.id);
       opened++;
       count++;
+      openedToday++;
     }
   }
   return { ok: true, users: settings.length, opened, closed, failed };

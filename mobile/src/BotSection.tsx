@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, DEFAULT_BOT, fmtDateTime, fmtR, t } from "@dmcripto/core";
+import { BOT_ASSETS, actionId, fmtDateTime, fmtR, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotSettings, BotStatsRow } from "@dmcripto/core";
-import { fetchBotSettings, runBotBacktest, saveBotSettings } from "./tradesApi";
+import { useBot } from "./botStore";
+import { runBotBacktest } from "./tradesApi";
 import { colors } from "./theme";
 
 const short = (s: string) => s.replace("USDT", "");
@@ -20,32 +21,17 @@ function Line({ s }: { s: BotStatsRow }) {
 }
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
-export default function BotSection({ userId, titleStyle }: { userId: string; titleStyle?: StyleProp<TextStyle> }) {
-  const [s, setS] = useState<BotSettings>(DEFAULT_BOT);
-  const [ready, setReady] = useState(false);
-  const [available, setAvailable] = useState(false); // solo se muestra si el servidor ya tiene la tabla del bot
+export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
+  const { status, settings: s, store } = useBot();
+  const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
 
-  useEffect(() => {
-    fetchBotSettings(userId)
-      .then((v) => {
-        setS(v);
-        setAvailable(true);
-      })
-      .catch(() => setAvailable(false)) // la tabla todavía no existe en el servidor: no se muestra nada
-      .finally(() => setReady(true));
-  }, [userId]);
-
   const update = async (patch: Partial<BotSettings>) => {
-    const next = { ...s, ...patch };
-    if (!next.symbols.length) return Alert.alert(t("Error"), t("Dejá al menos un activo."));
-    const prev = s;
-    setS(next);
+    if (patch.symbols && !patch.symbols.length) return Alert.alert(t("Error"), t("Dejá al menos un activo."));
     try {
-      await saveBotSettings(userId, next);
+      await store.update(patch);
     } catch (e) {
-      setS(prev);
       Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
     }
   };
@@ -72,7 +58,7 @@ export default function BotSection({ userId, titleStyle }: { userId: string; tit
     return t("Dio {e} por operación en {n} operaciones. Es una prueba sobre el pasado: lo que importa es cómo se comporta de ahora en adelante en modo simulado.", { e: `${fmtR(tot.expectancy)}R`, n: tot.n });
   };
 
-  if (!available) return null;
+  if (status !== "ready") return null; // todavía no está el bot en el servidor
 
   return (
     <>
@@ -124,6 +110,20 @@ export default function BotSection({ userId, titleStyle }: { userId: string; tit
           </TouchableOpacity>
         ))}
       </View>
+
+      <Text style={st.label}>{t("Reglas de tu estrategia sugerida")}</Text>
+      {s.rules.length === 0 ? (
+        <Text style={st.dim}>{t("Ninguna todavía. En «Estrategia sugerida» podés elegir reglas y el bot las aplica.")}</Text>
+      ) : (
+        s.rules.map((r) => (
+          <View key={actionId(r)} style={st.ruleRow}>
+            <Text style={[st.hint, { flex: 1, color: colors.snow }]}>{ruleSentence(r)}</Text>
+            <TouchableOpacity onPress={() => store.remove(actionId(r)).catch((e: unknown) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio.")))}>
+              <Text style={st.remove}>{t("Quitar")}</Text>
+            </TouchableOpacity>
+          </View>
+        ))
+      )}
 
       <Text style={st.label}>{t("Cómo decide")}</Text>
       <Text style={st.hint}>• {t("Mira velas de 1 hora ya cerradas, nunca el futuro.")}</Text>
@@ -178,6 +178,8 @@ const st = StyleSheet.create({
   label: { color: colors.fog, fontSize: 9.5, fontWeight: "700", letterSpacing: 1, marginTop: 4 },
   notice: { borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 12, gap: 8 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  ruleRow: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 },
+  remove: { color: colors.dim, fontSize: 11, fontWeight: "700" },
   chip: { minWidth: 56, borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, alignItems: "center" },
   chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
   chipText: { color: colors.fog, fontWeight: "800", fontSize: 12.5 },

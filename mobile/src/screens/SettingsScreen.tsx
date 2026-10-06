@@ -255,7 +255,7 @@ export default function SettingsScreen({
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection onSaveMoney={onSaveMoney} />
 
-      <BotSection userId={userId} titleStyle={styles.sectionTitle} />
+      <BotSection titleStyle={styles.sectionTitle} />
 
       <InviteSection />
 

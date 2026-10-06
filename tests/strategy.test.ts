@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { filterBySource, metricsOf, strategyPlan, strategySources } from "../packages/core/src/trading";
+import { actionId, filterBySource, metricsOf, strategyPlan, strategySources } from "../packages/core/src/trading";
+import { cleanActions } from "../supabase/functions/_shared/botStrategy";
 import type { Trade } from "../packages/core/src/trading";
 
 // Operación ya cerrada: entrada 100, riesgo 1 → TP = +rr, SL = −1.
@@ -175,5 +176,65 @@ describe("estrategia por exchange", () => {
   it("un origen con pocas operaciones avisa cuántas faltan", () => {
     const p = strategyPlan(filterBySource(set, "manual"));
     expect(p.ok).toBe(false);
+  });
+});
+
+describe("reglas que el bot puede aplicar", () => {
+  const mkSet = () => {
+    const trades: Trade[] = [];
+    for (let i = 0; i < 12; i++) trades.push(mk(day(1 + i), i % 3 === 0 ? -1 : 2, { symbol: "BTCUSDT" }));
+    for (let i = 0; i < 8; i++) trades.push(mk(day(13 + i), i % 4 === 0 ? 1 : -1, { symbol: "ETHUSDT" }));
+    return trades;
+  };
+
+  it("evitar un activo viene con la acción para el bot y qué hará", () => {
+    const p = strategyPlan(mkSet());
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    const r = p.rules.find((x) => x.kind === "avoid" && x.title.includes("ETHUSDT"));
+    expect(r?.action).toEqual({ op: "skip", dim: "symbol", key: "ETHUSDT" });
+    expect(r?.effect).toBe("El bot no operará ETHUSDT.");
+    expect(r?.id).toBe("skip:symbol:ETHUSDT");
+  });
+
+  it("concentrarse en un activo es «solo operar»", () => {
+    const p = strategyPlan(mkSet());
+    if (!p.ok) throw new Error("sin plan");
+    const f = p.rules.find((x) => x.kind === "focus" && x.title.includes("BTCUSDT"));
+    expect(f?.action).toEqual({ op: "only", dim: "symbol", key: "BTCUSDT" });
+    expect(f?.effect).toBe("El bot operará solo BTCUSDT.");
+  });
+
+  it("el tope diario y el freno por pérdidas también se pueden aplicar", () => {
+    const trades: Trade[] = [];
+    // días con muchas operaciones perdedoras y días tranquilos ganadores
+    for (let d = 1; d <= 6; d++) for (let k = 0; k < 4; k++) trades.push(mk(day(d, 8 + k), -1));
+    for (let d = 8; d <= 15; d++) trades.push(mk(day(d, 10), 2));
+    const p = strategyPlan(trades);
+    if (!p.ok) throw new Error("sin plan");
+    expect(p.rules.find((r) => r.action?.op === "maxPerDay")?.action).toEqual({ op: "maxPerDay", n: 3 });
+    expect(p.rules.find((r) => r.action?.op === "stopAfterLosses")?.effect).toBe("Tras 3 pérdidas seguidas el bot frena el resto del día.");
+  });
+
+  it("los consejos que no cambian al bot no traen acción (riesgo, hábitos)", () => {
+    const p = strategyPlan(Array.from({ length: 14 }, (_, i) => mk(day(1 + i), i % 4 === 0 ? 1 : -1)));
+    if (!p.ok) throw new Error("sin plan");
+    for (const r of p.rules.filter((x) => x.id.startsWith("risk:") || x.id.startsWith("habit:"))) expect(r.action).toBeUndefined();
+  });
+
+  it("todo lo que sugiere el núcleo lo entiende la función del servidor (mismo formato)", () => {
+    const p = strategyPlan(mkSet());
+    if (!p.ok) throw new Error("sin plan");
+    for (const r of p.rules) {
+      if (!r.action) continue;
+      expect(cleanActions([r.action])).toEqual([r.action]);
+      expect(r.id).toBe(actionId(r.action));
+    }
+  });
+
+  it("ids únicos en el plan", () => {
+    const p = strategyPlan(mkSet());
+    if (!p.ok) throw new Error("sin plan");
+    expect(new Set(p.rules.map((r) => r.id)).size).toBe(p.rules.length);
   });
 });

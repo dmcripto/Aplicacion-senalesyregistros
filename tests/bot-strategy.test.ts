@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BAR_MS, DEFAULT_PARAMS, atr, backtest, botStats, closedBars, ema, fetchBars, indicators, resolveFrom, signalAt } from "../supabase/functions/_shared/botStrategy";
+import { BAR_MS, DEFAULT_PARAMS, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -169,5 +169,61 @@ describe("sin ventaja inventada", () => {
     const s = botStats(all);
     expect(s.n).toBeGreaterThan(1500);
     expect(s.expectancy).toBeLessThan(0.02);
+  });
+});
+
+describe("reglas elegidas por la persona", () => {
+  it("se queda solo con reglas bien formadas", () => {
+    const raw = [
+      { op: "skip", dim: "symbol", key: "ETHUSDT" },
+      { op: "skip", dim: "symbol", key: "DOGEUSDT" }, // activo que el bot no opera
+      { op: "only", dim: "weekday", key: "3" },
+      { op: "only", dim: "weekday", key: "9" }, // día inexistente
+      { op: "skip", dim: "hour", key: "7" },
+      { op: "only", dim: "direction", key: "LONG" },
+      { op: "maxPerDay", n: 3 },
+      { op: "maxPerDay", n: 0 },
+      { op: "stopAfterLosses", n: 2.5 },
+      { op: "rm", dim: "symbol", key: "BTCUSDT" },
+      "basura",
+      null,
+    ];
+    expect(cleanActions(raw)).toEqual([
+      { op: "skip", dim: "symbol", key: "ETHUSDT" },
+      { op: "only", dim: "weekday", key: "3" },
+      { op: "skip", dim: "hour", key: "7" },
+      { op: "only", dim: "direction", key: "LONG" },
+      { op: "maxPerDay", n: 3 },
+    ]);
+    expect(cleanActions("x")).toEqual([]);
+    expect(cleanActions(Array.from({ length: 50 }, () => ({ op: "maxPerDay", n: 3 })))).toHaveLength(20);
+  });
+
+  it("día y franja horaria según la zona horaria de la persona", () => {
+    // miércoles 2026-01-07 02:30 UTC = martes 23:30 en Buenos Aires (UTC−3)
+    const ms = Date.UTC(2026, 0, 7, 2, 30);
+    expect(localParts(ms, "UTC")).toEqual({ weekday: 3, block: 0 });
+    expect(localParts(ms, "America/Argentina/Buenos_Aires")).toEqual({ weekday: 2, block: 7 });
+    expect(localParts(ms, "no-existe")).toEqual({ weekday: 3, block: 0 }); // zona inválida: UTC
+    expect(localParts(ms, null)).toEqual({ weekday: 3, block: 0 });
+  });
+
+  it("«no operar» bloquea y «solo operar» limita", () => {
+    const ctx = { symbol: "BTCUSDT", direction: "LONG", weekday: 3, block: 4 };
+    expect(allowedByActions([], ctx)).toBe(true);
+    expect(allowedByActions([{ op: "skip", dim: "symbol", key: "BTCUSDT" }], ctx)).toBe(false);
+    expect(allowedByActions([{ op: "skip", dim: "symbol", key: "ETHUSDT" }], ctx)).toBe(true);
+    expect(allowedByActions([{ op: "only", dim: "symbol", key: "ETHUSDT" }], ctx)).toBe(false);
+    expect(allowedByActions([{ op: "only", dim: "symbol", key: "ETHUSDT" }, { op: "only", dim: "symbol", key: "BTCUSDT" }], ctx)).toBe(true);
+    expect(allowedByActions([{ op: "skip", dim: "weekday", key: "3" }], ctx)).toBe(false);
+    expect(allowedByActions([{ op: "only", dim: "hour", key: "4" }], ctx)).toBe(true);
+    expect(allowedByActions([{ op: "only", dim: "hour", key: "5" }], ctx)).toBe(false);
+    expect(allowedByActions([{ op: "skip", dim: "direction", key: "LONG" }], ctx)).toBe(false);
+    expect(allowedByActions([{ op: "maxPerDay", n: 3 }], ctx)).toBe(true); // esos topes se controlan aparte
+  });
+
+  it("topes: usa el más estricto", () => {
+    expect(capOf([{ op: "maxPerDay", n: 5 }, { op: "maxPerDay", n: 2 }], "maxPerDay")).toBe(2);
+    expect(capOf([], "stopAfterLosses")).toBeNull();
   });
 });

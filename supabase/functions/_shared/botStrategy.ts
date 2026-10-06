@@ -237,3 +237,63 @@ function dedupe(bars: Bar[]): Bar[] {
   const seen = new Set<number>();
   return bars.filter((b) => (seen.has(b.t) ? false : (seen.add(b.t), true))).sort((a, b) => a.t - b.t);
 }
+
+// ─── Reglas elegidas por la persona (desde «Estrategia sugerida») ───────────
+
+export type BotDim = "symbol" | "weekday" | "hour" | "direction";
+/** Mismo formato que `BotAction` del núcleo (packages/core/src/strategy.ts). */
+export type BotAction = { op: "skip" | "only"; dim: BotDim; key: string } | { op: "maxPerDay"; n: number } | { op: "stopAfterLosses"; n: number };
+
+const validKey = (dim: BotDim, key: unknown): key is string => {
+  if (typeof key !== "string") return false;
+  if (dim === "symbol") return isBotSymbol(key);
+  if (dim === "weekday") return /^[0-6]$/.test(key);
+  if (dim === "hour") return /^[0-7]$/.test(key);
+  return key === "LONG" || key === "SHORT";
+};
+
+/** Se queda solo con las reglas bien formadas (la base de datos guarda lo que mande el cliente). Máximo 20. */
+export function cleanActions(raw: unknown): BotAction[] {
+  if (!Array.isArray(raw)) return [];
+  const out: BotAction[] = [];
+  for (const r of raw.slice(0, 20)) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    if ((o.op === "skip" || o.op === "only") && ["symbol", "weekday", "hour", "direction"].includes(o.dim as string) && validKey(o.dim as BotDim, o.key)) {
+      out.push({ op: o.op, dim: o.dim as BotDim, key: o.key as string });
+    } else if ((o.op === "maxPerDay" || o.op === "stopAfterLosses") && Number.isInteger(o.n) && (o.n as number) >= 1 && (o.n as number) <= 20) {
+      out.push({ op: o.op, n: o.n as number });
+    }
+  }
+  return out;
+}
+
+/** Día de la semana (0 = domingo) y franja de 3 horas (0–7) en la zona horaria de la persona (UTC si no se sabe). */
+export function localParts(ms: number, timeZone: string | null): { weekday: number; block: number } {
+  let tz = timeZone || "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+  } catch {
+    tz = "UTC";
+  }
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", hour: "numeric", hourCycle: "h23" }).formatToParts(new Date(ms));
+  const wd = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  return { weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd), block: Math.floor(hour / 3) };
+}
+
+/** ¿Las reglas de «no operar» y «solo operar» dejan pasar esta señal? (El tope diario y el freno por pérdidas se controlan aparte.) */
+export function allowedByActions(actions: BotAction[], ctx: { symbol: string; direction: string; weekday: number; block: number }): boolean {
+  const value = (dim: BotDim) => (dim === "symbol" ? ctx.symbol : dim === "direction" ? ctx.direction : dim === "weekday" ? String(ctx.weekday) : String(ctx.block));
+  for (const a of actions) if (a.op === "skip" && a.key === value(a.dim)) return false;
+  for (const dim of ["symbol", "weekday", "hour", "direction"] as BotDim[]) {
+    const only = actions.filter((a): a is Extract<BotAction, { dim: BotDim }> => a.op === "only" && a.dim === dim);
+    if (only.length && !only.some((a) => a.key === value(dim))) return false;
+  }
+  return true;
+}
+
+export const capOf = (actions: BotAction[], op: "maxPerDay" | "stopAfterLosses"): number | null => {
+  const ns = actions.filter((a): a is Extract<BotAction, { n: number }> => a.op === op).map((a) => a.n);
+  return ns.length ? Math.min(...ns) : null;
+};

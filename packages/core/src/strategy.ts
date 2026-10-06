@@ -24,13 +24,28 @@ export interface StrategyMetrics {
   maxLossStreak: number;
 }
 
+/**
+ * Lo que el bot automático sabe hacer con una regla. Mismo formato que en supabase/functions/_shared/botStrategy.ts
+ * (la función del servidor no puede importar el núcleo, así que el tipo y `actionId` se repiten allá).
+ */
+export type BotDim = "symbol" | "weekday" | "hour" | "direction";
+export type BotAction = { op: "skip" | "only"; dim: BotDim; key: string } | { op: "maxPerDay"; n: number } | { op: "stopAfterLosses"; n: number };
+
+export const actionId = (a: BotAction) => ("dim" in a ? `${a.op}:${a.dim}:${a.key}` : `${a.op}:${a.n}`);
+
 export interface StrategyRule {
+  /** Identificador estable (sirve de clave en pantalla). */
+  id: string;
   kind: "avoid" | "focus" | "risk" | "habit";
   title: string;
   why: string;
   confidence: Confidence;
   /** Cuánto habría cambiado el R neto con esta regla (solo avoid/focus). */
   impactR?: number;
+  /** Si el bot automático puede aplicarla, qué haría; si no, queda solo como consejo para vos. */
+  action?: BotAction;
+  /** Frase que explica qué hará el bot si se aplica. */
+  effect?: string;
 }
 
 export interface StrategyValidation {
@@ -152,6 +167,40 @@ function phrase(s: Seg, verb: "avoid" | "focus"): string {
   }
 }
 
+const BOT_DIMS = ["symbol", "weekday", "hour", "direction"] as const;
+
+/** Qué hará el bot con la regla, en una frase (según el grupo `seg` del que salió). */
+function effectOf(a: BotAction, seg?: Seg): string {
+  const low = (x: string) => (getLang() === "es" ? x.toLowerCase() : x);
+  if (a.op === "maxPerDay") return tr("El bot abrirá como máximo {n} operaciones por día.", { n: a.n });
+  if (a.op === "stopAfterLosses") return tr("Tras {n} pérdidas seguidas el bot frena el resto del día.", { n: a.n });
+  const label = seg?.label ?? a.key;
+  const skip = a.op === "skip";
+  switch (a.dim) {
+    case "symbol":
+      return skip ? tr("El bot no operará {x}.", { x: label }) : tr("El bot operará solo {x}.", { x: label });
+    case "weekday":
+      return skip ? tr("El bot no anotará señales los {x}.", { x: low(label) }) : tr("El bot solo operará los {x}.", { x: low(label) });
+    case "hour":
+      return skip ? tr("El bot no anotará señales entre {x}.", { x: label }) : tr("El bot solo anotará señales entre {x}.", { x: label });
+    default:
+      return skip ? tr("El bot no abrirá {x}.", { x: label }) : tr("El bot solo abrirá {x}.", { x: label });
+  }
+}
+
+/** La misma frase, a partir de la regla guardada (sin necesidad del plan): «El bot no operará ETHUSDT.» */
+export function ruleSentence(a: BotAction): string {
+  if (!("dim" in a)) return effectOf(a);
+  const label =
+    a.dim === "weekday" ? tr(WEEKDAYS[Number(a.key)] ?? a.key) : a.dim === "hour" ? (HOUR_BLOCKS[Number(a.key)] ?? a.key) : a.dim === "direction" ? (a.key === "LONG" ? tr("compras") : tr("ventas")) : a.key;
+  return effectOf(a, { dim: a.dim, key: a.key, label });
+}
+
+/** La acción que el bot puede aplicar para un grupo (null si el grupo no tiene sentido para el bot, p. ej. una etiqueta). */
+function actionOfSeg(seg: Seg, op: "skip" | "only"): BotAction | null {
+  return (BOT_DIMS as readonly string[]).includes(seg.dim) ? { op, dim: seg.dim as BotDim, key: seg.key } : null;
+}
+
 interface SegStat {
   seg: Seg;
   n: number;
@@ -254,7 +303,10 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
   const avoid = avoidList(rows, stats);
   const shownAvoid = onePerDim(avoid);
   for (const s of shownAvoid) {
+    const action = actionOfSeg(s.seg, "skip");
     rules.push({
+      id: action ? actionId(action) : `avoid:${s.seg.dim}:${s.seg.key}`,
+      ...(action ? { action, effect: effectOf(action, s.seg) } : {}),
       kind: "avoid",
       title: phrase(s.seg, "avoid"),
       why: tr("En {n} operaciones sumaste {r} ({e} por operación). Sin ellas tu resultado habría sido {t}.", { n: s.n, r: fmtR(s.netR), e: fmtR(s.exp), t: fmtR(profile.netR - s.netR) }),
@@ -268,7 +320,10 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     .filter((s) => s.exp >= 0.3 && s.netR >= 1.5 && s.exp > profile.expectancy)
     .sort((a, b) => b.netR - a.netR);
   for (const s of onePerDim(focus, 2)) {
+    const action = actionOfSeg(s.seg, "only");
     rules.push({
+      id: action ? actionId(action) : `focus:${s.seg.dim}:${s.seg.key}`,
+      ...(action ? { action, effect: effectOf(action, s.seg) } : {}),
       kind: "focus",
       title: phrase(s.seg, "focus"),
       why: tr("En {n} operaciones sumaste {r} ({e} por operación), por encima de tu promedio de {a}.", { n: s.n, r: fmtR(s.netR), e: fmtR(s.exp), a: fmtR(profile.expectancy) }),
@@ -283,6 +338,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
   if (needPayoff != null && profile.avgLoss > 0 && profile.expectancy <= 0.05 && profile.payoff < needPayoff + 0.2) {
     const target = Math.ceil((needPayoff + 0.3) * 10) / 10;
     rules.push({
+      id: "habit:payoff",
       kind: "habit",
       title: tr("Buscá que tus ganancias promedio sean al menos {x} veces tu pérdida promedio", { x: num1(target) }),
       why: tr("Acertás {w}% de las veces y tus ganancias son {p} veces tus pérdidas. Con ese acierto necesitás {need} para empatar.", { w: Math.round(profile.winRate), p: num1(profile.payoff), need: num1(Math.ceil(needPayoff * 10) / 10) }),
@@ -290,6 +346,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     });
   } else if (profile.winRate < 40 && profile.payoff >= 1.8 && profile.expectancy > 0) {
     rules.push({
+      id: "habit:big-winners",
       kind: "habit",
       title: tr("Tu fuerte son pocas ganadoras grandes: no cortes las ganancias antes de tiempo"),
       why: tr("Acertás {w}% pero ganás {p} veces lo que perdés. Ese estilo se arruina si cerrás las ganadoras temprano.", { w: Math.round(profile.winRate), p: num1(profile.payoff) }),
@@ -304,6 +361,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     const wA = avg(winH), lA = avg(lossH);
     if (lA > wA * 1.5 && lA - wA >= 0.5) {
       rules.push({
+        id: "habit:cut-losses",
         kind: "habit",
         title: tr("Cortá antes las pérdidas: respetá el stop"),
         why: tr("Tus pérdidas duran en promedio {l} h y tus ganancias {w} h. Esperás más cuando va mal.", { l: num1(lA), w: num1(wA) }),
@@ -323,7 +381,11 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
   if (busy.length >= 8 && calm.length >= 8) {
     const eB = avg(busy.map((x) => x.r)), eC = avg(calm.map((x) => x.r));
     if (eB <= eC - 0.3 && eB < 0) {
+      const cap: BotAction = { op: "maxPerDay", n: 3 };
       rules.push({
+        id: actionId(cap),
+        action: cap,
+        effect: effectOf(cap),
         kind: "habit",
         title: tr("Poné un tope de 3 operaciones por día"),
         why: tr("En los días con 4 o más operaciones perdés {a} por operación; en los demás, {b}.", { a: fmtR(eB), b: fmtR(eC) }),
@@ -334,7 +396,11 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
 
   // 6) Riesgo: rachas y caídas
   if (profile.maxLossStreak >= 3) {
+    const stop: BotAction = { op: "stopAfterLosses", n: 3 };
     rules.push({
+      id: actionId(stop),
+      action: stop,
+      effect: effectOf(stop),
       kind: "risk",
       title: tr("Después de 3 pérdidas seguidas, frená el día"),
       why: tr("Tu peor racha fue de {n} pérdidas seguidas. Parar a las 3 corta la cuesta abajo y te deja pensar.", { n: profile.maxLossStreak }),
@@ -347,6 +413,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     const pct = (risk: number) => Math.round(profile.maxDrawdownR * risk);
     if (cur != null && cur > safe) {
       rules.push({
+        id: "risk:lower",
         kind: "risk",
         title: tr("Bajá el riesgo por operación a {x}%", { x: num1(safe) }),
         why: tr("Tu peor caída fue de {d}R: con {c}% por operación eso es −{p}% del capital. Con {s}% sería −{q}%. Una caída futura puede ser peor.", { d: num1(profile.maxDrawdownR), c: num1(cur), p: pct(cur), s: num1(safe), q: pct(safe) }),
@@ -354,6 +421,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
       });
     } else if (cur != null) {
       rules.push({
+        id: "risk:keep",
         kind: "risk",
         title: tr("Mantené el riesgo por operación en {x}% o menos", { x: num1(cur) }),
         why: tr("Tu peor caída fue de {d}R: con {c}% por operación eso es −{p}% del capital. Una caída futura puede ser peor.", { d: num1(profile.maxDrawdownR), c: num1(cur), p: pct(cur) }),
@@ -361,6 +429,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
       });
     } else {
       rules.push({
+        id: "risk:cap",
         kind: "risk",
         title: tr("Arriesgá {x}% o menos por operación", { x: num1(safe) }),
         why: tr("Tu peor caída fue de {d}R. Con {s}% por operación eso es −{q}% del capital. Una caída futura puede ser peor.", { d: num1(profile.maxDrawdownR), s: num1(safe), q: pct(safe) }),
@@ -370,6 +439,7 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
   }
   if (edge === "none") {
     rules.unshift({
+      id: "risk:demo",
       kind: "risk",
       title: tr("Mientras no veas un promedio positivo, operá en demo o con el riesgo mínimo"),
       why: tr("Hoy tu promedio es {e} por operación. No tiene sentido arriesgar más hasta que las reglas de abajo muestren que lo revierten.", { e: fmtR(profile.expectancy) }),
