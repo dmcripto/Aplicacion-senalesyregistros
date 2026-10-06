@@ -3,9 +3,9 @@
 // `Trade` de @dmcripto/core (camelCase), y expone las mutaciones que antes
 // vivían como setState directo sobre localStorage.
 
-import { DEFAULT_BOT, LIQ_COINS, t } from "./lib";
+import { BOT_PROFILE_LIST, DEFAULT_BOT, LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { BotAction, BotBacktest, BotLoaded, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { BotAction, BotBacktest, BotLoaded, BotProfileId, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -286,25 +286,30 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
   const { data, error } = await supabase.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   if (!data) {
-    // Sin fila todavía: se mira si la columna de reglas existe preguntándole por ella.
-    const probe = await supabase.from("bot_settings").select("rules").limit(1);
-    return { ...DEFAULT_BOT, rulesSupported: !probe.error };
+    // Sin fila todavía: se mira si cada columna opcional existe preguntándole por ella.
+    const [r, p] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1)]);
+    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error };
   }
-  const rulesSupported = Array.isArray((data as { rules?: unknown }).rules);
+  const row = data as { rules?: unknown; profile?: unknown };
+  const rulesSupported = Array.isArray(row.rules);
+  const profileSupported = typeof row.profile === "string";
   return {
     enabled: !!data.enabled,
     symbols: (data.symbols as string[]) ?? DEFAULT_BOT.symbols,
     maxOpen: Number(data.max_open ?? DEFAULT_BOT.maxOpen),
     dailyLossR: Number(data.daily_loss_r ?? DEFAULT_BOT.dailyLossR),
     lastTickAt: data.last_tick_at ?? null,
-    rules: rulesSupported ? ((data as { rules: BotAction[] }).rules ?? []) : [],
+    rules: rulesSupported ? (row.rules as BotAction[]) : [],
+    profile: profileSupported && (BOT_PROFILE_LIST as string[]).includes(row.profile as string) ? (row.profile as BotProfileId) : "balanced",
     rulesSupported,
+    profileSupported,
   };
 }
 
-export async function saveBotSettings(userId: string, s: BotSettings, rulesSupported = true) {
+export async function saveBotSettings(userId: string, s: BotSettings, caps: { rules: boolean; profile: boolean } = { rules: true, profile: true }) {
   const row: Record<string, unknown> = { user_id: userId, enabled: s.enabled, symbols: s.symbols, max_open: s.maxOpen, daily_loss_r: s.dailyLossR, updated_at: new Date().toISOString() };
-  if (rulesSupported) row.rules = s.rules;
+  if (caps.rules) row.rules = s.rules;
+  if (caps.profile) row.profile = s.profile;
   const { error } = await supabase.from("bot_settings").upsert(row, { onConflict: "user_id" });
   if (error) throw error;
 }

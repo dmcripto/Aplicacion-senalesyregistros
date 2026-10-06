@@ -195,6 +195,63 @@ describe("función bot · reglas elegidas desde la estrategia sugerida", () => {
   });
 });
 
+describe("función bot · perfiles de estrategia", () => {
+  /** Ruptura reciente por encima de los últimos 20 máximos pero NO por encima de un máximo viejo (hace ~38 velas). */
+  function nearBreakout() {
+    const rows = series(285, false);
+    const n = rows.length; // la última fila es la vela en curso
+    const last = n - 2; // última cerrada
+    rows[last - 38][2] += 40; // máximo viejo y alto (solo el canal de 40 velas lo ve)
+    const prev = rows[last - 1][4];
+    rows[last] = [rows[last][0], prev, prev + 3, prev - 0.2, prev + 2.8];
+    return rows;
+  }
+
+  it("el perfil dinámico abre una señal que el conservador deja pasar", async () => {
+    klines = nearBreakout();
+    enable({ profile: "conservative" });
+    expect((await tick()).body.opened).toBe(0);
+    resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+    enable({ profile: "dynamic" });
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades[0].notes).toContain("perfil dinámico");
+    expect(db.tables.trades[0].notes).toContain("ruptura de 10 velas");
+  });
+
+  it("sin perfil o con uno inválido usa el equilibrado", async () => {
+    klines = nearBreakout();
+    enable({ profile: "inventado" });
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades[0].notes).toContain("perfil equilibrado");
+  });
+
+  it("la prueba con historial compara los tres perfiles y marca el de la persona", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, profile: "dynamic" });
+    const r = await (async () => {
+      const res = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: "Bearer good" }, body: JSON.stringify({ action: "backtest", symbols: ["BTCUSDT"] }) }));
+      return { body: (await res.json()) as any };
+    })();
+    expect(r.body.profile).toBe("dynamic");
+    expect(r.body.byProfile.map((x: any) => x.id)).toEqual(["conservative", "balanced", "dynamic"]);
+    expect(r.body.byProfile.filter((x: any) => x.current).map((x: any) => x.id)).toEqual(["dynamic"]);
+  });
+});
+
+describe("función bot · muchas personas", () => {
+  it("revisa primero a quienes hace más que no se revisan y avisa si deja gente para la próxima", async () => {
+    // 3 personas con el bot encendido; la que nunca se revisó va primero
+    for (const [id, last] of [["a", "2026-10-06T10:00:00Z"], ["b", null], ["c", "2026-10-06T09:00:00Z"]] as const) db.tables.bot_settings.push({ user_id: id, enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, last_tick_at: last });
+    klines = series(285, true);
+    const r = await tick();
+    expect(r.body.users).toBe(3);
+    expect(r.body.opened).toBe(3);
+    expect(r.body.deferred).toBe(0);
+  });
+});
+
 describe("función bot · prueba con historial", () => {
   const call = async (body: unknown, token = "good") => {
     const r = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) }));

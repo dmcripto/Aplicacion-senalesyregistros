@@ -27,6 +27,24 @@ export interface BotParams {
 
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: 0.1 };
 
+/** Perfiles de estrategia que cada persona puede elegir (no se dejan los números libres: se sobreajustan con facilidad). */
+export type BotProfileId = "conservative" | "balanced" | "dynamic";
+export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic"];
+export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
+  // menos señales: canal más largo y stop más holgado
+  conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: 0.1 },
+  balanced: DEFAULT_PARAMS,
+  // más señales: canal corto, tendencia más rápida y objetivo más cercano
+  dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrLen: 14, atrMult: 1.2, rr: 1.5, feePct: 0.1 },
+};
+/** La estrategia en una frase (para la nota de cada operación simulada). */
+export const describeParams = (p: BotParams) => {
+  const n = (x: number) => String(x).replace(".", ",");
+  return `ruptura de ${p.lookback} velas a favor de la tendencia (EMA ${p.emaFast}/${p.emaSlow}) · stop ${n(p.atrMult)} ATR · objetivo ${n(p.rr)}R`;
+};
+export const isProfileId = (x: unknown): x is BotProfileId => typeof x === "string" && (BOT_PROFILE_IDS as string[]).includes(x);
+export const paramsOf = (id: unknown): BotParams => (isProfileId(id) ? BOT_PROFILES[id] : DEFAULT_PARAMS);
+
 export const BOT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
 export const BAR_MS = 3_600_000;
 /** Velas mínimas para poder calcular todo (la EMA lenta manda). */

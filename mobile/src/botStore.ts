@@ -12,10 +12,10 @@ export const botStore = createBotStore({
     if (!id) throw new Error("sin sesión");
     return fetchBotSettings(id);
   },
-  async save(s, rulesSupported) {
+  async save(s, caps) {
     const id = await userId();
     if (!id) throw new Error("sin sesión");
-    await saveBotSettings(id, s, rulesSupported);
+    await saveBotSettings(id, s, caps);
   },
 });
 

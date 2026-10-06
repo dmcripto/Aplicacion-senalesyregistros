@@ -9,7 +9,8 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_SYMBOLS, DEFAULT_PARAMS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, fetchBars, indicators, isBotSymbol, localParts, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, indicators, isBotSymbol, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import type { BotProfileId, Indicators } from "../_shared/botStrategy.ts";
 import type { BotAction } from "../_shared/botStrategy.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
@@ -23,9 +24,11 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
-const BATCH = 200;
-const TICK_BARS = WARMUP() + 80; // lo justo para calcular indicadores y resolver operaciones recientes
-const NOTE = "🤖 Bot simulado · ruptura de 20 velas a favor de la tendencia (EMA 50/200) · stop 1,5 ATR · objetivo 2R. No se operó en ningún exchange.";
+const MAX_USERS = 2000; // personas con el bot encendido que se leen por corrida
+const BUDGET_MS = 100_000; // si la corrida se alarga, lo que falte se atiende en la siguiente (primero los que hace más que no se revisan)
+const MAX_WARMUP = Math.max(...BOT_PROFILE_IDS.map((id) => WARMUP(BOT_PROFILES[id])));
+const TICK_BARS = MAX_WARMUP + 80; // lo justo para calcular los indicadores de cualquier perfil y resolver operaciones recientes
+const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${id === "conservative" ? "perfil conservador" : id === "dynamic" ? "perfil dinámico" : "perfil equilibrado"}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
 const TAG = "Bot simulado";
 
 // ─── Prueba con historial ───────────────────────────────────────────────────
@@ -47,11 +50,13 @@ async function barsFor(symbol: string, count: number): Promise<Bar[]> {
  * con el mismo bot sin reglas. Las reglas salen de operaciones de la persona, no de estos precios: es una prueba justa.
  */
 async function runBacktest(userId: string, symbols: string[], days: number) {
-  const count = Math.min(24 * days, 3000) + WARMUP();
+  const count = Math.min(24 * days, 3000) + MAX_WARMUP;
   const { data: cfg } = await admin.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
   const rules = cleanActions(cfg?.rules);
   const base = { maxOpen: Number(cfg?.max_open ?? 3), dailyLossR: Number(cfg?.daily_loss_r ?? 3), timeZone: (prof?.timezone as string | null) ?? null };
+  const profile: BotProfileId = isProfileId(cfg?.profile) ? cfg.profile : "balanced";
+  const params = paramsOf(profile);
 
   const bars: Record<string, Bar[]> = {};
   const errors: Record<string, string> = {};
@@ -64,12 +69,16 @@ async function runBacktest(userId: string, symbols: string[], days: number) {
       }
     }),
   );
-  const without = simulate(bars, { symbols, rules: [], ...base });
-  const withRules = rules.length ? simulate(bars, { symbols, rules, ...base }) : null;
+  const without = simulate(bars, { symbols, rules: [], ...base }, params);
+  const withRules = rules.length ? simulate(bars, { symbols, rules, ...base }, params) : null;
+  // Los tres perfiles, sin reglas y con los mismos límites, para compararlos.
+  const byProfile = BOT_PROFILE_IDS.map((id) => ({ id, current: id === profile, stats: botStats(simulate(bars, { symbols, rules: [], ...base }, BOT_PROFILES[id]).trades.map((t) => t.r)) }));
   return {
     ok: true,
     days,
-    params: DEFAULT_PARAMS,
+    profile,
+    params,
+    byProfile,
     total: botStats(without.trades.map((t) => t.r)),
     withRules: withRules ? botStats(withRules.trades.map((t) => t.r)) : null,
     rulesApplied: rules.length,
@@ -81,6 +90,7 @@ async function runBacktest(userId: string, symbols: string[], days: number) {
 
 interface Settings {
   user_id: string;
+  profile?: unknown;
   symbols: string[];
   max_open: number;
   daily_loss_r: number;
@@ -100,7 +110,7 @@ interface OpenBotTrade {
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
-  const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).limit(BATCH);
+  const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).order("last_tick_at", { ascending: true, nullsFirst: true }).limit(MAX_USERS);
   const settings = (rows ?? []) as Settings[];
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
   const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
@@ -150,7 +160,16 @@ async function tick() {
     ? await admin.from("profiles").select("id, timezone").in("id", settings.map((x) => x.user_id))
     : { data: [] as Array<{ id: string; timezone: string | null }> };
   const tzOf = new Map((profs ?? []).map((p: { id: string; timezone: string | null }) => [p.id, p.timezone]));
-  for (const s of settings) {
+  const t0 = Date.now();
+  const inds = new Map<string, Indicators>(); // indicadores por activo y perfil (se calculan una vez por corrida)
+  let deferred = 0;
+  for (const [n, s] of settings.entries()) {
+    if (Date.now() - t0 > BUDGET_MS) {
+      deferred = settings.length - n;
+      break;
+    }
+    const profile: BotProfileId = isProfileId(s.profile) ? s.profile : "balanced";
+    const params = paramsOf(profile);
     const rules: BotAction[] = cleanActions(s.rules);
     const { data: openNow } = await admin.from("trades").select("symbol").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
     const openSymbols = new Set((openNow ?? []).map((r: { symbol: string }) => r.symbol));
@@ -182,7 +201,9 @@ async function tick() {
       const done = closedBars(b);
       const i = done.length - 1;
       if (i < 0) continue;
-      const sig = signalAt(done, indicators(done), i);
+      const key = `${symbol}:${profile}`;
+      if (!inds.has(key)) inds.set(key, indicators(done, params));
+      const sig = signalAt(done, inds.get(key)!, i, params);
       if (!sig || sig.t !== done[i].t) continue;
       if (maxPerDay != null && openedToday >= maxPerDay) continue;
       const when = localParts(sig.t + BAR_MS, tzOf.get(s.user_id) ?? null);
@@ -199,7 +220,7 @@ async function tick() {
       if (sigErr || !signal) continue;
       const { data: trade, error: trErr } = await admin
         .from("trades")
-        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: `${symbol}:${sig.t}`, notes: NOTE, tags: [TAG] })
+        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: `${symbol}:${sig.t}`, notes: noteFor(profile), tags: [TAG] })
         .select("id")
         .single();
       if (trErr || !trade) {
@@ -212,7 +233,7 @@ async function tick() {
       openedToday++;
     }
   }
-  return { ok: true, users: settings.length, opened, closed, failed };
+  return { ok: true, users: settings.length, opened, closed, failed, deferred };
 }
 
 // ─── Entrada ────────────────────────────────────────────────────────────────
