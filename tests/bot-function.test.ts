@@ -36,10 +36,12 @@ function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {
 }
 
 let klines: number[][] = [];
+let tickers: Array<{ symbol: string; quoteVolume: string }> = [];
 let sent: { telegram: any[]; push: any[] } = { telegram: [], push: [] };
 beforeEach(() => {
   resetDb({ bot_settings: [], bot_signals: [], trades: [] });
   klines = series(285, true);
+  tickers = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "USDCUSDT", "BTCUSDT_261225", "TINYUSDT"].map((symbol, i) => ({ symbol, quoteVolume: String(symbol === "TINYUSDT" ? 1e6 : 9e9 - i * 1e8) }));
   sent = { telegram: [], push: [] };
   vi.stubGlobal("fetch", async (url: any, init?: any) => {
     const u = new URL(String(url));
@@ -51,6 +53,7 @@ beforeEach(() => {
       sent.push.push(...JSON.parse(String(init?.body ?? "[]")));
       return new Response("{}");
     }
+    if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/ticker/24hr")) return new Response(JSON.stringify(tickers));
     if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
     return new Response("{}", { status: 404 });
   });
@@ -420,5 +423,60 @@ describe("función bot · laboratorio de variantes", () => {
     const r = await call({ action: "lab", symbols: ["ETHUSDT"] }); // otro activo: los de la prueba anterior quedan en la memoria de 30 minutos
     expect(r.body.ok).toBe(false);
     expect(r.body.error).toContain("precios");
+  });
+});
+
+describe("función bot · escaneo del mercado", () => {
+  const call = async (body: unknown) => {
+    const r = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: "Bearer good" }, body: JSON.stringify(body) }));
+    return { status: r.status, body: (await r.json()) as any };
+  };
+
+  it("sin escaneo solo mira los activos de la persona", async () => {
+    enable({ scan_top: 0, symbols: ["BTCUSDT"] });
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades.map((t: any) => t.symbol)).toEqual(["BTCUSDT"]);
+  });
+
+  it("con escaneo mira los más operados, respeta el máximo abierto y no repite activo", async () => {
+    enable({ scan_top: 20, symbols: ["BTCUSDT"], max_open: 3 });
+    const r = await tick();
+    expect(r.body.opened).toBe(3);
+    const syms = db.tables.trades.map((t: any) => t.symbol);
+    expect(new Set(syms).size).toBe(3);
+    expect(syms.every((x: string) => ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT"].includes(x))).toBe(true); // nada de stablecoins, vencimientos ni activos de poco volumen
+  });
+
+  it("si no se puede bajar la lista del mercado sigue con los activos elegidos", async () => {
+    enable({ scan_top: 40, symbols: ["BTCUSDT"] });
+    const real = (globalThis as any).fetch;
+    vi.stubGlobal("fetch", async (url: any, init?: any) => (String(url).includes("ticker") || String(url).includes("tickers") ? new Response("no", { status: 500 }) : real(url, init)));
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades[0].symbol).toBe("BTCUSDT");
+    expect(r.body.failed.some((x: string) => x.startsWith("mercado"))).toBe(true);
+  });
+
+  it("un valor raro en scan_top se trata como sin escaneo", async () => {
+    enable({ scan_top: 999, symbols: ["BTCUSDT"] });
+    const r = await tick();
+    expect(db.tables.trades.map((t: any) => t.symbol)).toEqual(["BTCUSDT"]);
+    expect(r.body.opened).toBe(1);
+  });
+
+  it("la prueba con historial con escaneo cuenta los activos y muestra los 10 con más operaciones", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, scan_top: 20 });
+    const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });
+    expect(r.body.scanned).toBe(6);
+    expect(r.body.symbols.length).toBeLessThanOrEqual(10);
+    expect(r.body.symbols.length).toBe(6);
+  });
+
+  it("sin escaneo la prueba no marca activos escaneados", async () => {
+    klines = series(3000, true);
+    const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });
+    expect(r.body.scanned).toBe(0);
   });
 });

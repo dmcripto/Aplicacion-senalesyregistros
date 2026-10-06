@@ -11,7 +11,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, indicators, isBotSymbol, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
 import type { BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
@@ -107,11 +107,21 @@ async function barsFor(symbol: string, count: number, tf: BotTimeframe = "1h"): 
   return bars;
 }
 
+// Lista de los futuros más operados: cambia despacio, así que se guarda 30 minutos.
+const universeCache = new Map<number, { at: number; list: string[] }>();
+async function universe(n: number): Promise<string[]> {
+  const hit = universeCache.get(n);
+  if (hit && Date.now() - hit.at < BACKTEST_TTL) return hit.list;
+  const list = await fetchUniverse(n);
+  universeCache.set(n, { at: Date.now(), list });
+  return list;
+}
+
 /**
  * Simula el bot completo (con los topes y las reglas guardadas de la persona) sobre el historial real y lo compara
  * con el mismo bot sin reglas. Las reglas salen de operaciones de la persona, no de estos precios: es una prueba justa.
  */
-async function runBacktest(userId: string, symbols: string[], days: number) {
+async function runBacktest(userId: string, chosen: string[], days: number) {
   const count = Math.min(24 * days, 3000) + MAX_WARMUP;
   const { data: cfg } = await admin.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
@@ -120,17 +130,26 @@ async function runBacktest(userId: string, symbols: string[], days: number) {
   const profile: BotProfileId = isProfileId(cfg?.profile) ? cfg.profile : "balanced";
   const params = paramsOf(profile);
 
+  // Con el escaneo del mercado se prueban también los futuros más operados (los de hoy: ver la advertencia en la pantalla).
+  const scan = scanSizeOf(cfg?.scan_top);
+  let symbols = chosen;
+  if (scan) {
+    try {
+      symbols = [...new Set([...chosen, ...(await universe(scan))])];
+    } catch {
+      /* sin la lista del mercado: se prueba con los activos elegidos */
+    }
+  }
   const bars: Record<string, Bar[]> = {};
   const errors: Record<string, string> = {};
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      try {
-        bars[symbol] = await barsFor(symbol, count);
-      } catch (e) {
-        errors[symbol] = e instanceof Error ? e.message : "error";
-      }
-    }),
-  );
+  await mapPool(symbols, 8, async (symbol) => {
+    try {
+      bars[symbol] = await barsFor(symbol, count);
+    } catch (e) {
+      errors[symbol] = e instanceof Error ? e.message : "error";
+    }
+  });
+  symbols = symbols.filter((x) => bars[x]);
   const without = simulate(bars, { symbols, rules: [], ...base }, params);
   const withRules = rules.length ? simulate(bars, { symbols, rules, ...base }, params) : null;
   // Los tres perfiles, sin reglas y con los mismos límites, para compararlos.
@@ -144,7 +163,12 @@ async function runBacktest(userId: string, symbols: string[], days: number) {
     total: botStats(without.trades.map((t) => t.r)),
     withRules: withRules ? botStats(withRules.trades.map((t) => t.r)) : null,
     rulesApplied: rules.length,
-    symbols: symbols.map((symbol) => ({ symbol, stats: botStats(without.trades.filter((t) => t.symbol === symbol).map((t) => t.r)), error: errors[symbol] })),
+    scanned: scan ? symbols.length : 0,
+    // Con escaneo hay decenas de activos: se muestran los 10 con más operaciones.
+    symbols: symbols
+      .map((symbol) => ({ symbol, stats: botStats(without.trades.filter((t) => t.symbol === symbol).map((t) => t.r)), error: errors[symbol] }))
+      .sort((a, b) => b.stats.n - a.stats.n)
+      .slice(0, scan ? 10 : 5),
   };
 }
 
@@ -187,6 +211,7 @@ interface Settings {
   max_open: number;
   daily_loss_r: number;
   rules?: unknown;
+  scan_top?: unknown;
 }
 
 interface OpenBotTrade {
@@ -208,20 +233,29 @@ async function tick() {
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
   const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
   const open = (openRows ?? []) as OpenBotTrade[];
-  const symbols = [...new Set([...settings.flatMap((s) => s.symbols), ...open.map((t) => t.symbol)])].filter(isBotSymbol);
+  // Quien escanea el mercado mira además los futuros más operados (la lista es la misma para todos y se baja una vez).
+  const failed: string[] = [];
+  const scanMax = Math.max(0, ...settings.map((s) => scanSizeOf(s.scan_top)));
+  let top: string[] = [];
+  if (scanMax) {
+    try {
+      top = await universe(scanMax);
+    } catch (e) {
+      failed.push(`mercado: ${e instanceof Error ? e.message : "error"}`); // sin la lista, cada quien sigue con sus activos
+    }
+  }
+  const watchOf = (s: Settings) => [...new Set([...s.symbols, ...top.slice(0, scanSizeOf(s.scan_top))])].filter(isTradableSymbol);
+  const symbols = [...new Set([...settings.flatMap(watchOf), ...open.map((t) => t.symbol)])].filter(isTradableSymbol);
   if (!symbols.length) return { ok: true, users: 0, opened: 0, closed: 0 };
 
   const bars = new Map<string, Bar[]>();
-  const failed: string[] = [];
-  await Promise.all(
-    symbols.map(async (s) => {
-      try {
-        bars.set(s, await fetchBars(s, TICK_BARS));
-      } catch (e) {
-        failed.push(`${s}: ${e instanceof Error ? e.message : "error"}`);
-      }
-    }),
-  );
+  await mapPool(symbols, 8, async (s) => {
+    try {
+      bars.set(s, await fetchBars(s, TICK_BARS));
+    } catch (e) {
+      failed.push(`${s}: ${e instanceof Error ? e.message : "error"}`);
+    }
+  });
 
   // 1) Cerrar lo que tocó stop u objetivo.
   let closed = 0;
@@ -290,8 +324,10 @@ async function tick() {
       if (streak >= stopAfter) continue;
     }
     let count = openSymbols.size;
-    for (const symbol of s.symbols) {
-      if (count >= s.max_open || openSymbols.has(symbol)) continue;
+    // Todas las señales de esta vela; si hay más que lugares, entran primero las más fuertes (igual que en la prueba con historial).
+    const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
+    for (const symbol of watchOf(s)) {
+      if (openSymbols.has(symbol)) continue;
       const b = bars.get(symbol);
       if (!b) continue;
       const done = closedBars(b);
@@ -300,7 +336,11 @@ async function tick() {
       const key = `${symbol}:${profile}`;
       if (!inds.has(key)) inds.set(key, indicators(done, params));
       const sig = signalAt(done, inds.get(key)!, i, params);
-      if (!sig || sig.t !== done[i].t) continue;
+      if (sig && sig.t === done[i].t) found.push({ symbol, sig });
+    }
+    found.sort((a, b) => b.sig.strength - a.sig.strength);
+    for (const { symbol, sig } of found) {
+      if (count >= s.max_open) break;
       if (maxPerDay != null && openedToday >= maxPerDay) continue;
       const when = localParts(sig.t + BAR_MS, tzOf.get(s.user_id) ?? null);
       if (!allowedByActions(rules, { symbol, direction: sig.direction, weekday: when.weekday, block: when.block })) continue;

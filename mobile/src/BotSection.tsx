@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, BOT_PROFILE_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { runBotBacktest, runBotLab } from "./tradesApi";
@@ -22,7 +22,7 @@ function Line({ s }: { s: BotStatsRow }) {
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
 export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
-  const { status, settings: s, store, profileSupported, notifySupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
@@ -131,6 +131,24 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
         ))}
       </View>
 
+      {scanSupported && (
+        <>
+          <Text style={st.label}>{t("Alcance")}</Text>
+          <View style={st.wrap}>
+            {BOT_SCAN_LIST.map((n) => (
+              <TouchableOpacity key={n} style={[st.chip, s.scanTop === n && st.chipOn]} onPress={() => update({ scanTop: n })}>
+                <Text style={[st.chipText, s.scanTop === n && { color: colors.ink }]}>{n === 0 ? t("Solo mis activos") : t("Top {n} por volumen", { n })}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={st.dim}>
+            {s.scanTop === 0
+              ? t("El bot mira solo los activos que elegiste arriba.")
+              : t("Además de tus activos, el bot mira los {n} futuros más operados y, si hay varias señales a la vez, toma primero las más fuertes. Sigue siendo simulado.", { n: s.scanTop })}
+          </Text>
+        </>
+      )}
+
       <Text style={st.label}>{t("Operaciones abiertas a la vez")}</Text>
       <View style={st.wrap}>
         {[1, 2, 3, 4, 5].map((n) => (
@@ -219,6 +237,11 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
               ))}
               <Text style={st.dim}>{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</Text>
             </View>
+          )}
+          {!!test.scanned && (
+            <Text style={st.dim}>
+              {t("La prueba incluye {n} activos (los más operados de hoy). Ojo: elegir los de más volumen de hoy favorece a los que ya subieron, así que el resultado del pasado sale algo más lindo que el real. Abajo se ven los 10 con más operaciones.", { n: test.scanned })}
+            </Text>
           )}
           {test.symbols.map((x) => (
             <View key={x.symbol} style={st.row}>
