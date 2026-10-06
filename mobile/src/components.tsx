@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, confidenceLabel, strategyPlan, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
+import { MAX_TAGS, PRESET_TAGS, analyze, balanceInfo, confidenceLabel, filterBySource, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtDateTime, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -522,24 +522,29 @@ const CONF_COLOR: Record<Confidence, string> = { high: colors.bull, medium: colo
 /** Estrategia sugerida: reglas armadas con las operaciones cerradas (incluidas las del exchange). */
 export function StrategyBlock({ trades }: { trades: Trade[] }) {
   const { money } = useMoney();
-  const imported = useMemo(() => trades.filter((x) => x.source), [trades]);
-  const [onlyImported, setOnlyImported] = useState(false);
-  const use = onlyImported && imported.length ? imported : trades;
-  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, importedOnly: onlyImported }), [use, money.riskPct, onlyImported]);
+  const sources = useMemo(() => strategySources(trades), [trades]);
+  const [picked, setPicked] = useState("all");
+  const source = sources.some((x) => x.id === picked) ? picked : "all";
+  const use = useMemo(() => filterBySource(trades, source), [trades, source]);
+  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, source }), [use, money.riskPct, source]);
+  const nameOf = (id: string) => (id === "manual" ? t("A mano y señales") : exchangeName(id as never));
   const tone = !plan.ok ? colors.line : plan.edge === "likely" ? colors.bull : plan.edge === "unproven" ? colors.gold : colors.bear;
   const fmtBest = (n: number) => `${fmtR(n)}R`;
   return (
     <View style={s.section}>
       <Text style={s.sectionTitle}>{t("ESTRATEGIA SUGERIDA")}</Text>
       <Text style={st.sub}>{t("Reglas armadas con tus propias operaciones")}</Text>
-      {imported.length > 0 && (
-        <View style={s.segment}>
-          {([[false, t("Todas mis operaciones")], [true, t("Solo las de mi exchange")]] as const).map(([v, label]) => (
-            <TouchableOpacity key={String(v)} style={[s.segBtn, onlyImported === v && s.segBtnOn]} onPress={() => setOnlyImported(v)}>
-              <Text style={[s.segText, onlyImported === v && { color: colors.ink }]}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {sources.some((x) => x.id !== "manual") && (
+        <>
+          <Text style={st.head}>{t("Ver la estrategia de")}</Text>
+          <View style={st.pickRow}>
+            {[{ id: "all", label: t("Todas") }, ...sources.map((x) => ({ id: x.id, label: `${nameOf(x.id)} · ${x.count}` }))].map((o) => (
+              <TouchableOpacity key={o.id} style={[st.pick, source === o.id && st.pickOn]} onPress={() => setPicked(o.id)}>
+                <Text style={[st.pickText, source === o.id && { color: colors.ink }]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
       )}
       {!plan.ok ? (
         <Text style={st.note}>{t("Para sugerirte una estrategia necesito al menos {n} operaciones cerradas (tenés {have}). Conectá tu exchange o seguí registrando y volvé.", { n: plan.needed, have: plan.have })}</Text>
@@ -606,6 +611,10 @@ export function StrategyBlock({ trades }: { trades: Trade[] }) {
 }
 
 const st = StyleSheet.create({
+  pickRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 4 },
+  pick: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  pickOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  pickText: { color: colors.fog, fontSize: 11.5, fontWeight: "800" },
   sub: { color: colors.dim, fontSize: 11, marginBottom: 8 },
   note: { color: colors.fog, fontSize: 12, lineHeight: 17, marginTop: 8 },
   small: { color: colors.dim, fontSize: 10.5, lineHeight: 15, marginTop: 6 },

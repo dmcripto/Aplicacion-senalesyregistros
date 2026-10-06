@@ -54,7 +54,7 @@ export type StrategyPlan =
       after: StrategyMetrics | null; // con las reglas de "evitar" aplicadas a lo ya ocurrido
       avoidedTrades: number;
       validation: StrategyValidation | null;
-      importedOnly: boolean;
+      source: string; // "all" | "manual" | id del exchange cuyas operaciones se usaron
     };
 
 export const STRATEGY_MIN_TRADES = 10;
@@ -233,7 +233,7 @@ const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
  * @param rOf resultado en R de una operación (resultR del núcleo); null/undefined = no cerrada.
  * @param riskPct riesgo por operación que usás hoy (opcional) para traducir las caídas a % del capital.
  */
-export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null, opts: { riskPct?: number | null; importedOnly?: boolean } = {}): StrategyPlan {
+export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null, opts: { riskPct?: number | null; source?: string } = {}): StrategyPlan {
   const rows: Row[] = trades
     .map((t) => ({ t, r: rOf(t), open: new Date(t.date).getTime(), close: new Date(t.closedAt ?? t.date).getTime() }))
     .filter((x): x is Row => x.t.outcome !== "ABIERTA" && x.r != null && !Number.isNaN(x.open))
@@ -420,9 +420,28 @@ export function buildStrategy(trades: Trade[], rOf: (t: Trade) => number | null,
     after,
     avoidedTrades: dropped.length,
     validation,
-    importedOnly: !!opts.importedOnly,
+    source: opts.source ?? "all",
   };
 }
 
 /** Nivel de confianza en texto corto para mostrar junto a cada regla. */
 export const confidenceLabel = (c: Confidence) => (c === "high" ? tr("Confianza alta") : c === "medium" ? tr("Confianza media") : tr("Confianza baja"));
+
+export interface StrategySource {
+  id: string; // "manual" o el id del exchange de origen
+  count: number; // operaciones cerradas de ese origen
+}
+
+/** De dónde vienen las operaciones cerradas: cada exchange conectado y las cargadas a mano o por señales. */
+export function strategySources(trades: Trade[]): StrategySource[] {
+  const map = new Map<string, number>();
+  for (const x of trades) {
+    if (x.outcome === "ABIERTA") continue;
+    const id = x.source || "manual";
+    map.set(id, (map.get(id) ?? 0) + 1);
+  }
+  return [...map.entries()].map(([id, count]) => ({ id, count })).sort((a, b) => (a.id === "manual" ? 1 : b.id === "manual" ? -1 : b.count - a.count));
+}
+
+/** Solo las operaciones de un origen ("all" = todas). */
+export const filterBySource = (trades: Trade[], source: string) => (source === "all" ? trades : trades.filter((x) => (x.source || "manual") === source));

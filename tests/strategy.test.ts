@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { metricsOf, strategyPlan } from "../packages/core/src/trading";
+import { filterBySource, metricsOf, strategyPlan, strategySources } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
 
 // Operación ya cerrada: entrada 100, riesgo 1 → TP = +rr, SL = −1.
@@ -126,5 +126,36 @@ describe("estrategia sugerida", () => {
     expect(p.validation).not.toBeNull();
     expect(p.validation!.testN).toBeGreaterThanOrEqual(8);
     expect(p.validation!.held).toBe(true);
+  });
+});
+
+describe("estrategia por exchange", () => {
+  const set: Trade[] = [
+    ...Array.from({ length: 12 }, (_, i) => mk(day(1 + i), i % 3 === 0 ? -1 : 2, { source: "mexc" })),
+    ...Array.from({ length: 10 }, (_, i) => mk(day(14 + i), i % 2 === 0 ? -1 : 1, { source: "bitunix" })),
+    ...Array.from({ length: 3 }, (_, i) => mk(day(25 + i), 1)),
+    { ...mk(day(28), 1), outcome: "ABIERTA" as const, closedAt: undefined, source: "mexc" },
+  ];
+  it("lista de dónde viene cada operación cerrada, con el manual al final", () => {
+    expect(strategySources(set)).toEqual([
+      { id: "mexc", count: 12 },
+      { id: "bitunix", count: 10 },
+      { id: "manual", count: 3 },
+    ]);
+  });
+  it("filtra por origen y cada exchange tiene su propio plan", () => {
+    expect(filterBySource(set, "all")).toHaveLength(set.length);
+    expect(filterBySource(set, "mexc")).toHaveLength(13);
+    expect(filterBySource(set, "manual")).toHaveLength(3);
+    const a = strategyPlan(filterBySource(set, "mexc"), { source: "mexc" });
+    const b = strategyPlan(filterBySource(set, "bitunix"), { source: "bitunix" });
+    expect(a.ok && a.source).toBe("mexc");
+    expect(a.ok && a.profile.n).toBe(12);
+    expect(b.ok && b.profile.n).toBe(10);
+    expect(a.ok && b.ok && a.profile.expectancy).not.toBe(b.ok && b.profile.expectancy);
+  });
+  it("un origen con pocas operaciones avisa cuántas faltan", () => {
+    const p = strategyPlan(filterBySource(set, "manual"));
+    expect(p.ok).toBe(false);
   });
 });

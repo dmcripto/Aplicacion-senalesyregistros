@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { confidenceLabel, cx, exchangeName, fmtR, strategyPlan, t } from "../lib";
+import { confidenceLabel, cx, exchangeName, filterBySource, fmtR, strategyPlan, strategySources, t } from "../lib";
 import type { Confidence, StrategyRule, Trade } from "../lib";
 import { useMoney } from "../money";
 import Panel from "./Panel";
@@ -16,11 +16,13 @@ const Tile = ({ label, value, tone }: { label: string; value: string; tone?: "bu
 
 export default function StrategyCard({ trades }: { trades: Trade[] }) {
   const { money } = useMoney();
-  const imported = useMemo(() => trades.filter((x) => x.source), [trades]);
-  const [onlyImported, setOnlyImported] = useState(false);
-  const use = onlyImported && imported.length ? imported : trades;
-  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, importedOnly: onlyImported }), [use, money.riskPct, onlyImported]);
-  const sources = [...new Set(imported.map((x) => x.source as string))];
+  const sources = useMemo(() => strategySources(trades), [trades]);
+  const [picked, setPicked] = useState("all");
+  const source = sources.some((x) => x.id === picked) ? picked : "all";
+  const use = useMemo(() => filterBySource(trades, source), [trades, source]);
+  const plan = useMemo(() => strategyPlan(use, { riskPct: money.riskPct, source }), [use, money.riskPct, source]);
+  const showPicker = sources.some((x) => x.id !== "manual");
+  const nameOf = (id: string) => (id === "manual" ? t("A mano y señales") : exchangeName(id as never));
 
   const summary = !plan.ok
     ? `${plan.have}/${plan.needed} ${t("operaciones")}`
@@ -33,20 +35,20 @@ export default function StrategyCard({ trades }: { trades: Trade[] }) {
   return (
     <Panel id="strategy" title={t("ESTRATEGIA SUGERIDA")} subtitle={t("Reglas armadas con tus propias operaciones")} summary={summary} defaultOpen={false}>
       <div className="space-y-4 p-5">
-        {imported.length > 0 && (
-          <div className="flex gap-1 rounded-lg border border-line bg-ink p-1">
-            {[
-              [false, t("Todas mis operaciones")],
-              [true, sources.length === 1 ? t("Solo {name}", { name: exchangeName(sources[0] as never) }) : t("Solo las de mi exchange")],
-            ].map(([v, label]) => (
-              <button
-                key={String(v)}
-                onClick={() => setOnlyImported(v as boolean)}
-                className={cx("flex-1 rounded-md px-2 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] transition-colors", onlyImported === v ? "bg-gold text-ink" : "text-fog hover:text-snow")}
-              >
-                {label as string}
-              </button>
-            ))}
+        {showPicker && (
+          <div>
+            <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog">{t("Ver la estrategia de")}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ id: "all", label: t("Todas") }, ...sources.map((x) => ({ id: x.id, label: `${nameOf(x.id)} · ${x.count}` }))].map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setPicked(o.id)}
+                  className={cx("rounded-md border px-2.5 py-1.5 text-[11px] font-bold transition-colors", source === o.id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
@@ -18,6 +18,61 @@ function Guide({ exchange }: { exchange: ExchangeId }) {
         <li key={s}>{s}</li>
       ))}
     </ol>
+  );
+}
+
+/** Desplegable con todos los exchanges: ocupa una sola línea y al tocarlo aparece la lista completa. */
+function ExchangePicker({ value, onChange, connected }: { value: ExchangeId; onChange: (id: ExchangeId) => void; connected: ExchangeId[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <div ref={ref}>
+      <span className={label}>{t("Exchange")}</span>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={cx("flex w-full items-center justify-between rounded-md border bg-ink px-3 py-2.5 text-[13px] font-bold text-snow transition-colors", open ? "border-gold" : "border-line hover:border-line2")}
+      >
+        <span>{exchangeName(value)}</span>
+        <span className="text-[10px] text-gold" aria-hidden>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && (
+        <ul role="listbox" aria-label={t("Exchange")} className="mt-1.5 overflow-hidden rounded-md border border-line bg-ink/60">
+          {EXCHANGE_LIST.map((e) => (
+            <li key={e.id} role="option" aria-selected={e.id === value}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(e.id);
+                  setOpen(false);
+                }}
+                className={cx("flex w-full items-center justify-between gap-2 border-b border-line/50 px-3 py-2.5 text-left text-[12.5px] font-semibold last:border-b-0", e.id === value ? "bg-gold/15 text-gold" : "text-fog hover:bg-ink hover:text-snow")}
+              >
+                <span>{e.name}</span>
+                {connected.includes(e.id) && <span className="text-[9.5px] font-bold uppercase tracking-wider text-bull">{t("Conectado")}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -222,21 +277,7 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
             {unit == null && <CapitalStep money={money} onSave={onSaveMoney} />}
             {unit != null && (
               <>
-            <div className="flex flex-wrap gap-2">
-              {EXCHANGE_LIST.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => setExchange(e.id)}
-                  className={cx(
-                    "min-w-[72px] flex-1 rounded-md border px-3 py-2 text-[12px] font-bold transition-colors",
-                    exchange === e.id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow",
-                  )}
-                >
-                  {e.name}
-                </button>
-              ))}
-            </div>
+            <ExchangePicker value={exchange} onChange={setExchange} connected={(conns ?? []).map((c) => c.exchange)} />
 
             <details className="rounded-md border border-line bg-ink/40 text-[11.5px]">
               <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">
