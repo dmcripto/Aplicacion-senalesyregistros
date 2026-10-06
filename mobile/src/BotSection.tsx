@@ -261,6 +261,11 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
         <View style={st.notice}>
           <Text style={st.label}>{t("Laboratorio de variantes")}</Text>
           <Text style={[st.hint, { color: colors.snow }]}>{labVerdict(lab.variants)}</Text>
+          {!!lab.scanned && (
+            <Text style={st.dim}>
+              {t("Esta prueba usa {n} activos (los más operados de hoy), solo con velas de 4 horas. Elegir los de más volumen de hoy favorece a los que ya subieron: el resultado del pasado sale algo más lindo que el real.", { n: lab.scanned })}
+            </Text>
+          )}
           {lab.variants.map((v) => (
             <View key={v.id} style={[st.ruleRow, { flexDirection: "column", alignItems: "stretch", gap: 4 }, labPasses(v) && { borderColor: colors.bull }]}>
               <Text style={st.name}>

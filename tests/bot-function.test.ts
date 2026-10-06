@@ -418,6 +418,16 @@ describe("función bot · laboratorio de variantes", () => {
     for (const v of r.body.variants) expect(v.first.n + v.second.n).toBe(v.whole.n);
   });
 
+  it("con escaneo prueba solo las variantes de 4 horas sobre los activos más operados", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: false, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, scan_top: 20 });
+    const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
+    expect(r.body.ok).toBe(true);
+    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h4-balanced", "h4-conservative", "h4-wide", "h4-fast"]);
+    expect(r.body.scanned).toBe(6);
+    expect(r.body.symbols).toHaveLength(6);
+  });
+
   it("si no se pueden bajar los precios lo dice", async () => {
     vi.stubGlobal("fetch", async () => new Response("no", { status: 500 }));
     const r = await call({ action: "lab", symbols: ["ETHUSDT"] }); // otro activo: los de la prueba anterior quedan en la memoria de 30 minutos

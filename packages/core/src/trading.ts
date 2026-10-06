@@ -1492,7 +1492,7 @@ export interface BotLabRow {
   first: BotStatsRow;
   second: BotStatsRow;
 }
-export type BotLab = { ok: true; days: number; variants: BotLabRow[]; symbols: string[] } | { ok: false; error?: string };
+export type BotLab = { ok: true; days: number; variants: BotLabRow[]; symbols: string[]; scanned?: number } | { ok: false; error?: string };
 
 export function labVariantInfo(id: string): { name: string; blurb: string } {
   switch (id) {

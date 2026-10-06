@@ -729,6 +729,7 @@ export const EN: Record<string, string> = {
   "El bot mira solo los activos que elegiste arriba.": "The bot only watches the assets you chose above.",
   "Además de tus activos, el bot mira los {n} futuros más operados y, si hay varias señales a la vez, toma primero las más fuertes. Sigue siendo simulado.": "Besides your assets, the bot watches the {n} most traded futures and, if there are several signals at once, takes the strongest first. It's still simulated.",
   "La prueba incluye {n} activos (los más operados de hoy). Ojo: elegir los de más volumen de hoy favorece a los que ya subieron, así que el resultado del pasado sale algo más lindo que el real. Abajo se ven los 10 con más operaciones.": "The test includes {n} assets (today's most traded). Careful: picking today's highest-volume assets favors those that already went up, so the past result looks somewhat better than the real one. Below are the 10 with the most trades.",
+  "Esta prueba usa {n} activos (los más operados de hoy), solo con velas de 4 horas. Elegir los de más volumen de hoy favorece a los que ya subieron: el resultado del pasado sale algo más lindo que el real.": "This test uses {n} assets (today's most traded), with 4-hour candles only. Picking today's highest-volume assets favors those that already went up: the past result looks somewhat better than the real one.",
   "Próximamente en Google Play": "Coming soon on Google Play",
   "PRÓXIMAMENTE EN": "COMING SOON ON",
   "CURVA DE CAPITAL": "EQUITY CURVE",

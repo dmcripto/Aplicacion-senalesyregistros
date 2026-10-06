@@ -11,7 +11,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
 import type { BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
@@ -176,30 +176,41 @@ async function runBacktest(userId: string, chosen: string[], days: number) {
  * Laboratorio: varias versiones de la estrategia (velas de 1 y de 4 horas) sobre un año de precios reales, sin reglas,
  * con los mismos topes de la persona. Cada una se mide entera y por mitades (la primera y la segunda parte del año).
  */
-async function runLabTest(userId: string, symbols: string[]) {
-  const { data: cfg } = await admin.from("bot_settings").select("max_open, daily_loss_r").eq("user_id", userId).maybeSingle();
+async function runLabTest(userId: string, chosen: string[]) {
+  const { data: cfg } = await admin.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
   const base = { maxOpen: Number(cfg?.max_open ?? 3), dailyLossR: Number(cfg?.daily_loss_r ?? 3), timeZone: (prof?.timezone as string | null) ?? null };
 
+  // Con el escaneo del mercado se prueban también los futuros más operados. Para no saturar al exchange solo se
+  // bajan velas de 4 horas (la referencia de 1 hora ya se conoce de la prueba sin escaneo).
+  const scan = scanSizeOf(cfg?.scan_top);
+  let symbols = chosen;
+  if (scan) {
+    try {
+      symbols = [...new Set([...chosen, ...(await universe(scan))])];
+    } catch {
+      /* sin la lista del mercado: se prueba con los activos elegidos */
+    }
+  }
+  const scanning = scan > 0 && symbols.length > chosen.length;
+  const variants = scanning ? LAB_VARIANTS.filter((v) => v.params.tf === "4h") : LAB_VARIANTS;
+  const tfs = [...new Set(variants.map((v) => v.params.tf ?? "1h"))] as BotTimeframe[];
+
   const bars: Record<BotTimeframe, Record<string, Bar[]>> = { "1h": {}, "4h": {} };
-  const errors: Record<string, string> = {};
-  await Promise.all(
-    symbols.flatMap((symbol) =>
-      (["1h", "4h"] as const).map(async (tf) => {
-        const perDay = tf === "4h" ? 6 : 24;
-        try {
-          bars[tf][symbol] = await barsFor(symbol, LAB_DAYS * perDay + MAX_WARMUP, tf);
-        } catch (e) {
-          errors[symbol] = e instanceof Error ? e.message : "error";
-        }
-      }),
-    ),
-  );
-  const ok = symbols.filter((x) => bars["1h"][x] && bars["4h"][x]);
+  const jobs = symbols.flatMap((symbol) => tfs.map((tf) => ({ symbol, tf })));
+  await mapPool(jobs, 8, async ({ symbol, tf }) => {
+    const perDay = tf === "4h" ? 6 : 24;
+    try {
+      bars[tf][symbol] = await barsFor(symbol, LAB_DAYS * perDay + MAX_WARMUP, tf);
+    } catch {
+      /* ese activo queda afuera */
+    }
+  });
+  const ok = symbols.filter((x) => tfs.every((tf) => bars[tf][x]));
   if (!ok.length) return { ok: false, error: "No se pudieron bajar los precios. Probá de nuevo en unos minutos." };
   const usable = (tf: BotTimeframe) => Object.fromEntries(ok.map((x) => [x, bars[tf][x]]));
   const mid = Date.now() - (LAB_DAYS / 2) * 24 * 3_600_000;
-  return { ok: true, days: LAB_DAYS, variants: runLab(usable, { symbols: ok, ...base }, mid), symbols: ok };
+  return { ok: true, days: LAB_DAYS, variants: runLab(usable, { symbols: ok, ...base }, mid, variants), symbols: ok, scanned: scanning ? ok.length : 0 };
 }
 
 // ─── Corrida periódica ──────────────────────────────────────────────────────
