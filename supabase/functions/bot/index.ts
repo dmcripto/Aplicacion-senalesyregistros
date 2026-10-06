@@ -12,7 +12,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
-import type { BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
+import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
 import { esc, notifyTelegram } from "../_shared/telegram.ts";
@@ -34,7 +34,8 @@ const MAX_USERS = 2000; // personas con el bot encendido que se leen por corrida
 const BUDGET_MS = 100_000; // si la corrida se alarga, lo que falte se atiende en la siguiente (primero los que hace más que no se revisan)
 const MAX_WARMUP = Math.max(...BOT_PROFILE_IDS.map((id) => WARMUP(BOT_PROFILES[id])));
 const TICK_BARS = MAX_WARMUP + 80; // lo justo para calcular los indicadores de cualquier perfil y resolver operaciones recientes
-const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${id === "conservative" ? "perfil conservador" : id === "dynamic" ? "perfil dinámico" : "perfil equilibrado"}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
+const PROFILE_LABEL: Record<BotProfileId, string> = { conservative: "perfil conservador", dynamic: "perfil dinámico", balanced: "perfil equilibrado", slow: "perfil lento, velas de 4 horas" };
+const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${PROFILE_LABEL[id]}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
 const TAG = "Bot simulado";
 
 // ─── Avisos personales ──────────────────────────────────────────────────────
@@ -45,6 +46,7 @@ const PROFILE_NAME: Record<BotProfileId, { es: string; en: string }> = {
   conservative: { es: "conservador", en: "conservative" },
   balanced: { es: "equilibrado", en: "balanced" },
   dynamic: { es: "dinámico", en: "dynamic" },
+  slow: { es: "lento (4 horas)", en: "slow (4 hours)" },
 };
 
 const notifyPref = new Map<string, boolean>();
@@ -141,19 +143,28 @@ async function runBacktest(userId: string, chosen: string[], days: number) {
     }
   }
   const bars: Record<string, Bar[]> = {};
+  const bars4h: Record<string, Bar[]> = {}; // para el perfil lento (si un activo no baja en 4 horas, ese perfil lo deja afuera)
   const errors: Record<string, string> = {};
+  const count4h = 6 * days + MAX_WARMUP;
   await mapPool(symbols, 8, async (symbol) => {
     try {
-      bars[symbol] = await barsFor(symbol, count);
+      bars[symbol] = await barsFor(symbol, count, "1h");
     } catch (e) {
       errors[symbol] = e instanceof Error ? e.message : "error";
+      return;
+    }
+    try {
+      bars4h[symbol] = await barsFor(symbol, count4h, "4h");
+    } catch {
+      /* solo el perfil lento pierde este activo */
     }
   });
   symbols = symbols.filter((x) => bars[x]);
-  const without = simulate(bars, { symbols, rules: [], ...base }, params);
-  const withRules = rules.length ? simulate(bars, { symbols, rules, ...base }, params) : null;
-  // Los tres perfiles, sin reglas y con los mismos límites, para compararlos.
-  const byProfile = BOT_PROFILE_IDS.map((id) => ({ id, current: id === profile, stats: botStats(simulate(bars, { symbols, rules: [], ...base }, BOT_PROFILES[id]).trades.map((t) => t.r)) }));
+  const sim = (rules: BotAction[], p: BotParams) => simulate(p.tf === "4h" ? bars4h : bars, { symbols, rules, ...base }, p);
+  const without = sim([], params);
+  const withRules = rules.length ? sim(rules, params) : null;
+  // Los perfiles, sin reglas y con los mismos límites, para compararlos.
+  const byProfile = BOT_PROFILE_IDS.map((id) => ({ id, current: id === profile, stats: botStats(sim([], BOT_PROFILES[id]).trades.map((t) => t.r)) }));
   return {
     ok: true,
     days,
@@ -233,7 +244,13 @@ interface OpenBotTrade {
   entry: number;
   sl: number;
   tp: number;
+  external_id?: string | null;
 }
+
+/** Las operaciones del perfil lento llevan «:4h» al final del identificador (así se sabe con qué velas seguirlas). */
+const tfOfTrade = (t: { external_id?: string | null }): BotTimeframe => (t.external_id?.endsWith(":4h") ? "4h" : "1h");
+const profileOf = (s: { profile?: unknown }): BotProfileId => (isProfileId(s.profile) ? s.profile : "balanced");
+const tfOfSettings = (s: { profile?: unknown }): BotTimeframe => paramsOf(profileOf(s)).tf ?? "1h";
 
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
@@ -242,7 +259,7 @@ async function tick() {
   const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).order("last_tick_at", { ascending: true, nullsFirst: true }).limit(MAX_USERS);
   const settings = (rows ?? []) as Settings[];
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
-  const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
+  const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp, external_id").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
   const open = (openRows ?? []) as OpenBotTrade[];
   // Quien escanea el mercado mira además los futuros más operados (la lista es la misma para todos y se baja una vez).
   const failed: string[] = [];
@@ -256,15 +273,19 @@ async function tick() {
     }
   }
   const watchOf = (s: Settings) => [...new Set([...s.symbols, ...top.slice(0, scanSizeOf(s.scan_top))])].filter(isTradableSymbol);
-  const symbols = [...new Set([...settings.flatMap(watchOf), ...open.map((t) => t.symbol)])].filter(isTradableSymbol);
-  if (!symbols.length) return { ok: true, users: 0, opened: 0, closed: 0 };
+  // Qué velas hacen falta: de cada activo, las del tamaño que usa cada perfil (1 o 4 horas) y las de sus operaciones abiertas.
+  const need = new Set<string>();
+  for (const s of settings) for (const sym of watchOf(s)) need.add(`${sym}|${tfOfSettings(s)}`);
+  for (const t of open) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|${tfOfTrade(t)}`);
+  if (!need.size) return { ok: true, users: 0, opened: 0, closed: 0 };
 
-  const bars = new Map<string, Bar[]>();
-  await mapPool(symbols, 8, async (s) => {
+  const bars = new Map<string, Bar[]>(); // clave: «ACTIVO|1h» o «ACTIVO|4h»
+  await mapPool([...need], 8, async (key) => {
+    const [sym, tf] = key.split("|") as [string, BotTimeframe];
     try {
-      bars.set(s, await fetchBars(s, TICK_BARS));
+      bars.set(key, await fetchBars(sym, TICK_BARS, fetch, tf));
     } catch (e) {
-      failed.push(`${s}: ${e instanceof Error ? e.message : "error"}`);
+      failed.push(`${sym}: ${e instanceof Error ? e.message : "error"}`);
     }
   });
 
@@ -275,16 +296,18 @@ async function tick() {
     : { data: [] as Array<{ trade_id: string; candle_time: string }> };
   const candleOf = new Map((sigRows ?? []).map((r) => [r.trade_id, new Date(r.candle_time).getTime()]));
   for (const t of open) {
-    const b = bars.get(t.symbol);
+    const tf = tfOfTrade(t);
+    const b = bars.get(`${t.symbol}|${tf}`);
     const candle = candleOf.get(t.id);
     if (!b || candle == null) continue;
-    const from = b.findIndex((x) => x.t >= candle + BAR_MS);
+    const barMs = barMsOf({ tf });
+    const from = b.findIndex((x) => x.t >= candle + barMs);
     if (from < 0) continue;
     const hit = resolveFrom(b, from, t);
     if (!hit) continue;
     const { data: upd } = await admin
       .from("trades")
-      .update({ outcome: hit.outcome, closed_at: new Date(b[hit.index].t + BAR_MS).toISOString(), auto_closed: true })
+      .update({ outcome: hit.outcome, closed_at: new Date(b[hit.index].t + barMs).toISOString(), auto_closed: true })
       .eq("id", t.id)
       .eq("outcome", "ABIERTA")
       .select("id");
@@ -309,8 +332,10 @@ async function tick() {
       deferred = settings.length - n;
       break;
     }
-    const profile: BotProfileId = isProfileId(s.profile) ? s.profile : "balanced";
+    const profile = profileOf(s);
     const params = paramsOf(profile);
+    const tf = tfOfSettings(s);
+    const barMs = barMsOf({ tf });
     const rules: BotAction[] = cleanActions(s.rules);
     const { data: openNow } = await admin.from("trades").select("symbol").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
     const openSymbols = new Set((openNow ?? []).map((r: { symbol: string }) => r.symbol));
@@ -339,9 +364,9 @@ async function tick() {
     const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
     for (const symbol of watchOf(s)) {
       if (openSymbols.has(symbol)) continue;
-      const b = bars.get(symbol);
+      const b = bars.get(`${symbol}|${tf}`);
       if (!b) continue;
-      const done = closedBars(b);
+      const done = closedBars(b, Date.now(), barMs);
       const i = done.length - 1;
       if (i < 0) continue;
       const key = `${symbol}:${profile}`;
@@ -353,9 +378,9 @@ async function tick() {
     for (const { symbol, sig } of found) {
       if (count >= s.max_open) break;
       if (maxPerDay != null && openedToday >= maxPerDay) continue;
-      const when = localParts(sig.t + BAR_MS, tzOf.get(s.user_id) ?? null);
+      const when = localParts(sig.t + barMs, tzOf.get(s.user_id) ?? null);
       if (!allowedByActions(rules, { symbol, direction: sig.direction, weekday: when.weekday, block: when.block })) continue;
-      if (Date.now() - (sig.t + BAR_MS) > 2 * BAR_MS) continue; // señal vieja (la función estuvo caída): no se persigue
+      if (Date.now() - (sig.t + barMs) > 2 * BAR_MS) continue; // señal vieja (la función estuvo caída): no se persigue
       // Primero la señal (única por vela): si otra corrida ya la anotó, no se duplica.
       const { data: already } = await admin.from("bot_signals").select("id").eq("user_id", s.user_id).eq("symbol", symbol).eq("candle_time", new Date(sig.t).toISOString()).maybeSingle();
       if (already) continue;
@@ -367,7 +392,7 @@ async function tick() {
       if (sigErr || !signal) continue;
       const { data: trade, error: trErr } = await admin
         .from("trades")
-        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: `${symbol}:${sig.t}`, notes: noteFor(profile), tags: [TAG] })
+        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: tf === "4h" ? `${symbol}:${sig.t}:4h` : `${symbol}:${sig.t}`, notes: noteFor(profile), tags: [TAG] })
         .select("id")
         .single();
       if (trErr || !trade) {

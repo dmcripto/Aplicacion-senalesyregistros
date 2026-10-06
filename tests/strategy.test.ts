@@ -313,9 +313,9 @@ describe("veredicto de la prueba con y sin reglas", () => {
 
 describe("perfiles del bot: pantalla y servidor", () => {
   it("los números de cada perfil son los mismos en el núcleo y en la función del servidor", () => {
-    for (const id of ["conservative", "balanced", "dynamic"] as const) {
+    for (const id of ["conservative", "balanced", "dynamic", "slow"] as const) {
       const c = CORE_PROFILES[id], s = SERVER_PROFILES[id];
-      expect({ lookback: s.lookback, emaFast: s.emaFast, emaSlow: s.emaSlow, atrMult: s.atrMult, rr: s.rr }).toEqual(c);
+      expect({ lookback: s.lookback, emaFast: s.emaFast, emaSlow: s.emaSlow, atrMult: s.atrMult, rr: s.rr, tf: s.tf ?? "1h" }).toEqual(c);
     }
   });
 
@@ -328,6 +328,12 @@ describe("perfiles del bot: pantalla y servidor", () => {
     expect(dyn).toContain("últimas 10 velas");
     expect(dyn).toContain("1,5R");
     expect(dyn).toContain("media de 20 velas sobre la de 100");
+  });
+
+  it("«Cómo decide» del perfil lento habla de velas de 4 horas", () => {
+    expect(botHowItDecides("slow").join(" ")).toContain("velas de 4 horas");
+    expect(botHowItDecides("balanced").join(" ")).toContain("velas de 1 hora");
+    expect(botProfileInfo("slow").name).toBe("Lento (4 horas)");
   });
 
   it("cada perfil tiene nombre y explicación", () => {
