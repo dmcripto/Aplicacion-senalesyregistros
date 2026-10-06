@@ -184,3 +184,62 @@ describe("consultas", () => {
     expect(lastText()).toMatch(/Use \/language/);
   });
 });
+
+describe("/anunciar: publicar el aviso oficial en las comunidades", () => {
+  const owner = () => { db.tables.profiles[0].bot_beta = true; };
+  const community = (chat = -1001) => db.tables.telegram_communities.push({ id: `c${chat}`, user_id: "u1", chat_id: chat, thread_id: null });
+  const to = (chat: number) => sent.filter((x) => x.method === "sendMessage" && x.payload.chat_id === chat);
+
+  beforeEach(() => { db.tables.telegram_communities = []; });
+
+  it("para una cuenta sin la llave el comando no existe (muestra la ayuda) y no publica nada", async () => {
+    link(); community();
+    await msg("/anunciar bot confirmar");
+    expect(lastText()).toContain("Pegá acá una señal");
+    expect(to(-1001)).toHaveLength(0);
+  });
+
+  it("sin confirmar solo muestra cómo se vería en el chat privado", async () => {
+    owner(); link(); community();
+    await msg("/anunciar bot");
+    expect(to(555).some((x) => x.payload.text.includes("BOT AUTOMÁTICO"))).toBe(true);
+    expect(lastText()).toContain("/anunciar bot confirmar");
+    expect(to(-1001)).toHaveLength(0);
+  });
+
+  it("con «confirmar» lo publica en la comunidad conectada, sin textos pendientes de completar", async () => {
+    owner(); link(); community();
+    await msg("/anunciar bot confirmar");
+    const posted = to(-1001);
+    expect(posted).toHaveLength(1);
+    expect(posted[0].payload.text).toContain("BOT AUTOMÁTICO");
+    expect(posted[0].payload.text).toContain("veltrix-trading.vercel.app/app");
+    expect(posted[0].payload.text).not.toMatch(/\[[^\]]*\]|2FA|Authenticator/);
+    expect(posted[0].payload.text.length).toBeLessThan(4096);
+    expect(lastText()).toContain("Publicado en 1 comunidad");
+  });
+
+  it("publica en inglés si la cuenta está en inglés", async () => {
+    owner(); db.tables.profiles[0].lang = "en"; link(); community();
+    await msg("/announce bot confirm");
+    expect(to(-1001)[0].payload.text).toContain("AUTOMATIC BOT");
+  });
+
+  it("sin comunidad conectada lo dice y no rompe", async () => {
+    owner(); link();
+    await msg("/anunciar bot confirmar");
+    expect(lastText()).toContain("no tenés una comunidad conectada");
+  });
+
+  it("un aviso que no existe lista los disponibles", async () => {
+    owner(); link(); community();
+    await msg("/anunciar inventado confirmar");
+    expect(lastText()).toContain("Avisos disponibles: bot");
+    expect(to(-1001)).toHaveLength(0);
+  });
+
+  it("los textos de los avisos entran en un mensaje de Telegram", async () => {
+    const { ANNOUNCEMENTS } = await import("../supabase/functions/_shared/announcements");
+    for (const a of Object.values(ANNOUNCEMENTS)) for (const t of [a.es, a.en]) expect(t.length).toBeLessThan(4096);
+  });
+});

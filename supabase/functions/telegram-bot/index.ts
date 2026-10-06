@@ -13,6 +13,7 @@ import { parseAlerts } from "../_shared/parseAlert.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, sendMessage, tgApi } from "../_shared/telegram.ts";
+import { ANNOUNCEMENTS, announcementIds } from "../_shared/announcements.ts";
 import type { Lang } from "../_shared/telegram.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -358,6 +359,9 @@ async function handleMessage(msg: any) {
       await admin.from("profiles").update({ whatsapp_button: on }).eq("id", link.user_id);
       return say(chatId, on ? T[lang].waOn : T[lang].waOff);
     }
+    case "/anunciar":
+    case "/announce":
+      return announce(chatId, link, lang, rest);
     case "/idioma":
     case "/language": {
       const want = (rest[0] ?? "").toLowerCase();
@@ -368,6 +372,28 @@ async function handleMessage(msg: any) {
     default:
       return say(chatId, T[lang].help);
   }
+}
+
+/**
+ * /anunciar ID            → muestra cómo se vería el aviso (solo en este chat).
+ * /anunciar ID confirmar  → lo publica en las comunidades de Telegram conectadas a esta cuenta.
+ * Solo para cuentas habilitadas (profiles.bot_beta); para el resto el comando no existe.
+ */
+async function announce(chatId: number, link: { user_id: string }, lang: Lang, args: string[]) {
+  const { data: prof, error } = await admin.from("profiles").select("bot_beta").eq("id", link.user_id).maybeSingle();
+  if (error || !(prof as { bot_beta?: boolean } | null)?.bot_beta) return say(chatId, T[lang].help);
+  const id = (args[0] ?? "").toLowerCase();
+  const text = ANNOUNCEMENTS[id];
+  const es = lang === "es";
+  if (!text) return say(chatId, es ? `Avisos disponibles: ${announcementIds().join(", ")}.\nUsá /anunciar ${announcementIds()[0]} para ver cómo queda.` : `Available announcements: ${announcementIds().join(", ")}.\nUse /announce ${announcementIds()[0]} to preview it.`);
+  const confirm = ["confirmar", "confirm"].includes((args[1] ?? "").toLowerCase());
+  if (!confirm) {
+    await say(chatId, text[lang]);
+    return say(chatId, es ? `👆 Así se vería. Publicalo solo cuando la app nueva esté lanzada y el bot abierto.\n\nPara publicarlo en tus comunidades conectadas:\n/anunciar ${id} confirmar` : `👆 This is how it would look. Publish it only when the new app is released and the bot is open.\n\nTo publish it in your connected communities:\n/announce ${id} confirm`);
+  }
+  const n = await publishToCommunities(admin, botToken(), link.user_id, (l) => text[l]);
+  if (!n) return say(chatId, es ? "No se publicó en ningún lado: no tenés una comunidad conectada (o el bot ya no está en el grupo o canal)." : "Nothing was published: you have no connected community (or the bot is no longer in the group or channel).");
+  return say(chatId, es ? `✅ Publicado en ${n} ${n === 1 ? "comunidad" : "comunidades"}. Si lo repetís se publica de nuevo.` : `✅ Published in ${n} ${n === 1 ? "community" : "communities"}. If you repeat it, it will be posted again.`);
 }
 
 // ─── Pedidos de la app ──────────────────────────────────────────────────────
