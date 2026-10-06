@@ -184,3 +184,97 @@ describe("consultas", () => {
     expect(lastText()).toMatch(/Use \/language/);
   });
 });
+
+describe("/anunciar: publicar el aviso oficial en las comunidades", () => {
+  const owner = () => { db.tables.profiles[0].bot_beta = true; };
+  const community = (chat = -1001) => db.tables.telegram_communities.push({ id: `c${chat}`, user_id: "u1", chat_id: chat, thread_id: null });
+  const to = (chat: number) => sent.filter((x) => x.method === "sendMessage" && x.payload.chat_id === chat);
+
+  beforeEach(() => { db.tables.telegram_communities = []; });
+
+  it("para una cuenta sin la llave el comando no existe (muestra la ayuda) y no publica nada", async () => {
+    link(); community();
+    await msg("/anunciar bot confirmar");
+    expect(lastText()).toContain("Pegá acá una señal");
+    expect(to(-1001)).toHaveLength(0);
+  });
+
+  it("en el chat privado solo muestra cómo se vería y explica dónde publicarlo, nunca publica", async () => {
+    owner(); link(); community();
+    await msg("/anunciar bot");
+    expect(to(555).some((x) => x.payload.text.includes("BOT AUTOMÁTICO"))).toBe(true);
+    expect(lastText()).toContain("«APPS»");
+    expect(lastText()).toContain("/anunciar bot confirmar");
+    await msg("/anunciar bot confirmar");
+    expect(to(-1001)).toHaveLength(0); // ni siquiera con «confirmar»: se publica desde el grupo
+  });
+
+  it("un aviso que no existe lista los disponibles", async () => {
+    owner(); link(); community();
+    await msg("/anunciar inventado confirmar");
+    expect(lastText()).toContain("Avisos disponibles: bot");
+    expect(to(-1001)).toHaveLength(0);
+  });
+
+  it("los textos de los avisos entran en un mensaje de Telegram", async () => {
+    const { ANNOUNCEMENTS } = await import("../supabase/functions/_shared/announcements");
+    for (const a of Object.values(ANNOUNCEMENTS)) for (const t of [a.es, a.en]) expect(t.length).toBeLessThan(4096);
+  });
+});
+
+describe("/anunciar escrito dentro del grupo (en el tema APPS)", () => {
+  const group = (text: string, opts: { thread?: number; from?: number } = {}) =>
+    update({ update_id: ++uid, message: { message_id: 9, chat: { id: -1002, type: "supergroup" }, from: { id: opts.from ?? 77, language_code: "es" }, text, ...(opts.thread ? { is_topic_message: true, message_thread_id: opts.thread } : {}) } });
+  const posted = () => sent.filter((x) => x.method === "sendMessage" && x.payload.chat_id === -1002);
+  let role = "administrator";
+
+  beforeEach(() => {
+    role = "administrator";
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1002, thread_id: 5 }]; // conectado en otro tema (SEÑALES)
+    db.tables.profiles[0].bot_beta = true;
+    const base = (globalThis as any).fetch;
+    vi.stubGlobal("fetch", async (url: any, init: any) => {
+      const method = String(url).split("/").pop()!;
+      if (method === "getChatMember") return new Response(JSON.stringify({ ok: true, result: { status: role } }));
+      return base(url, init);
+    });
+  });
+
+  it("un administrador publica en el tema donde escribe el comando", async () => {
+    await group("/anunciar bot confirmar", { thread: 9 });
+    expect(posted()).toHaveLength(1);
+    expect(posted()[0].payload.message_thread_id).toBe(9);
+    expect(posted()[0].payload.text).toContain("BOT AUTOMÁTICO");
+    expect(posted()[0].payload.text).toContain("veltrix-trading.vercel.app/app");
+    expect(posted()[0].payload.text).not.toMatch(/\[[^\]]*\]|2FA|Authenticator/); // nada por completar ni funciones que todavía no existen
+  });
+
+  it("publica en inglés si la cuenta está en inglés", async () => {
+    db.tables.profiles[0].lang = "en";
+    await group("/announce bot confirm", { thread: 9 });
+    expect(posted()[0].payload.text).toContain("AUTOMATIC BOT");
+  });
+
+  it("sin «confirmar» no publica el aviso: explica cómo hacerlo", async () => {
+    await group("/anunciar bot", { thread: 9 });
+    expect(posted()).toHaveLength(1);
+    expect(posted()[0].payload.text).toContain("/anunciar bot confirmar");
+    expect(posted()[0].payload.text).not.toContain("BOT AUTOMÁTICO");
+  });
+
+  it("quien no es administrador no logra nada (ni respuesta)", async () => {
+    role = "member";
+    await group("/anunciar bot confirmar", { thread: 9 });
+    expect(posted()).toHaveLength(0);
+  });
+
+  it("en un grupo no conectado, o de una cuenta sin la llave, el comando no existe", async () => {
+    db.tables.telegram_communities = [];
+    await group("/anunciar bot confirmar");
+    expect(posted()).toHaveLength(0);
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1002, thread_id: null }];
+    db.tables.profiles[0].bot_beta = false;
+    await group("/anunciar bot confirmar");
+    expect(posted()).toHaveLength(0);
+  });
+});
