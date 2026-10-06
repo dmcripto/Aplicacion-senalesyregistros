@@ -225,7 +225,7 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
           </View>
           {test.byProfile && (
             <View style={st.notice}>
-              <Text style={st.label}>{t("Los tres perfiles, sin reglas")}</Text>
+              <Text style={st.label}>{t("Los perfiles, sin reglas")}</Text>
               {test.byProfile.map((x) => (
                 <View key={x.id} style={st.row}>
                   <Text style={[st.name, x.current && { color: colors.gold }]}>
@@ -235,7 +235,7 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
                   <Line s={x.stats} />
                 </View>
               ))}
-              <Text style={st.dim}>{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</Text>
+              <Text style={st.dim}>{t("Con pocas opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</Text>
             </View>
           )}
           {!!test.scanned && (

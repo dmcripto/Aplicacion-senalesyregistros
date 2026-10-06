@@ -13,16 +13,16 @@ beforeAll(async () => {
   await import("../supabase/functions/bot/index");
 });
 
-const hour = () => Math.floor(Date.now() / BAR_MS) * BAR_MS; // apertura de la vela en curso
+const hour = (ms = BAR_MS) => Math.floor(Date.now() / ms) * ms; // apertura de la vela en curso
 
 /** Velas de 1 h que terminan con la vela en curso. Tendencia alcista con ruido; si `breakout`, la última CERRADA rompe el máximo. */
-function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {}) {
+function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {}, ms = BAR_MS) {
   const rows: number[][] = [];
   let p = 100;
-  const start = hour() - (n - 1) * BAR_MS;
+  const start = hour(ms) - (n - 1) * ms;
   for (let i = 0; i < n - 1; i++) {
     const c = p + 0.1 + Math.sin(i / 3) * 0.08;
-    rows.push([start + i * BAR_MS, p, Math.max(p, c) + 0.3, Math.min(p, c) - 0.3, c]);
+    rows.push([start + i * ms, p, Math.max(p, c) + 0.3, Math.min(p, c) - 0.3, c]);
     p = c;
   }
   if (breakout) {
@@ -31,16 +31,18 @@ function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {
     rows[last] = [rows[last][0], prev, prev + 5, prev - 0.2, prev + 4.5];
   }
   const c = rows[rows.length - 1][4];
-  rows.push([hour(), c, opts.formingHigh ?? c + 0.1, c - 0.1, c]); // vela en curso
+  rows.push([hour(ms), c, opts.formingHigh ?? c + 0.1, c - 0.1, c]); // vela en curso
   return rows;
 }
 
 let klines: number[][] = [];
+let klines4h: number[][] = [];
 let tickers: Array<{ symbol: string; quoteVolume: string }> = [];
 let sent: { telegram: any[]; push: any[] } = { telegram: [], push: [] };
 beforeEach(() => {
   resetDb({ bot_settings: [], bot_signals: [], trades: [] });
   klines = series(285, true);
+  klines4h = series(285, true, {}, 4 * BAR_MS);
   tickers = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "USDCUSDT", "BTCUSDT_261225", "TINYUSDT", "XAUUSDT", "CLUSDT"].map((symbol, i) => ({ symbol, quoteVolume: String(symbol === "TINYUSDT" ? 1e6 : 9e9 - i * 1e8) }));
   sent = { telegram: [], push: [] };
   vi.stubGlobal("fetch", async (url: any, init?: any) => {
@@ -55,6 +57,7 @@ beforeEach(() => {
     }
     if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/ticker/24hr")) return new Response(JSON.stringify(tickers));
     if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/exchangeInfo")) return new Response(JSON.stringify({ symbols: tickers.map((x) => ({ symbol: x.symbol, status: "TRADING", contractType: x.symbol.includes("_") ? "CURRENT_QUARTER" : "PERPETUAL", underlyingType: "COIN" })) }));
+    if (u.hostname === "fapi.binance.com" && u.searchParams.get("interval") === "4h") return new Response(JSON.stringify(klines4h.map((r) => [...r.map(String), "0"])));
     if (u.hostname === "fapi.binance.com") return new Response(JSON.stringify(klines.map((r) => [...r.map(String), "0"])));
     return new Response("{}", { status: 404 });
   });
@@ -339,7 +342,7 @@ describe("función bot · perfiles de estrategia", () => {
       return { body: (await res.json()) as any };
     })();
     expect(r.body.profile).toBe("dynamic");
-    expect(r.body.byProfile.map((x: any) => x.id)).toEqual(["conservative", "balanced", "dynamic"]);
+    expect(r.body.byProfile.map((x: any) => x.id)).toEqual(["conservative", "balanced", "dynamic", "slow"]);
     expect(r.body.byProfile.filter((x: any) => x.current).map((x: any) => x.id)).toEqual(["dynamic"]);
   });
 });
@@ -411,6 +414,7 @@ describe("función bot · laboratorio de variantes", () => {
 
   it("devuelve las cinco variantes con año completo y mitades", async () => {
     klines = series(3000, true);
+    klines4h = series(3000, true, {}, 4 * BAR_MS);
     const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
@@ -421,6 +425,7 @@ describe("función bot · laboratorio de variantes", () => {
 
   it("con escaneo prueba solo las variantes de 4 horas sobre los activos más operados", async () => {
     klines = series(3000, true);
+    klines4h = series(3000, true, {}, 4 * BAR_MS);
     db.tables.bot_settings.push({ user_id: "u1", enabled: false, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, scan_top: 20 });
     const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
     expect(r.body.ok).toBe(true);
@@ -489,5 +494,62 @@ describe("función bot · escaneo del mercado", () => {
     klines = series(3000, true);
     const r = await call({ action: "backtest", symbols: ["BTCUSDT"], days: 120 });
     expect(r.body.scanned).toBe(0);
+  });
+});
+
+describe("función bot · perfil lento (velas de 4 horas)", () => {
+  const FOUR = 4 * BAR_MS;
+
+  it("anota la operación con velas de 4 horas y la marca con «:4h»", async () => {
+    enable({ profile: "slow" });
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    const t = db.tables.trades[0];
+    expect(t.external_id.endsWith(":4h")).toBe(true);
+    expect(t.notes).toContain("perfil lento");
+    expect(t.notes).toContain("velas de 4 horas");
+  });
+
+  it("el perfil lento ignora las velas de 1 hora y el de 1 hora ignora las de 4", async () => {
+    klines = series(285, false); // 1 hora sin señal
+    enable({ profile: "slow" });
+    expect((await tick()).body.opened).toBe(1); // sí hay señal en 4 horas
+    db.tables.trades.length = 0;
+    db.tables.bot_signals.length = 0;
+    db.tables.bot_settings.length = 0;
+    klines4h = series(285, false, {}, FOUR); // 4 horas sin señal, 1 hora con señal
+    klines = series(285, true);
+    enable({ profile: "slow" });
+    expect((await tick()).body.opened).toBe(0);
+    db.tables.bot_settings.length = 0;
+    enable({ profile: "balanced" });
+    expect((await tick()).body.opened).toBe(1);
+    expect(db.tables.trades[0].external_id.endsWith(":4h")).toBe(false);
+  });
+
+  it("cierra una operación de 4 horas con las velas de 4 horas", async () => {
+    const rows = series(285, false, {}, FOUR);
+    const signalT = rows[rows.length - 5][0];
+    const entry = rows[rows.length - 5][4];
+    rows[rows.length - 2] = [rows[rows.length - 2][0], entry, entry + 3, entry - 0.1, entry + 2.5];
+    klines4h = rows;
+    db.tables.trades.push({ id: "t4", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 2, external_id: `BTCUSDT:${signalT}:4h` });
+    db.tables.bot_signals.push({ id: "s4", user_id: "u1", symbol: "BTCUSDT", candle_time: new Date(signalT).toISOString(), trade_id: "t4" });
+    const r = await tick();
+    expect(r.body.closed).toBe(1);
+    const t = db.tables.trades.find((x) => x.id === "t4");
+    expect(t).toMatchObject({ outcome: "TP", auto_closed: true });
+    expect(new Date(t.closed_at).getTime() - rows[rows.length - 2][0]).toBe(FOUR); // cierra al final de esa vela de 4 horas
+  });
+
+  it("la prueba con historial incluye el perfil lento con sus propias velas", async () => {
+    klines = series(3000, true);
+    klines4h = series(1500, true, {}, FOUR);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, profile: "slow" });
+    const res = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: "Bearer good" }, body: JSON.stringify({ action: "backtest", symbols: ["BTCUSDT"], days: 120 }) }));
+    const r = (await res.json()) as any;
+    expect(r.profile).toBe("slow");
+    expect(r.params.tf).toBe("4h");
+    expect(r.byProfile.filter((x: any) => x.current).map((x: any) => x.id)).toEqual(["slow"]);
   });
 });

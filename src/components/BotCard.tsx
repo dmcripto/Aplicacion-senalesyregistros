@@ -125,7 +125,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
         {profileSupported && (
           <div>
             <span className={label}>{t("Perfil de estrategia")}</span>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
               {BOT_PROFILE_LIST.map((id) => (
                 <button
                   key={id}
@@ -264,7 +264,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
               </div>
               {test.byProfile && (
                 <div className="space-y-1.5 rounded-md border border-line bg-ink/40 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Los tres perfiles, sin reglas")}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Los perfiles, sin reglas")}</p>
                   <ul className="space-y-1 text-[12px] text-fog">
                     {test.byProfile.map((x) => (
                       <li key={x.id} className="flex justify-between gap-2">
@@ -276,7 +276,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                       </li>
                     ))}
                   </ul>
-                  <p className="text-[10.5px] leading-relaxed text-dim">{t("Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</p>
+                  <p className="text-[10.5px] leading-relaxed text-dim">{t("Con pocas opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.")}</p>
                 </div>
               )}
               {!!test.scanned && (

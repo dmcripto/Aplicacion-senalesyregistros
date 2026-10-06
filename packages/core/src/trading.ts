@@ -1417,12 +1417,13 @@ import type { BotAction } from "./strategy";
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
 /** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic";
-export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic"];
-export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number }> = {
-  conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2 },
-  balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2 },
-  dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 1.2, rr: 1.5 },
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "slow";
+export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "slow"];
+export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number; tf: "1h" | "4h" }> = {
+  conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "1h" },
+  balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "1h" },
+  dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 1.2, rr: 1.5, tf: "1h" },
+  slow: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "4h" },
 };
 
 export function botProfileInfo(id: BotProfileId): { name: string; blurb: string } {
@@ -1431,6 +1432,8 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
       return { name: tr("Conservador"), blurb: tr("Menos señales: espera rupturas más grandes y deja más espacio al stop.") };
     case "dynamic":
       return { name: tr("Dinámico"), blurb: tr("Más señales: reacciona antes y busca un objetivo más cercano.") };
+    case "slow":
+      return { name: tr("Lento (4 horas)"), blurb: tr("Velas de 4 horas: pocas operaciones y menos comisiones. Es la que mejor salió en el laboratorio (todavía sin confirmar en vivo).") };
     default:
       return { name: tr("Equilibrado"), blurb: tr("El punto medio: ni muchas ni pocas señales.") };
   }
@@ -1441,7 +1444,7 @@ export function botHowItDecides(id: BotProfileId): string[] {
   const p = BOT_PROFILES[id];
   const n = (x: number) => String(x).replace(".", getLang() === "es" ? "," : ".");
   return [
-    tr("Mira velas de 1 hora ya cerradas, nunca el futuro."),
+    tr("Mira velas de {tf} ya cerradas, nunca el futuro.", { tf: p.tf === "4h" ? tr("4 horas") : tr("1 hora") }),
     tr("Solo compra si la tendencia es alcista (media de {a} velas sobre la de {b}) y solo vende si es bajista.", { a: p.emaFast, b: p.emaSlow }),
     tr("Entra cuando el precio rompe el máximo (o mínimo) de las últimas {n} velas.", { n: p.lookback }),
     tr("Stop a {x} veces el ATR (el rango normal del activo). Objetivo: {r} veces lo arriesgado ({r}R).", { x: n(p.atrMult), r: n(p.rr) }),

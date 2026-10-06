@@ -304,11 +304,18 @@ describe("simulación del bot completo", () => {
 });
 
 describe("perfiles de estrategia", () => {
-  it("hay tres perfiles distintos y el equilibrado es el de siempre", () => {
-    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic"]);
+  it("hay cuatro perfiles distintos y el equilibrado es el de siempre", () => {
+    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "slow"]);
     expect(BOT_PROFILES.balanced).toEqual(DEFAULT_PARAMS);
     const keys = BOT_PROFILE_IDS.map((id) => JSON.stringify(BOT_PROFILES[id]));
-    expect(new Set(keys).size).toBe(3);
+    expect(new Set(keys).size).toBe(4);
+  });
+
+  it("el perfil lento es el equilibrado con velas de 4 horas", () => {
+    expect(BOT_PROFILES.slow).toEqual({ ...BOT_PROFILES.balanced, tf: "4h" });
+    expect(isProfileId("slow")).toBe(true);
+    expect(paramsOf("slow").tf).toBe("4h");
+    expect(describeParams(BOT_PROFILES.slow)).toContain("velas de 4 horas");
   });
 
   it("un perfil desconocido cae en el equilibrado", () => {
