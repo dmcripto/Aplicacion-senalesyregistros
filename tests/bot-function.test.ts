@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDb } from "./helpers/fake-supabase";
 import { BAR_MS } from "../supabase/functions/_shared/botStrategy";
 
@@ -499,6 +499,18 @@ describe("función bot · escaneo del mercado", () => {
 
 describe("función bot · perfil lento (velas de 4 horas)", () => {
   const FOUR = 4 * BAR_MS;
+
+  // Una señal de 4 horas solo se toma hasta 2 horas después de que cierra la vela: la hora se fija a 5 minutos de un cierre
+  // para que la prueba dé lo mismo a cualquier hora del día.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Math.floor(Date.now() / FOUR) * FOUR + 5 * 60_000);
+    klines = series(285, true);
+    klines4h = series(285, true, {}, FOUR);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("anota la operación con velas de 4 horas y la marca con «:4h»", async () => {
     enable({ profile: "slow" });
