@@ -15,7 +15,17 @@ export interface OpenTrade {
   /** Cuántos targets ya se avisaron. */
   targets_hit?: number;
   date: string;
+  /** De dónde viene: «bot» = operación del bot simulado (la sigue la función del bot, nunca esta). */
+  source?: string | null;
+  notes?: string | null;
 }
+
+/** Nota de las señales de prueba que cada persona se manda a sí misma (la escribe la función del bot). */
+export const TEST_SIGNAL_NOTE = "Señal de prueba de VELTRIX: no es una operación real.";
+/** Las operaciones simuladas del bot las cierra y avisa la función del bot: el cierre automático no las toca. */
+export const isSimulated = (t: Pick<OpenTrade, "source">) => t.source === "bot";
+/** Una señal de prueba se sigue y se avisa solo a su dueño: nunca a comunidades ni por WhatsApp. */
+export const isTestSignal = (t: Pick<OpenTrade, "notes">) => t.notes === TEST_SIGNAL_NOTE;
 
 export interface Candle {
   t: number; // apertura, ms

@@ -53,8 +53,7 @@ import {
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
-  reopenTradeById,
-} from "./tradesApi";
+  reopenTradeById, sendTestSignal } from "./tradesApi";
 import type { NewTrade } from "./lib";
 import { LangSwitch, legalUrl } from "./lang";
 import Auth from "./components/Auth";
@@ -230,6 +229,21 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [error, setError] = useState<string | null>(null);
   const [regenArmed, setRegenArmed] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
+  const botReady = useBot().status === "ready"; // la señal de prueba es solo para cuentas habilitadas
+  const [testing, setTesting] = useState(false);
+
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const r = await sendTestSignal();
+      if (r.ok) notify(t("Listo: te mandamos una señal de prueba. Tiene que aparecer arriba y llegarte el aviso."), "ok");
+      else notify(r.error ?? t("No se pudo mandar la señal de prueba."), "err");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t("No se pudo mandar la señal de prueba."), "err");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   useEffect(() => {
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
@@ -328,6 +342,20 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             <li><b className="text-snow">{t("A mano:")}</b> {t("\"Registrar → Manual\".")}</li>
           </ul>
         </details>
+        {botReady && (
+          <div className="rounded-md border border-gold/30 bg-gold/5 p-3">
+            <button
+              onClick={sendTest}
+              disabled={testing}
+              className="w-full rounded-md border border-gold/50 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-40"
+            >
+              🧪 {testing ? t("Mandando…") : t("Mandarme una señal de prueba")}
+            </button>
+            <p className="mt-2 text-[11px] leading-relaxed text-dim">
+              {t("Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.")}
+            </p>
+          </div>
+        )}
         <AlertBuilder notify={notify} />
         {url &&
           (regenArmed ? (

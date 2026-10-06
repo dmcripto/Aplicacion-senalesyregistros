@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, resetDb } from "./helpers/fake-supabase";
 import { BAR_MS } from "../supabase/functions/_shared/botStrategy";
+import { TEST_SIGNAL_NOTE } from "../supabase/functions/_shared/autoClose";
 
 let handler: (req: Request) => Promise<Response>;
 const SECRET = "secreto-de-segundo-plano-123";
@@ -35,12 +36,14 @@ function series(n: number, breakout: boolean, opts: { formingHigh?: number } = {
   return rows;
 }
 
+let btcPrice: string | null = "65000.5";
 let klines: number[][] = [];
 let klines4h: number[][] = [];
 let tickers: Array<{ symbol: string; quoteVolume: string }> = [];
 let sent: { telegram: any[]; push: any[] } = { telegram: [], push: [] };
 beforeEach(() => {
   resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+  btcPrice = "65000.5";
   klines = series(285, true);
   klines4h = series(285, true, {}, 4 * BAR_MS);
   tickers = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT", "USDCUSDT", "BTCUSDT_261225", "TINYUSDT", "XAUUSDT", "CLUSDT"].map((symbol, i) => ({ symbol, quoteVolume: String(symbol === "TINYUSDT" ? 1e6 : 9e9 - i * 1e8) }));
@@ -55,6 +58,8 @@ beforeEach(() => {
       sent.push.push(...JSON.parse(String(init?.body ?? "[]")));
       return new Response("{}");
     }
+    if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/ticker/price")) return btcPrice ? new Response(JSON.stringify({ symbol: "BTCUSDT", price: btcPrice })) : new Response("no", { status: 500 });
+    if (u.hostname === "api.bybit.com" && u.pathname.endsWith("/market/tickers") && u.searchParams.get("symbol")) return new Response("no", { status: 500 });
     if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/ticker/24hr")) return new Response(JSON.stringify(tickers));
     if (u.hostname === "fapi.binance.com" && u.pathname.endsWith("/exchangeInfo")) return new Response(JSON.stringify({ symbols: tickers.map((x) => ({ symbol: x.symbol, status: "TRADING", contractType: x.symbol.includes("_") ? "CURRENT_QUARTER" : "PERPETUAL", underlyingType: "COIN" })) }));
     if (u.hostname === "fapi.binance.com" && u.searchParams.get("interval") === "4h") return new Response(JSON.stringify(klines4h.map((r) => [...r.map(String), "0"])));
@@ -563,5 +568,71 @@ describe("función bot · perfil lento (velas de 4 horas)", () => {
     expect(r.profile).toBe("slow");
     expect(r.params.tf).toBe("4h");
     expect(r.byProfile.filter((x: any) => x.current).map((x: any) => x.id)).toEqual(["slow"]);
+  });
+});
+
+describe("función bot · señal de prueba", () => {
+  const call = async (token = "good") => {
+    const r = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify({ action: "test_signal" }) }));
+    return { status: r.status, body: (await r.json()) as any };
+  };
+  const setup = (beta = true) => {
+    db.tables.profiles = [{ id: "u1", lang: "es", bot_beta: beta }];
+    db.tables.device_tokens = [{ user_id: "u1", expo_push_token: "ExponentPushToken[abc]" }];
+    db.tables.telegram_links = [{ user_id: "u1", chat_id: 777 }];
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001, thread_id: null }];
+  };
+
+  it("pide sesión", async () => {
+    expect((await call("malo")).status).toBe(401);
+  });
+
+  it("una cuenta sin la llave no puede mandarse señales de prueba", async () => {
+    setup(false);
+    const r = await call();
+    expect(r.status).toBe(403);
+    expect(db.tables.trades).toHaveLength(0);
+    expect(sent.push).toHaveLength(0);
+  });
+
+  it("crea una señal abierta con el precio de ahora y avisa por la app y por el Telegram de la persona", async () => {
+    setup();
+    const r = await call();
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, entry: 65000.5, sl: 64350.5, tp: 66300.51 });
+    const t = db.tables.trades[0];
+    expect(t).toMatchObject({ user_id: "u1", symbol: "BTCUSDT", direction: "LONG" });
+    expect(t.tags).toEqual(["Prueba"]);
+    expect(t.notes).toBe(TEST_SIGNAL_NOTE); // el cierre automático la reconoce por esta nota y no la publica en comunidades
+    expect(t.source ?? null).toBeNull();
+    expect(sent.push).toHaveLength(1);
+    expect(sent.push[0].title).toContain("COMPRA");
+    expect(sent.push[0].data.tradeId).toBe(t.id);
+    expect(sent.telegram.map((x: any) => x.chat_id)).toEqual([777]); // solo el chat propio
+    expect(sent.telegram[0].text).toContain("Señal de prueba");
+  });
+
+  it("nunca se publica en la comunidad", async () => {
+    setup();
+    await call();
+    expect(sent.telegram.some((x: any) => x.chat_id === -1001)).toBe(false);
+  });
+
+  it("no deja mandar otra antes de 30 segundos", async () => {
+    setup();
+    expect((await call()).status).toBe(200);
+    // la fila falsa no pone fecha sola: se la damos como lo haría la base
+    db.tables.trades[0].date = new Date().toISOString();
+    const again = await call();
+    expect(again.status).toBe(429);
+    expect(db.tables.trades).toHaveLength(1);
+  });
+
+  it("si no se puede leer el precio lo dice y no crea nada", async () => {
+    setup();
+    btcPrice = null;
+    const r = await call();
+    expect(r.status).toBe(502);
+    expect(db.tables.trades).toHaveLength(0);
   });
 });

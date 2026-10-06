@@ -4,6 +4,8 @@
 //       → prueba la estrategia con el historial real de precios y devuelve el resultado (no toca nada).
 //   · POST con la sesión de la persona   { "action": "lab", "symbols": [...] }
 //       → laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades.
+//   · POST con la sesión de la persona   { "action": "test_signal" }
+//       → (solo cuentas habilitadas) crea una señal abierta de prueba y manda el aviso a la persona; no publica en comunidades.
 //   · POST con el encabezado x-cron-secret (pg_cron, cada 5 minutos)
 //       → para cada persona con el bot encendido: cierra sus operaciones simuladas que tocaron stop u objetivo,
 //         y anota una operación nueva si la última vela cerrada dio señal y los límites lo permiten.
@@ -224,6 +226,51 @@ async function runLabTest(userId: string, chosen: string[]) {
   return { ok: true, days: LAB_DAYS, variants: runLab(usable, { symbols: ok, ...base }, mid, variants), symbols: ok, scanned: scanning ? ok.length : 0 };
 }
 
+// ─── Señal de prueba (solo para cuentas habilitadas) ─────────────────────────
+
+const TEST_NOTE = "Señal de prueba de VELTRIX: no es una operación real.";
+
+async function livePrice(symbol: string): Promise<number | null> {
+  for (const url of [`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`]) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> } };
+      const p = Number(j.price ?? j.result?.list?.[0]?.lastPrice);
+      if (Number.isFinite(p) && p > 0) return p;
+    } catch {
+      /* se prueba con el siguiente proveedor */
+    }
+  }
+  return null;
+}
+
+/**
+ * Crea una señal abierta de prueba (BTC, compra, con el precio de ahora) en la cuenta de la persona y le manda el aviso por la app
+ * y por su Telegram. Sirve para ver cómo llega y cómo se ve una señal. NUNCA se publica en comunidades ni por WhatsApp.
+ */
+async function sendTestSignal(userId: string): Promise<{ status: number; body: Record<string, unknown> }> {
+  const { data: prof, error } = await admin.from("profiles").select("bot_beta, lang").eq("id", userId).maybeSingle();
+  if (error || !(prof as { bot_beta?: boolean } | null)?.bot_beta) return { status: 403, body: { ok: false, error: "Todavía no está disponible para tu cuenta." } };
+  const since = new Date(Date.now() - 30_000).toISOString();
+  const { data: recent } = await admin.from("trades").select("id").eq("user_id", userId).eq("notes", TEST_NOTE).gte("date", since).limit(1);
+  if (recent?.length) return { status: 429, body: { ok: false, error: "Esperá unos segundos antes de mandar otra prueba." } };
+  const price = await livePrice("BTCUSDT");
+  if (!price) return { status: 502, body: { ok: false, error: "No se pudo leer el precio de BTC. Probá de nuevo en un minuto." } };
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const entry = r2(price), sl = r2(price * 0.99), tp = r2(price * 1.02); // stop 1 % abajo, objetivo 2 % arriba (R:R 1:2)
+  const { data: trade, error: insErr } = await admin
+    .from("trades")
+    .insert({ user_id: userId, symbol: "BTCUSDT", direction: "LONG", entry, sl, tp, notes: TEST_NOTE, tags: ["Prueba"] })
+    .select("id")
+    .single();
+  if (insErr || !trade) return { status: 500, body: { ok: false, error: "No se pudo crear la señal de prueba." } };
+  const en = (prof as { lang?: string }).lang === "en";
+  await push(userId, `BTCUSDT · ${en ? "BUY" : "COMPRA"} (${en ? "test" : "prueba"})`, `${en ? "Entry" : "Entrada"} ${entry} · TP ${tp} · SL ${sl}`, trade.id);
+  await notifyTelegram(admin, userId, (l) => `${signalCardHtml({ symbol: "BTCUSDT", direction: "LONG", entry, tp, sl }, l, { header: "🧪", disclaimer: false })}\n\n<i>${esc(l === "en" ? "Test signal: not a real trade." : "Señal de prueba: no es una operación real.")}</i>`);
+  return { status: 200, body: { ok: true, tradeId: trade.id, entry, sl, tp } };
+}
+
 // ─── Corrida periódica ──────────────────────────────────────────────────────
 
 interface Settings {
@@ -436,6 +483,10 @@ Deno.serve(async (req) => {
     body = await req.json();
   } catch {
     /* sin cuerpo */
+  }
+  if (body.action === "test_signal") {
+    const r = await sendTestSignal(auth.user.id);
+    return json(r.body, r.status);
   }
   if (body.action !== "backtest" && body.action !== "lab") return json({ ok: false, error: "Acción no válida" }, 400);
   const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 5);

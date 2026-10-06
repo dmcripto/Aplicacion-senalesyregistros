@@ -339,6 +339,9 @@ export const runBotBacktest = (symbols: string[], days = 120) => callFunction<Bo
 /** Laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades. */
 export const runBotLab = (symbols: string[]) => callFunction<BotLab & { ok: boolean; error?: string }>("bot", { action: "lab", symbols });
 
+/** Crea una señal abierta de prueba en tu cuenta (solo cuentas habilitadas) y manda el aviso. No se publica en comunidades. */
+export const sendTestSignal = () => callFunction<{ ok: boolean; error?: string; tradeId?: string; entry?: number }>("bot", { action: "test_signal" });
+
 // ─── Bot de Telegram ────────────────────────────────────────────────────────
 
 interface TelegramRow {

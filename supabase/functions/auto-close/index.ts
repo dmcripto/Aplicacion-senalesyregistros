@@ -4,7 +4,7 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels } from "../_shared/autoClose.ts";
+import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels, isSimulated, isTestSignal } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { partialCardImage, resultCardImage } from "../_shared/card.ts";
@@ -51,7 +51,7 @@ async function targetAlerts(trade: OpenTrade, candles: Candle[]) {
       const r = risk > 0 ? Math.abs(level - trade.entry) / risk : 0;
       const n = i + 1;
       await notifyTelegram(supabase, trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { header: "🔔", disclaimer: false, n }));
-      await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { n }), (lang) => partialCardImage(sig, level, r, lang, n));
+      if (!isTestSignal(trade)) await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { n }), (lang) => partialCardImage(sig, level, r, lang, n));
     }
   } catch (e) {
     console.error("targets:", e instanceof Error ? e.message : e);
@@ -91,14 +91,15 @@ Deno.serve(async () => {
   const partialOff = new Set((noPartial ?? []).map((p) => p.id as string));
 
   const openTrades = (cols: string) => supabase.from("trades").select(cols).eq("outcome", "ABIERTA").order("date", { ascending: false }).limit(MAX_TRADES);
-  let { data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date,targets,targets_hit");
+  let { data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date,targets,targets_hit,source,notes");
   // Sin las columnas targets / targets_hit (falta correr el SQL) se sigue como antes, sin avisos de targets.
-  if (error) ({ data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date"));
+  if (error) ({ data: rows, error } = await openTrades("id,user_id,symbol,direction,entry,tp,sl,date,source,notes"));
   if (error) return json({ error: error.message }, 500);
 
   const trades: Array<{ trade: OpenTrade; sym: MarketSymbol }> = [];
   for (const r of rows ?? []) {
     if (off.has(r.user_id)) continue;
+    if (isSimulated(r as { source?: string | null })) continue; // las del bot simulado las sigue la función del bot
     const sym = parseMarketSymbol(r.symbol);
     if (!sym) continue;
     trades.push({
@@ -111,6 +112,8 @@ Deno.serve(async () => {
         tp: Number(r.tp),
         sl: Number(r.sl),
         date: r.date,
+        source: (r as { source?: string | null }).source ?? null,
+        notes: (r as { notes?: string | null }).notes ?? null,
         ...("targets_hit" in r ? { targets: (r as { targets?: number[] | null }).targets?.map(Number) ?? null, targets_hit: Number((r as { targets_hit?: number }).targets_hit ?? 0) } : {}),
       },
       sym,
@@ -161,8 +164,10 @@ Deno.serve(async () => {
     const reached = Math.max(detectTargets(trade, candles).filter((at) => at < hit.at).length, trade.targets_hit ?? 0);
     const note = (lang: "es" | "en") => resultNote(hit.outcome, reached, totalTargets, lang);
     await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: lang === "en" ? "Auto-close" : "Cierre automático", note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
-    await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
-    await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
+    if (!isTestSignal(trade)) {
+      await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
+      await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
+    }
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {
       // Idioma del usuario (columna opcional: si todavía no existe, se usa español).
