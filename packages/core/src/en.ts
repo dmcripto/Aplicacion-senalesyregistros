@@ -139,6 +139,8 @@ export const EN: Record<string, string> = {
   "sin datos": "no data",
   "sin operaciones": "no trades",
   "Última revisión: {when}": "Last check: {when}",
+  "Avisarme de cada operación": "Notify me of every trade",
+  "Cuando el bot anota o cierra una operación, te llega a la app y a tu Telegram (si lo vinculaste). Son avisos solo tuyos: no se publica en ninguna comunidad.": "When the bot logs or closes a trade, it reaches the app and your Telegram (if you linked it). These alerts are yours only: nothing is posted to any community.",
   "Con solo tres opciones es difícil engañarse, pero igual: elegir el que mejor salió en el pasado no asegura que siga igual. Confirmalo en modo simulado.": "With only three options it is hard to fool yourself, but still: picking the one that did best in the past does not guarantee it will keep doing so. Confirm it in simulated mode.",
   "Conservador": "Conservative",
   "Dinámico": "Dynamic",

@@ -22,7 +22,7 @@ function Line({ s }: { s: BotStatsRow }) {
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
 export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
-  const { status, settings: s, store, profileSupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
@@ -77,6 +77,16 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
         </View>
         <Switch value={s.enabled} disabled={!ready} onValueChange={(v) => update({ enabled: v })} trackColor={{ true: colors.bull + "88", false: colors.line }} thumbColor={s.enabled ? colors.bull : colors.fog} />
       </View>
+
+      {notifySupported && (
+        <View style={st.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.name}>{t("Avisarme de cada operación")}</Text>
+            <Text style={st.dim}>{t("Cuando el bot anota o cierra una operación, te llega a la app y a tu Telegram (si lo vinculaste). Son avisos solo tuyos: no se publica en ninguna comunidad.")}</Text>
+          </View>
+          <Switch value={s.notify} onValueChange={(v) => update({ notify: v })} trackColor={{ true: colors.bull + "88", false: colors.line }} thumbColor={s.notify ? colors.bull : colors.fog} />
+        </View>
+      )}
 
       <View style={st.notice}>
         <Text style={st.hint}>

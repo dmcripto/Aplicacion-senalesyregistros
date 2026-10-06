@@ -287,12 +287,13 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
   if (error) throw error;
   if (!data) {
     // Sin fila todavía: se mira si cada columna opcional existe preguntándole por ella.
-    const [r, p] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1)]);
-    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error };
+    const [r, p, n] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1), supabase.from("bot_settings").select("notify").limit(1)]);
+    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error, notifySupported: !n.error };
   }
-  const row = data as { rules?: unknown; profile?: unknown };
+  const row = data as { rules?: unknown; profile?: unknown; notify?: unknown };
   const rulesSupported = Array.isArray(row.rules);
   const profileSupported = typeof row.profile === "string";
+  const notifySupported = typeof row.notify === "boolean";
   return {
     enabled: !!data.enabled,
     symbols: (data.symbols as string[]) ?? DEFAULT_BOT.symbols,
@@ -301,15 +302,18 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
     lastTickAt: data.last_tick_at ?? null,
     rules: rulesSupported ? (row.rules as BotAction[]) : [],
     profile: profileSupported && (BOT_PROFILE_LIST as string[]).includes(row.profile as string) ? (row.profile as BotProfileId) : "balanced",
+    notify: notifySupported ? (row.notify as boolean) : true,
     rulesSupported,
     profileSupported,
+    notifySupported,
   };
 }
 
-export async function saveBotSettings(userId: string, s: BotSettings, caps: { rules: boolean; profile: boolean } = { rules: true, profile: true }) {
+export async function saveBotSettings(userId: string, s: BotSettings, caps: { rules: boolean; profile: boolean; notify: boolean } = { rules: true, profile: true, notify: true }) {
   const row: Record<string, unknown> = { user_id: userId, enabled: s.enabled, symbols: s.symbols, max_open: s.maxOpen, daily_loss_r: s.dailyLossR, updated_at: new Date().toISOString() };
   if (caps.rules) row.rules = s.rules;
   if (caps.profile) row.profile = s.profile;
+  if (caps.notify) row.notify = s.notify;
   const { error } = await supabase.from("bot_settings").upsert(row, { onConflict: "user_id" });
   if (error) throw error;
 }

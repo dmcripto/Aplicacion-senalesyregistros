@@ -1460,9 +1460,10 @@ export interface BotSettings {
   lastTickAt: string | null; // última vez que el servidor lo revisó
   rules: BotAction[]; // reglas de «Estrategia sugerida» que la persona eligió aplicar al bot
   profile: BotProfileId; // perfil de estrategia
+  notify: boolean; // avisar de cada operación del bot (app y Telegram propios)
 }
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced" };
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true };
 
 export interface BotStatsRow {
   n: number;
