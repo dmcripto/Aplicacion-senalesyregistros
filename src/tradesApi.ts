@@ -283,6 +283,9 @@ export async function disconnectExchange(id: string) {
 
 /** Los ajustes del bot de esta persona (si todavía no los guardó, los de fábrica: apagado). Falla si el servidor no tiene la tabla del bot. */
 export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
+  // El bot está en prueba: solo lo ven las cuentas habilitadas (profiles.bot_beta). Sin la columna, o sin la llave, queda oculto.
+  const { data: beta, error: betaErr } = await supabase.from("profiles").select("bot_beta").eq("id", userId).maybeSingle();
+  if (betaErr || !(beta as { bot_beta?: boolean } | null)?.bot_beta) throw new Error("El bot todavía no está disponible para tu cuenta.");
   const { data, error } = await supabase.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   if (error) throw error;
   if (!data) {
