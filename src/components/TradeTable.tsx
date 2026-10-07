@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, locale, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "../lib";
 import type { Trade } from "../lib";
 import {
