@@ -14,6 +14,7 @@ import { notifyWhatsApp, waSignalParams } from "../_shared/waCloud.ts";
 import { communitySignalMessage, publishToCommunities, signalCardHtml } from "../_shared/community.ts";
 import { botToken, notifyTelegram } from "../_shared/telegram.ts";
 import { waSignalText } from "../_shared/whatsapp.ts";
+import { fanOutSignal } from "../_shared/signalFeed.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -42,11 +43,11 @@ Deno.serve(async (req) => {
     return new Response("Token de webhook desconocido", { status: 404 });
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("webhook_token", webhookToken)
-    .maybeSingle();
+  const lookup = (cols: string) => supabase.from("profiles").select(cols).eq("webhook_token", webhookToken).maybeSingle();
+  let found = await lookup("id, signal_provider");
+  // Si todavía no se corrió el SQL de «Señales de VELTRIX», la columna no existe: se sigue sin ella.
+  if (found.error && /signal_provider/i.test(found.error.message)) found = await lookup("id");
+  const { data: profile, error: profileError } = found as { data: { id: string; signal_provider?: boolean } | null; error: { message: string } | null };
 
   if (profileError) {
     return new Response(`Error buscando el perfil: ${profileError.message}`, { status: 500 });
@@ -154,6 +155,8 @@ Deno.serve(async (req) => {
       publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
       // Aviso por WhatsApp (si la persona vinculó su número).
       notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
+      // Cuenta emisora: la señal también llega al diario y a los avisos de quienes activaron «Señales de VELTRIX».
+      profile.signal_provider === true ? fanOutSignal(supabase, profile.id, trade.id, sig, row.date) : Promise.resolve(),
     ]),
   );
 

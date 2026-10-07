@@ -90,6 +90,45 @@ describe("función bot · corrida periódica", () => {
     expect(db.tables.bot_signals[0].trade_id).toBe(t.id);
   });
 
+  it("con el bot real encendido le pide la orden a la función «trade» (con el secreto); sin él, no", async () => {
+    const calls: Array<{ url: string; headers: any; body: any }> = [];
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", async (url: any, init?: any) => {
+      if (String(url).includes("/functions/v1/trade")) {
+        calls.push({ url: String(url), headers: init?.headers, body: JSON.parse(String(init?.body)) });
+        return new Response(JSON.stringify({ ok: true }));
+      }
+      return base(url, init);
+    });
+    enable();
+    db.tables.bot_live = [{ user_id: "u1", enabled: true }];
+    await tick();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers["x-cron-secret"]).toBe(SECRET);
+    expect(calls[0].body).toEqual({ action: "execute", userId: "u1", tradeId: db.tables.trades[0].id });
+
+    // apagado: la operación simulada se anota igual, pero no se pide ninguna orden real
+    calls.length = 0;
+    resetDb({ bot_settings: [], bot_signals: [], trades: [], bot_live: [{ user_id: "u1", enabled: false }] });
+    enable();
+    await tick();
+    expect(db.tables.trades).toHaveLength(1);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("si la función «trade» falla o no existe, la operación simulada se anota igual", async () => {
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", async (url: any, init?: any) => {
+      if (String(url).includes("/functions/v1/trade")) throw new Error("caída");
+      return base(url, init);
+    });
+    enable();
+    db.tables.bot_live = [{ user_id: "u1", enabled: true }];
+    const r = await tick();
+    expect(r.body.opened).toBe(1);
+    expect(db.tables.trades).toHaveLength(1);
+  });
+
   it("no duplica la operación si la corrida se repite", async () => {
     enable();
     await tick();

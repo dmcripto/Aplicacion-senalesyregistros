@@ -299,6 +299,26 @@ const tfOfTrade = (t: { external_id?: string | null }): BotTimeframe => (t.exter
 const profileOf = (s: { profile?: unknown }): BotProfileId => (isProfileId(s.profile) ? s.profile : "balanced");
 const tfOfSettings = (s: { profile?: unknown }): BotTimeframe => paramsOf(profileOf(s)).tf ?? "1h";
 
+/**
+ * Bot con dinero real (prueba mínima): le pide a la función «trade» que abra la orden de una operación nueva.
+ * Esa función revisa todo de nuevo (llave beta, topes, saldo) y, si el modo está «en seco», solo anota lo que habría enviado.
+ * Un fallo acá nunca afecta a la operación simulada.
+ */
+async function sendLiveOrder(userId: string, tradeId: string) {
+  const secret = Deno.env.get("BOT_CRON_SECRET") ?? Deno.env.get("EXCHANGE_CRON_SECRET");
+  if (!secret) return;
+  try {
+    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/trade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-secret": secret },
+      body: JSON.stringify({ action: "execute", userId, tradeId }),
+      signal: AbortSignal.timeout(25_000),
+    });
+  } catch (e) {
+    console.error("orden real:", e instanceof Error ? e.message : e);
+  }
+}
+
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
@@ -371,6 +391,9 @@ async function tick() {
     ? await admin.from("profiles").select("id, timezone").in("id", settings.map((x) => x.user_id))
     : { data: [] as Array<{ id: string; timezone: string | null }> };
   const tzOf = new Map((profs ?? []).map((p: { id: string; timezone: string | null }) => [p.id, p.timezone]));
+  // Quién tiene el bot con dinero real encendido (la tabla puede no existir todavía: entonces nadie).
+  const { data: liveRows } = settings.length ? await admin.from("bot_live").select("user_id").eq("enabled", true).in("user_id", settings.map((x) => x.user_id)) : { data: [] as Array<{ user_id: string }> };
+  const liveUsers = new Set((liveRows ?? []).map((r: { user_id: string }) => r.user_id));
   const t0 = Date.now();
   const inds = new Map<string, Indicators>(); // indicadores por activo y perfil (se calculan una vez por corrida)
   let deferred = 0;
@@ -448,6 +471,7 @@ async function tick() {
       }
       await admin.from("bot_signals").update({ trade_id: trade.id }).eq("id", signal.id);
       await notifyOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl }, profile);
+      if (liveUsers.has(s.user_id)) await sendLiveOrder(s.user_id, trade.id);
       opened++;
       count++;
       openedToday++;

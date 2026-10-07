@@ -1570,6 +1570,44 @@ export interface BotSettings {
 export type BotScan = 0 | 20 | 40;
 export const BOT_SCAN_LIST: BotScan[] = [0, 20, 40];
 
+// ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
+
+/** Ajustes del bot con dinero real. Los topes máximos también están en la base de datos: la app no puede pasarlos. */
+export interface LiveSettings {
+  enabled: boolean;
+  dryRun: boolean; // true = arma la orden y la anota, pero no la envía
+  verified: boolean; // la orden mínima de prueba salió bien
+  maxMarginUsdt: number;
+  riskUsdt: number;
+  maxLeverage: number;
+  maxOpen: number;
+  dailyLossUsdt: number;
+  errors: number;
+  lastError: string | null;
+}
+
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
+
+export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
+
+export interface LiveOrder {
+  id: string;
+  symbol: string;
+  side: string;
+  qty: number | null;
+  leverage: number | null;
+  kind: "bot" | "test" | "panic";
+  status: "dry_run" | "sent" | "rejected" | "skipped" | "error";
+  note: string | null;
+  createdAt: string;
+}
+
+export const liveStatusLabel = (st: LiveOrder["status"]) =>
+  st === "sent" ? tr("Enviada") : st === "dry_run" ? tr("En seco") : st === "rejected" ? tr("Rechazada") : st === "skipped" ? tr("Omitida") : tr("Error");
+
+/** Ajusta un valor al rango permitido (y a un número válido); si no es número devuelve el de reserva. */
+export const clampLive = (v: number, min: number, max: number, fallback: number) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);
+
 export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0 };
 
 /** Si el bot está encendido pero el servidor hace rato que no lo revisa, cuántos minutos van (null = está todo bien o está apagado). */

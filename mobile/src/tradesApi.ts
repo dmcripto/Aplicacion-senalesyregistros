@@ -2,8 +2,8 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
-import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, LIQ_COINS, t } from "@dmcripto/core";
+import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
 interface TradeRow {
@@ -493,3 +493,69 @@ export const startWhatsApp = (phone: string) => callFunction<WaReply & { minutes
 export const verifyWhatsApp = (code: string) => callFunction<WaReply & { link?: { phone: string; enabled: boolean } }>("whatsapp", { action: "verify", code });
 export const toggleWhatsApp = (enabled: boolean) => callFunction<WaReply>("whatsapp", { action: "toggle", enabled });
 export const unlinkWhatsApp = () => callFunction<WaReply>("whatsapp", { action: "unlink" });
+
+// ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
+
+export interface LiveView {
+  hasKey: boolean;
+  keyHint: string | null;
+  live: LiveSettings;
+  orders: LiveOrder[];
+}
+
+type LiveReply = { ok: boolean; error?: string; code?: string; steps?: string[]; preview?: boolean; verified?: boolean; available?: number };
+const callTrade = (body: Record<string, unknown>) => callFunction<LiveReply & { hasKey?: boolean; keyHint?: string | null; live?: Record<string, unknown> | null }>("trade", body);
+
+const liveFromRow = (r: Record<string, unknown> | null | undefined): LiveSettings =>
+  r
+    ? {
+        enabled: r.enabled === true,
+        dryRun: r.dry_run !== false,
+        verified: r.verified === true,
+        maxMarginUsdt: Number(r.max_margin_usdt ?? DEFAULT_LIVE.maxMarginUsdt),
+        riskUsdt: Number(r.risk_usdt ?? DEFAULT_LIVE.riskUsdt),
+        maxLeverage: Number(r.max_leverage ?? DEFAULT_LIVE.maxLeverage),
+        maxOpen: Number(r.max_open ?? DEFAULT_LIVE.maxOpen),
+        dailyLossUsdt: Number(r.daily_loss_usdt ?? DEFAULT_LIVE.dailyLossUsdt),
+        errors: Number(r.errors ?? 0),
+        lastError: (r.last_error as string | null) ?? null,
+      }
+    : DEFAULT_LIVE;
+
+/** Estado del bot real. Si la función o las tablas todavía no existen (falta el SQL o el despliegue), lanza error y la pantalla no se muestra. */
+export async function fetchLive(userId: string): Promise<LiveView> {
+  const st = await callTrade({ action: "status" });
+  if (!st.ok) throw new Error(st.error ?? "no disponible");
+  const { data } = await supabase.from("live_orders").select("id, symbol, side, qty, leverage, kind, status, note, created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(12);
+  const orders = ((data ?? []) as Array<Record<string, unknown>>).map((o) => ({
+    id: String(o.id),
+    symbol: String(o.symbol),
+    side: String(o.side),
+    qty: o.qty == null ? null : Number(o.qty),
+    leverage: o.leverage == null ? null : Number(o.leverage),
+    kind: o.kind as LiveOrder["kind"],
+    status: o.status as LiveOrder["status"],
+    note: (o.note as string | null) ?? null,
+    createdAt: String(o.created_at),
+  }));
+  return { hasKey: !!st.hasKey, keyHint: st.keyHint ?? null, live: liveFromRow(st.live), orders };
+}
+
+/** Guarda los ajustes (la base rechaza lo que pase los topes, y no deja enviar de verdad sin la orden de prueba). */
+export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "enabled" | "dryRun" | "maxMarginUsdt" | "riskUsdt" | "maxLeverage" | "maxOpen" | "dailyLossUsdt">>) {
+  const row: Record<string, unknown> = {};
+  if (p.enabled !== undefined) row.enabled = p.enabled;
+  if (p.dryRun !== undefined) row.dry_run = p.dryRun;
+  if (p.maxMarginUsdt !== undefined) row.max_margin_usdt = p.maxMarginUsdt;
+  if (p.riskUsdt !== undefined) row.risk_usdt = p.riskUsdt;
+  if (p.maxLeverage !== undefined) row.max_leverage = p.maxLeverage;
+  if (p.maxOpen !== undefined) row.max_open = p.maxOpen;
+  if (p.dailyLossUsdt !== undefined) row.daily_loss_usdt = p.dailyLossUsdt;
+  const { error } = await supabase.from("bot_live").update(row).eq("user_id", userId);
+  if (error) throw new Error(error.message);
+}
+
+export const connectTradeKey = (apiKey: string, apiSecret: string) => callTrade({ action: "connect_key", apiKey, apiSecret });
+export const disconnectTradeKey = () => callTrade({ action: "disconnect_key" });
+export const testLiveOrder = (confirm: boolean) => callTrade({ action: "test_order", confirm });
+export const liveStop = () => callTrade({ action: "panic" });

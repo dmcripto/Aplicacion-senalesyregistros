@@ -71,6 +71,7 @@ import StrategyCard from "./components/StrategyCard";
 import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
 import BotCard from "./components/BotCard";
+import LiveBotCard from "./components/LiveBotCard";
 import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
@@ -929,6 +930,7 @@ function Dashboard({ userId }: { userId: string }) {
               <Reveal delay={162}>
                 <BotCard userId={userId} notify={notify} />
               </Reveal>
+              <LiveBotCard userId={userId} notify={notify} />
               <Reveal delay={165}>
                 <MoneyCard money={money} trades={trades} onSave={persistMoney} />
               </Reveal>
