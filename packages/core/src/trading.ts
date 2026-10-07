@@ -6,6 +6,7 @@
 import { getLang, locale, t as tr } from "./i18n";
 export * from "./i18n";
 export * from "./mfa";
+export * from "./indicators";
 import { buildStrategy } from "./strategy";
 export type { BotAction, BotDim, Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
 export type { StrategySource } from "./strategy";
