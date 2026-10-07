@@ -72,6 +72,16 @@ export function createBotStore(api: BotApi) {
         set({ ...state, status: "missing" });
       }
     },
+    /** Vuelve a leer los ajustes sin tocar la pantalla (para ver si el servidor sigue revisando). Si falla, no cambia nada. */
+    async refresh() {
+      if (state.status !== "ready") return;
+      try {
+        const { rulesSupported, profileSupported, notifySupported, scanSupported, ...settings } = await api.load();
+        if (state.status === "ready") set({ status: "ready", settings, rulesSupported, profileSupported, notifySupported, scanSupported });
+      } catch {
+        /* sin conexión por un momento: se queda como estaba */
+      }
+    },
     /** Cambia ajustes y los guarda; si falla, vuelve atrás y tira el error. */
     async update(patch: Partial<BotSettings>) {
       const prev = state;

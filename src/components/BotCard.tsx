@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import { useEffect, useState } from "react";
+import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
@@ -34,6 +34,18 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   const [test, setTest] = useState<BotBacktest | null>(null);
   const [labBusy, setLabBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // Mientras el bot está encendido se vuelve a mirar cada minuto si el servidor lo sigue revisando.
+  useEffect(() => {
+    if (!ready || !s.enabled) return;
+    const id = window.setInterval(() => {
+      setNowMs(Date.now());
+      void store.refresh();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [ready, s.enabled, store]);
+  const stale = botStaleMinutes(s, nowMs);
   const [lab, setLab] = useState<Extract<BotLab, { ok: true }> | null>(null);
 
   const update = async (patch: Partial<BotSettings>) => {
@@ -99,6 +111,14 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   return (
     <Panel id="bot" title={t("BOT AUTOMÁTICO")} subtitle={t("Modo simulado · sin plata real")} summary={s.enabled ? t("Encendido") : t("Apagado")} defaultOpen={false}>
       <div className="space-y-4 p-5">
+        {stale != null && (
+          <div role="alert" className="rounded-md border border-bear/50 bg-bear/10 p-3.5 text-[12.5px] leading-relaxed text-snow">
+            <p className="font-bold text-bear">⚠️ {t("El servidor no está revisando tu bot")}</p>
+            <p className="mt-1 text-fog">
+              {t("Está encendido, pero hace {when} que no lo revisa: no se están anotando operaciones nuevas. Probá apagarlo y volver a encenderlo; si sigue igual, avisanos.", { when: staleSince(stale) })}
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 p-3.5">
           <div>
             <p className="text-[13px] font-bold text-snow">{s.enabled ? t("Bot encendido") : t("Bot apagado")}</p>
