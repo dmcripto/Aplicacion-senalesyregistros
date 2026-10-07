@@ -77,6 +77,7 @@ import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
+import ChartCard from "./components/ChartCard";
 import CoachCard from "./components/CoachCard";
 import WhatsAppCard from "./components/WhatsAppCard";
 import TodayCard from "./components/TodayCard";
@@ -801,6 +802,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
               ["register", t("Registrar"), false],
               ["journal", t("Diario"), false],
               ["analysis", t("Análisis"), false],
+              ["chart", t("Gráfico"), false],
               ["strategy", t("Estrategia"), false],
               ["liqmap", t("Mapa"), false],
               ["exchange", t("Exchanges"), true],
@@ -908,6 +910,11 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             )}
           </div>
         </div>
+
+        {/* Gráfico de análisis: velas con 2 indicadores y las señales abiertas dibujadas encima */}
+        <Reveal delay={170}>
+          <ChartCard trades={trades} />
+        </Reveal>
 
         {/* El mapa ocupa todo el ancho: es un gráfico ancho y así no deja huecos al costado */}
         <Reveal delay={175}>
