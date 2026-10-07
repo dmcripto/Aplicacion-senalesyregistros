@@ -4,7 +4,6 @@
 export type AlertKind = "price" | "rsi" | "ema";
 export type AlertSide = "above" | "below";
 export type AlertTf = "5m" | "15m" | "1h" | "4h" | "1d";
-export const ALERT_KINDS: AlertKind[] = ["price", "rsi", "ema"];
 export const ALERT_TFS: AlertTf[] = ["5m", "15m", "1h", "4h", "1d"];
 export const MAX_ACTIVE_ALERTS = 10;
 
