@@ -6,7 +6,8 @@
 //   · un aviso 30 minutos antes de cada dato de alto impacto
 // Sin dependencias de Deno ni de Node, para poder probarlo en local.
 
-import { localDay, localHour } from "./dailySummary.ts";
+import { localDay, localHour, validTz } from "./dailySummary.ts";
+import { esc } from "./telegram.ts";
 
 export const FEED_URLS = ["https://nfs.faireconomy.media/ff_calendar_thisweek.json", "https://nfs.faireconomy.media/ff_calendar_nextweek.json"];
 
@@ -154,21 +155,9 @@ export async function refreshEvents(supabase: any, now = Date.now(), fetcher: ty
 
 // ─── Mensajes de Telegram ───────────────────────────────────────────────────
 
-const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 const FLAG: Record<string, string> = { USD: "🇺🇸", EUR: "🇪🇺", GBP: "🇬🇧", JPY: "🇯🇵", CNY: "🇨🇳", CAD: "🇨🇦", AUD: "🇦🇺", NZD: "🇳🇿", CHF: "🇨🇭" };
 export const flagOf = (country: string) => FLAG[country] ?? "🌐";
 export const impactDot = (i: Impact) => (i === "High" ? "🔴" : "🟠");
-
-const validTz = (tz: string | null | undefined): string | null => {
-  if (!tz) return null;
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return tz;
-  } catch {
-    return null;
-  }
-};
 
 const hhmm = (iso: string, tz: string) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
 
