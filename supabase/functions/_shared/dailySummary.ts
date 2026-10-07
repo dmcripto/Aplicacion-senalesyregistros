@@ -50,7 +50,7 @@ export function rOf(t: SumTrade): number {
   return (dir * ((t.exit ?? t.entry) - t.entry)) / risk;
 }
 
-const validTz = (tz: string | null | undefined): string | null => {
+export const validTz = (tz: string | null | undefined): string | null => {
   if (!tz) return null;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
