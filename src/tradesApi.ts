@@ -589,3 +589,28 @@ export async function publishManualSignal(userId: string, text: string, opts: { 
   const msg = (await res.text().catch(() => "")).slice(0, 200);
   return { ok: false, error: msg || t("No se pudo publicar la señal.") };
 }
+
+/** Dato económico de la agenda (calendario público, lo carga el servidor). */
+export interface EconomyEvent {
+  id: string;
+  starts_at: string;
+  country: string;
+  title: string;
+  title_es: string;
+  impact: "High" | "Medium";
+  forecast: string | null;
+  previous: string | null;
+}
+
+/** Datos económicos de las próximas ~48 horas (y los de la última media hora). Sin el SQL de la agenda devuelve lista vacía. */
+export async function fetchEconomy(now = Date.now()): Promise<EconomyEvent[]> {
+  const { data, error } = await supabase
+    .from("economic_events")
+    .select("id,starts_at,country,title,title_es,impact,forecast,previous")
+    .gte("starts_at", new Date(now - 30 * 60_000).toISOString())
+    .lte("starts_at", new Date(now + 48 * 3_600_000).toISOString())
+    .order("starts_at")
+    .limit(40);
+  if (error || !data) return [];
+  return data as EconomyEvent[];
+}

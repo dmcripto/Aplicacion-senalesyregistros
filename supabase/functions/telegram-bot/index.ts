@@ -83,6 +83,9 @@ const T = {
     communityBad: "Ese código no es válido o venció. Generá uno nuevo en la app o la web, en «Bot de Telegram → Conectar comunidad».",
     communityLinked: "✅ Comunidad conectada. Acá voy a publicar las señales y los resultados (TP/SL) de la cuenta de VELTRIX que la conectó.\n\nPara dejar de publicar: /desconectarcomunidad",
     communityRemoved: "Listo, dejé de publicar en este chat.",
+    newsOn: "📰 Listo: en este tema voy a publicar la <b>agenda económica</b>: el resumen del día a las 8:00 y un aviso 30 minutos antes de cada dato de alto impacto.\n\nPara dejar de publicarla: /noticias off",
+    newsOff: "Listo, dejé de publicar la agenda económica en este chat.",
+    newsNoCommunity: "Primero conectá este grupo a tu cuenta de VELTRIX con /comunidad (desde la app o la web, «Conectar Telegram»). Después escribí /noticias en el tema de noticias.",
   },
   en: {
     help:
@@ -126,6 +129,9 @@ const T = {
     communityBad: "That code isn't valid or has expired. Generate a new one in the app or the web, under “Telegram bot → Connect community”.",
     communityLinked: "✅ Community connected. I'll post here the signals and results (TP/SL) of the VELTRIX account that connected it.\n\nTo stop posting: /disconnectcommunity",
     communityRemoved: "Done, I stopped posting in this chat.",
+    newsOn: "📰 Done: in this topic I'll post the <b>economic calendar</b>: the day's summary at 8:00 and a heads-up 30 minutes before each high-impact release.\n\nTo stop: /news off",
+    newsOff: "Done, I stopped posting the economic calendar in this chat.",
+    newsNoCommunity: "First connect this group to your VELTRIX account with /community (from the app or the web, “Connect Telegram”). Then type /news in the news topic.",
   },
 } as const;
 
@@ -317,12 +323,41 @@ async function communityCommand(msg: any, cmd: string, rawCode: string | undefin
   return reply(T[lang].communityLinked);
 }
 
+/**
+ * /noticias (dentro del tema de noticias del grupo) → el bot publica ahí la agenda económica. /noticias off la apaga.
+ * Solo administradores, y solo en un grupo ya conectado a una cuenta (con /comunidad).
+ */
+async function newsCommand(msg: any, arg: string | undefined) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token) return;
+  const fallback = guessLang(msg.from?.language_code);
+  const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
+  const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
+  if (msg.chat.type !== "channel") {
+    const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
+    const status = r?.result?.status;
+    if (status !== "creator" && status !== "administrator") return reply(T[fallback].adminOnly);
+  }
+  const { data: row } = await admin.from("telegram_communities").select("id,user_id").eq("chat_id", chatId).limit(1).maybeSingle();
+  if (!row) return reply(T[fallback].newsNoCommunity);
+  const lang = await langOf((row as { user_id: string }).user_id, fallback);
+  const off = ["off", "no", "apagar", "desactivar", "stop"].includes(String(arg ?? "").toLowerCase());
+  const { error } = await admin
+    .from("telegram_communities")
+    .update(off ? { news_enabled: false, news_thread_id: null } : { news_enabled: true, news_thread_id: thread })
+    .eq("id", (row as { id: string }).id);
+  if (error) return reply(lang === "es" ? "Todavía falta correr el SQL de la agenda económica en Supabase." : "The economic calendar SQL has not been run in Supabase yet.");
+  return reply(off ? T[lang].newsOff : T[lang].newsOn);
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
     const text = String(msg.text ?? "").trim();
     const [first, ...rest] = text.split(/\s+/);
     const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
+    if (cmd === "/noticias" || cmd === "/news") return newsCommand(msg, rest[0]);
     if (cmd === "/anunciar" || cmd === "/announce") return announceHere(msg, rest);
     if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint, msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     return;

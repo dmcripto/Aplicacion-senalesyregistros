@@ -11,6 +11,7 @@ import { partialCardImage, resultCardImage } from "../_shared/card.ts";
 import { notifyWhatsApp, waResultParams } from "../_shared/waCloud.ts";
 import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml, resultNote } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
+import { postEconomyNews, refreshEvents } from "../_shared/economy.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
 
@@ -80,6 +81,20 @@ Deno.serve(async () => {
       });
     } catch (e) {
       console.error("daily-summary:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Agenda económica: cada 5 minutos se actualiza el calendario (si toca) y se publican las noticias en las comunidades que lo activaron.
+  if (new Date().getUTCMinutes() % 5 === 0) {
+    try {
+      const token = botToken();
+      await refreshEvents(supabase);
+      await postEconomyNews({
+        supabase,
+        send: async (chatId, html, thread) => (token ? await sendMessage(token, chatId, html, thread ? { message_thread_id: thread } : {}) : undefined),
+      });
+    } catch (e) {
+      console.error("economy:", e instanceof Error ? e.message : e);
     }
   }
 
