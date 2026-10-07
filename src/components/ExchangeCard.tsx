@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
+import { mfaErrorText, useMfa } from "./Mfa";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "../tradesApi";
 import Panel from "./Panel";
 
@@ -130,6 +131,7 @@ function CapitalStep({ money, onSave }: { money: MoneySettings; onSave: (m: Mone
 }
 
 export default function ExchangeCard({ money, notify, onSaveMoney }: { money: MoneySettings; notify: Notify; onSaveMoney: (m: MoneySettings) => Promise<void> }) {
+  const mfa = useMfa();
   const [conns, setConns] = useState<ExchangeConnection[] | null>(null);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
   const [apiKey, setApiKey] = useState("");
@@ -167,11 +169,12 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
   }, [armed]);
 
   const connect = async () => {
+    if (!(await mfa.ask(t("Vas a conectar un exchange a tu cuenta.")))) return;
     setBusy(true);
     try {
       const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim(), needsPassphrase(exchange) ? passphrase.trim() : undefined);
       if (!r.ok) {
-        notify(r.error ?? t("No se pudo conectar."), "err");
+        notify(r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")), "err");
         return;
       }
       setApiKey("");
@@ -202,12 +205,13 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
 
   const disconnect = async (c: ExchangeConnection) => {
     setArmed(null);
+    if (!(await mfa.ask(t("Vas a desconectar un exchange: se borra la clave guardada.")))) return;
     try {
       await disconnectExchange(c.id);
       notify(t("{name} desconectado. Se borró la clave guardada.", { name: exchangeName(c.exchange) }), "info");
       await reload();
     } catch (err) {
-      notify(err instanceof Error ? err.message : t("No se pudo desconectar."), "err");
+      notify(mfaErrorText(err, t("No se pudo desconectar.")), "err");
     }
   };
 

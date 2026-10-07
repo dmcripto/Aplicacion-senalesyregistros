@@ -196,4 +196,28 @@ describe("función exchanges", () => {
       expect((await cron("secreto-de-segundo-plano-123")).body).toMatchObject({ due: 1, synced: 0 });
     });
   });
+
+  it("2FA opcional: sin código reciente no deja conectar; con código sí", async () => {
+    let seen: any = null;
+    db.rpcs.mfa_step_ok = (args) => {
+      seen = args;
+      return { data: false };
+    };
+    const payload = Buffer.from(JSON.stringify({ amr: [{ method: "password", timestamp: 1 }] })).toString("base64url");
+    const token = `h.${payload}.s`;
+    db.users[token] = { id: "u1" };
+    const r = await call({ action: "connect", exchange: "bybit", apiKey: "KEYKEYKEY1234", apiSecret: "SECRETSECRET" }, token);
+    expect(r.status).toBe(403);
+    expect(r.body.code).toBe("mfa_required");
+    expect(seen.uid).toBe("u1");
+    expect(seen.claims.amr[0].method).toBe("password");
+    expect(db.tables.exchange_connections).toHaveLength(0);
+
+    db.rpcs.mfa_step_ok = () => ({ data: true });
+    expect((await call({ action: "connect", exchange: "bybit", apiKey: "KEYKEYKEY1234", apiSecret: "SECRETSECRET" }, token)).status).toBe(200);
+  });
+
+  it("2FA opcional: si la migración todavía no está, no bloquea", async () => {
+    expect((await connect()).status).toBe(200);
+  });
 });
