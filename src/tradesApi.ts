@@ -574,13 +574,13 @@ export async function setFollowSignals(userId: string, follow: boolean) {
 
 /**
  * Publica una señal manual por el propio webhook de la cuenta emisora (la misma ruta que una alerta de TradingView):
- * se anota en su diario y se reparte a quienes activaron «Señales de VELTRIX».
+ * se anota en su diario y se reparte a quienes activaron «Señales de VELTRIX». Por defecto NO va a su comunidad de Telegram ni a WhatsApp.
  */
-export async function publishManualSignal(userId: string, text: string): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
+export async function publishManualSignal(userId: string, text: string, opts: { community?: boolean } = {}): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
   const url = await fetchWebhookUrl(userId);
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain" }, body: text });
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain", "x-veltrix-community": opts.community ? "1" : "0" }, body: text });
   } catch {
     return { ok: false, error: t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") };
   }

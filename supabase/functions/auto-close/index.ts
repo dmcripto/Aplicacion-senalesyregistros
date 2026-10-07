@@ -4,7 +4,7 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels, isSimulated, isTestSignal } from "../_shared/autoClose.ts";
+import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels, isSimulated, isTestSignal, keepsOutOfCommunity } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { partialCardImage, resultCardImage } from "../_shared/card.ts";
@@ -51,7 +51,7 @@ async function targetAlerts(trade: OpenTrade, candles: Candle[]) {
       const r = risk > 0 ? Math.abs(level - trade.entry) / risk : 0;
       const n = i + 1;
       await notifyTelegram(supabase, trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { header: "🔔", disclaimer: false, n }));
-      if (!isTestSignal(trade)) await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { n }), (lang) => partialCardImage(sig, level, r, lang, n));
+      if (!keepsOutOfCommunity(trade)) await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => partialCardHtml(sig, level, r, lang, { n }), (lang) => partialCardImage(sig, level, r, lang, n));
     }
   } catch (e) {
     console.error("targets:", e instanceof Error ? e.message : e);
@@ -166,7 +166,7 @@ Deno.serve(async () => {
     const test = isTestSignal(trade); // la señal de prueba se avisa como «(prueba)» también al cerrarse
     const closeLabel = (lang: "es" | "en") => (lang === "en" ? "Auto-close" : "Cierre automático") + (test ? (lang === "en" ? " (test)" : " (prueba)") : "");
     await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: closeLabel(lang), note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
-    if (!isTestSignal(trade)) {
+    if (!keepsOutOfCommunity(trade)) {
       await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
       await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
     }

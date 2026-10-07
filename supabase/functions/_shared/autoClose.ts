@@ -26,6 +26,10 @@ export const TEST_SIGNAL_NOTE = "Señal de prueba de VELTRIX: no es una operaci�
 export const isSimulated = (t: Pick<OpenTrade, "source">) => t.source === "bot";
 /** Una señal de prueba se sigue y se avisa solo a su dueño: nunca a comunidades ni por WhatsApp. */
 export const isTestSignal = (t: Pick<OpenTrade, "notes">) => t.notes === TEST_SIGNAL_NOTE;
+/** Nota de las señales que la cuenta emisora publica a mano SIN comunidad: llegan solo a quienes siguen «Señales de VELTRIX». */
+export const FEED_ONLY_NOTE = "Señal publicada solo para quienes siguen las señales de VELTRIX: no va a la comunidad.";
+/** No se publica en comunidades ni por WhatsApp (ni al abrirse ni al cerrarse): señales de prueba y señales solo para seguidores. */
+export const keepsOutOfCommunity = (t: Pick<OpenTrade, "notes">) => t.notes === TEST_SIGNAL_NOTE || t.notes === FEED_ONLY_NOTE;
 
 export interface Candle {
   t: number; // apertura, ms

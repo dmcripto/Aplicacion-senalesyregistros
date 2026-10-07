@@ -221,6 +221,16 @@ describe("el cierre automático y las operaciones que no son de la persona", () 
     expect(texts().join("\n")).not.toContain("(prueba)");
   });
 
+  it("una señal publicada solo para seguidores tampoco va a la comunidad al cerrarse", async () => {
+    db.tables.trades = [trade({ notes: "Señal publicada solo para quienes siguen las señales de VELTRIX: no va a la comunidad." })];
+    candles = [row(5, 131, 99)];
+    await run();
+    expect(db.tables.trades[0]).toMatchObject({ outcome: "TP", auto_closed: true });
+    expect(chats()).toContain(555);
+    expect(chats()).not.toContain(-100);
+    expect(texts().join("\n")).not.toContain("(prueba)"); // no es una señal de prueba
+  });
+
   it("el aviso de Target 1 de una señal de prueba tampoco va a la comunidad", async () => {
     db.tables.trades = [trade({ notes: TEST_NOTE })];
     await run(); // tocó 110 y sigue abierta
