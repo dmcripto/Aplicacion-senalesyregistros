@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
-import { runBotBacktest, runBotLab } from "../tradesApi";
+import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -33,6 +33,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
   const [labBusy, setLabBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [lab, setLab] = useState<Extract<BotLab, { ok: true }> | null>(null);
 
   const update = async (patch: Partial<BotSettings>) => {
@@ -47,6 +48,19 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   };
 
   const toggleSymbol = (sym: string) => update({ symbols: s.symbols.includes(sym) ? s.symbols.filter((x) => x !== sym) : [...s.symbols, sym] });
+
+  const mandarPrueba = async () => {
+    setTesting(true);
+    try {
+      const r = await sendTestSignal();
+      if (r.ok) notify(t("Listo: te mandamos una señal de prueba. Tiene que aparecer arriba y llegarte el aviso."), "ok");
+      else notify(r.error ?? t("No se pudo mandar la señal de prueba."), "err");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : t("No se pudo mandar la señal de prueba."), "err");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const probarLab = async () => {
     setLabBusy(true);
@@ -230,6 +244,15 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
             ))}
           </ul>
         </details>
+
+        <div className="rounded-md border border-gold/30 bg-gold/5 p-3">
+          <button onClick={mandarPrueba} disabled={testing} className="w-full rounded-md border border-gold/50 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-40">
+            🧪 {testing ? t("Mandando…") : t("Mandarme una señal de prueba")}
+          </button>
+          <p className="mt-2 text-[11px] leading-relaxed text-dim">
+            {t("Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.")}
+          </p>
+        </div>
 
         <div className="space-y-3 border-t border-line pt-4">
           <button onClick={probar} disabled={busy || !ready} className="w-full rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-40">

@@ -318,6 +318,20 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             </button>
           </div>
         )}
+        {botReady && (
+          <div className="rounded-md border border-gold/30 bg-gold/5 p-3">
+            <button
+              onClick={sendTest}
+              disabled={testing}
+              className="w-full rounded-md border border-gold/50 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-40"
+            >
+              🧪 {testing ? t("Mandando…") : t("Mandarme una señal de prueba")}
+            </button>
+            <p className="mt-2 text-[11px] leading-relaxed text-dim">
+              {t("Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.")}
+            </p>
+          </div>
+        )}
         <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[11.5px] leading-relaxed text-fog">
           <input
             type="checkbox"
@@ -342,20 +356,6 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
             <li><b className="text-snow">{t("A mano:")}</b> {t("\"Registrar → Manual\".")}</li>
           </ul>
         </details>
-        {botReady && (
-          <div className="rounded-md border border-gold/30 bg-gold/5 p-3">
-            <button
-              onClick={sendTest}
-              disabled={testing}
-              className="w-full rounded-md border border-gold/50 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-40"
-            >
-              🧪 {testing ? t("Mandando…") : t("Mandarme una señal de prueba")}
-            </button>
-            <p className="mt-2 text-[11px] leading-relaxed text-dim">
-              {t("Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.")}
-            </p>
-          </div>
-        )}
         <AlertBuilder notify={notify} />
         {url &&
           (regenArmed ? (
