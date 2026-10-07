@@ -5,7 +5,7 @@
 
 import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -613,4 +613,71 @@ export async function fetchEconomy(now = Date.now()): Promise<EconomyEvent[]> {
     .limit(40);
   if (error || !data) return [];
   return data as EconomyEvent[];
+}
+
+// ─── Alertas propias (precio, RSI, EMA) ─────────────────────────────────────
+
+interface AlertRow {
+  id: string;
+  symbol: string;
+  kind: UserAlert["kind"];
+  tf: UserAlert["tf"];
+  dir: UserAlert["dir"];
+  level: number | null;
+  period: number | null;
+  once: boolean;
+  active: boolean;
+  triggered_at: string | null;
+  trigger_count: number | null;
+}
+
+/** Mis alertas (las más nuevas primero). Sin el SQL de alertas lanza error y la sección no se muestra. */
+export async function fetchAlerts(userId: string): Promise<UserAlert[]> {
+  const { data, error } = await supabase
+    .from("price_alerts")
+    .select("id,symbol,kind,tf,dir,level,period,once,active,triggered_at,trigger_count")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  return (data as AlertRow[]).map((r) => ({
+    id: r.id,
+    symbol: r.symbol,
+    kind: r.kind,
+    tf: r.tf,
+    dir: r.dir,
+    level: r.level == null ? null : Number(r.level),
+    period: r.period,
+    once: r.once,
+    active: r.active,
+    triggeredAt: r.triggered_at,
+    triggerCount: r.trigger_count ?? 0,
+  }));
+}
+
+const alertError = (message: string) => (/Máximo 10 alertas/.test(message) ? t("Ya tenés 10 alertas activas. Pausá o borrá alguna para crear otra.") : message);
+
+export async function createAlert(userId: string, d: AlertDraft) {
+  const { error } = await supabase.from("price_alerts").insert({
+    user_id: userId,
+    symbol: d.symbol,
+    kind: d.kind,
+    tf: d.tf,
+    dir: d.dir,
+    level: d.kind === "ema" ? null : d.level,
+    period: d.kind === "price" ? null : d.period,
+    once: d.once,
+  });
+  if (error) throw new Error(alertError(error.message));
+}
+
+/** Pausar o reactivar. Al reactivar se vuelve a medir desde cero (así no salta por algo que ya había cruzado). */
+export async function setAlertActive(id: string, active: boolean) {
+  const { error } = await supabase.from("price_alerts").update(active ? { active: true, last_side: null, checked_at: null } : { active: false }).eq("id", id);
+  if (error) throw new Error(alertError(error.message));
+}
+
+export async function deleteAlert(id: string) {
+  const { error } = await supabase.from("price_alerts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
 }

@@ -913,7 +913,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 
         {/* Gráfico de análisis: velas con 2 indicadores y las señales abiertas dibujadas encima */}
         <Reveal delay={170}>
-          <ChartCard trades={trades} />
+          <ChartCard trades={trades} userId={userId} notify={notify} />
         </Reveal>
 
         {/* El mapa ocupa todo el ancho: es un gráfico ancho y así no deja huecos al costado */}

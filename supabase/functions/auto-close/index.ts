@@ -12,6 +12,7 @@ import { notifyWhatsApp, waResultParams } from "../_shared/waCloud.ts";
 import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml, resultNote } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { postEconomyNews, refreshEvents } from "../_shared/economy.ts";
+import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
 
@@ -96,6 +97,23 @@ Deno.serve(async () => {
     } catch (e) {
       console.error("economy:", e instanceof Error ? e.message : e);
     }
+  }
+
+  // Alertas propias de las personas (precio, RSI, EMA): se revisan cada minuto.
+  try {
+    await runAlerts({
+      supabase,
+      notify: async (a, m) => {
+        const { data: prof } = await supabase.from("profiles").select("lang").eq("id", a.user_id).maybeSingle();
+        const lang: "es" | "en" = (prof as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+        const txt = alertTexts(a, m, lang);
+        const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", a.user_id);
+        await sendExpoPush((tokens ?? []).map((tk) => ({ to: tk.expo_push_token as string, title: txt.title, body: txt.body, data: { type: "alert", symbol: a.symbol } })));
+        await notifyTelegram(supabase, a.user_id, (l) => alertTexts(a, m, l).html);
+      },
+    });
+  } catch (e) {
+    console.error("alerts:", e instanceof Error ? e.message : e);
   }
 
   const { data: disabled } = await supabase.from("profiles").select("id").eq("auto_close", false);
