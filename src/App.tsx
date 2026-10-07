@@ -72,6 +72,7 @@ import MoneyCard from "./components/MoneyCard";
 import ExchangeCard from "./components/ExchangeCard";
 import BotCard from "./components/BotCard";
 import LiveBotCard from "./components/LiveBotCard";
+import SignalFeedCard from "./components/SignalFeedCard";
 import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
@@ -924,6 +925,7 @@ function Dashboard({ userId }: { userId: string }) {
                 <TelegramCard userId={userId} notify={notify} />
               </Reveal>
               <WhatsAppCard notify={notify} />
+              <SignalFeedCard userId={userId} notify={notify} />
               <Reveal delay={158}>
                 <ExchangeCard money={money} notify={notify} onSaveMoney={persistMoney} />
               </Reveal>

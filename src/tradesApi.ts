@@ -5,7 +5,7 @@
 
 import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -551,3 +551,23 @@ export const connectTradeKey = (apiKey: string, apiSecret: string) => callTrade(
 export const disconnectTradeKey = () => callTrade({ action: "disconnect_key" });
 export const testLiveOrder = (confirm: boolean) => callTrade({ action: "test_order", confirm });
 export const liveStop = () => callTrade({ action: "panic" });
+
+// ─── Señales de VELTRIX (las que publica el equipo; cada persona decide si las recibe) ─
+
+/** Estado de «Señales de VELTRIX». Lanza error si todavía no se corrió el SQL (la pantalla no se muestra) o si la cuenta no tiene la llave beta. */
+export async function fetchSignalFeed(userId: string): Promise<SignalFeedState> {
+  const { data, error } = await supabase.from("profiles").select("bot_beta, follow_signals, signal_provider").eq("id", userId).maybeSingle();
+  const row = data as { bot_beta?: boolean; follow_signals?: boolean; signal_provider?: boolean } | null;
+  if (error || !row || row.bot_beta !== true) throw new Error("no disponible");
+  let followers: number | null = null;
+  if (row.signal_provider === true) {
+    const r = await supabase.rpc("my_signal_followers");
+    followers = r.error || r.data == null ? null : Number(r.data);
+  }
+  return { follow: row.follow_signals === true, provider: row.signal_provider === true, followers };
+}
+
+export async function setFollowSignals(userId: string, follow: boolean) {
+  const { error } = await supabase.from("profiles").update({ follow_signals: follow }).eq("id", userId);
+  if (error) throw new Error(error.message);
+}

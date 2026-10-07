@@ -321,7 +321,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                     <td className="px-3 py-3">
                       <span className="num font-bold tracking-wide text-snow">{tr.symbol}</span>
                       {tr.source && (
-                        <span className="num ml-2 rounded border border-line px-1.5 py-px text-[9.5px] font-semibold text-dim" title={t("Importada de {name}", { name: exchangeName(tr.source) })}>
+                        <span className="num ml-2 rounded border border-line px-1.5 py-px text-[9.5px] font-semibold text-dim" title={tr.source === "veltrix" ? t("Señal publicada por el equipo de VELTRIX") : t("Importada de {name}", { name: exchangeName(tr.source) })}>
                           ⇄ {exchangeName(tr.source)}
                         </span>
                       )}

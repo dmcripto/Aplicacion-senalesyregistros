@@ -15,6 +15,7 @@ import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
 import BotSection from "../BotSection";
 import LiveSection from "../LiveSection";
+import SignalFeedSection from "../SignalFeedSection";
 import MfaSection, { mfaErrorText, useMfa } from "../MfaSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
@@ -303,6 +304,8 @@ export default function SettingsScreen({
       <View {...mark("exchange")} />
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
       <ExchangeSection onSaveMoney={onSaveMoney} />
+
+      <SignalFeedSection titleStyle={styles.sectionTitle} />
 
       <View {...mark("bot")} />
       <BotSection titleStyle={styles.sectionTitle} />
