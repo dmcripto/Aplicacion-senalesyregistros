@@ -19,6 +19,8 @@ import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
 import { esc, notifyTelegram } from "../_shared/telegram.ts";
 import type { Lang } from "../_shared/telegram.ts";
+import { MAX_PAUSE_MIN, activeNewsPause, pauseCfgOf, pauseLabel } from "../_shared/newsPause.ts";
+import type { NewsEvent } from "../_shared/newsPause.ts";
 import type { BotAction } from "../_shared/botStrategy.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
@@ -320,6 +322,35 @@ async function sendLiveOrder(userId: string, tradeId: string) {
   }
 }
 
+/** Anota en la web (si existe la tabla) que el bot está en pausa por un dato económico, o que ya terminó. Un fallo acá no afecta al bot. */
+async function markNewsPause(userId: string, pause: { event: NewsEvent; until: number } | null, current: string | null) {
+  try {
+    if (pause) {
+      const until = new Date(pause.until).toISOString();
+      if (current && new Date(current).getTime() === pause.until) return; // ya está anotado
+      await admin.from("bot_news_pause").upsert({ user_id: userId, paused_until: until, paused_event: pauseLabel(pause.event, "es"), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    } else if (current) {
+      await admin.from("bot_news_pause").update({ paused_until: null, paused_event: null }).eq("user_id", userId);
+    }
+  } catch (e) {
+    console.error("pausa:", e instanceof Error ? e.message : e);
+  }
+}
+
+/** Deja en «Últimas órdenes» que una señal se omitió por el dato económico (para quien tiene el bot con dinero real encendido). */
+async function logNewsSkip(userId: string, symbol: string, direction: "LONG" | "SHORT", event: NewsEvent, until: number) {
+  const hh = new Date(until).toISOString().slice(11, 16);
+  const { error } = await admin.from("live_orders").insert({
+    user_id: userId,
+    symbol,
+    side: direction === "LONG" ? "BUY" : "SELL",
+    kind: "bot",
+    status: "skipped",
+    note: `Omitida por dato económico: ${pauseLabel(event, "es")} (pausa hasta las ${hh} UTC).`,
+  });
+  if (error) console.error("live_orders pausa:", error.message);
+}
+
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
@@ -395,6 +426,20 @@ async function tick() {
   // Quién tiene el bot con dinero real encendido (la tabla puede no existir todavía: entonces nadie).
   const { data: liveRows } = settings.length ? await admin.from("bot_live").select("user_id").eq("enabled", true).in("user_id", settings.map((x) => x.user_id)) : { data: [] as Array<{ user_id: string }> };
   const liveUsers = new Set((liveRows ?? []).map((r: { user_id: string }) => r.user_id));
+  // Pausa por datos económicos de alto impacto: los datos de las próximas horas (los carga la agenda económica) y los ajustes de cada persona.
+  const nowMs = Date.now();
+  const { data: newsRows } = await admin
+    .from("economic_events")
+    .select("starts_at, title, title_es, country")
+    .eq("impact", "High")
+    .gte("starts_at", new Date(nowMs - (MAX_PAUSE_MIN + 1) * 60_000).toISOString())
+    .lte("starts_at", new Date(nowMs + (MAX_PAUSE_MIN + 1) * 60_000).toISOString());
+  const newsEvents = (newsRows ?? []) as NewsEvent[]; // sin la agenda cargada (o sin su SQL) no hay datos: no hay pausa
+  const pauseRows = new Map<string, { enabled?: unknown; before_min?: unknown; after_min?: unknown; paused_until?: string | null }>();
+  if (settings.length) {
+    const { data: pr } = await admin.from("bot_news_pause").select("user_id, enabled, before_min, after_min, paused_until").in("user_id", settings.map((x) => x.user_id));
+    for (const r of (pr ?? []) as Array<{ user_id: string; paused_until?: string | null }>) pauseRows.set(r.user_id, r);
+  }
   const t0 = Date.now();
   const inds = new Map<string, Indicators>(); // indicadores por activo y perfil (se calculan una vez por corrida)
   let deferred = 0;
@@ -413,6 +458,8 @@ async function tick() {
     const { data: recent } = await admin.from("trades").select("entry, sl, tp, outcome").eq("user_id", s.user_id).eq("source", "bot").neq("outcome", "ABIERTA").gte("closed_at", since);
     const lossToday = (recent ?? []).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
     await admin.from("bot_settings").update({ last_tick_at: new Date().toISOString() }).eq("user_id", s.user_id);
+    const pause = activeNewsPause(newsEvents, pauseCfgOf(pauseRows.get(s.user_id)), nowMs);
+    await markNewsPause(s.user_id, pause, pauseRows.get(s.user_id)?.paused_until ?? null);
     if (lossToday <= -s.daily_loss_r) continue; // límite diario alcanzado: por hoy no opera más
     // Reglas elegidas en «Estrategia sugerida»: tope de operaciones por día y freno tras pérdidas seguidas (últimas 24 h).
     const maxPerDay = capOf(rules, "maxPerDay");
@@ -461,6 +508,11 @@ async function tick() {
         .select("id")
         .single();
       if (sigErr || !signal) continue;
+      if (pause) {
+        // Pausa por dato económico: la señal queda anotada (no se vuelve a evaluar ni se persigue) pero no se abre la operación.
+        if (liveUsers.has(s.user_id)) await logNewsSkip(s.user_id, symbol, sig.direction, pause.event, pause.until);
+        continue;
+      }
       const { data: trade, error: trErr } = await admin
         .from("trades")
         .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: tf === "4h" ? `${symbol}:${sig.t}:4h` : `${symbol}:${sig.t}`, notes: noteFor(profile), tags: [TAG] })

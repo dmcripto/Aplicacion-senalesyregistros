@@ -4,6 +4,7 @@ import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
 import Panel from "./Panel";
+import NewsPauseRow from "./NewsPauseRow";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 const label = "mb-1 block text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog";
@@ -151,6 +152,8 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
             <input type="checkbox" checked={s.notify} onChange={(e) => update({ notify: e.target.checked })} className="h-5 w-5 shrink-0 accent-[#2ec4f1]" />
           </label>
         )}
+
+        <NewsPauseRow userId={userId} notify={notify} />
 
         <p className="rounded-md border border-gold/30 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-fog">
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}
