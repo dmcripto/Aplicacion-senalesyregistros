@@ -857,6 +857,7 @@ export const EN: Record<string, string> = {
   "Sirve para publicar sin pasar por TradingView, o para probar el reparto. Se anota en tu diario y llega a quienes las activaron.": "Use it to publish without going through TradingView, or to test the sharing. It's logged in your journal and reaches those who turned it on.",
   "En una compra el stop va debajo de la entrada y el objetivo arriba.": "On a buy the stop goes below the entry and the target above.",
   "En una venta el stop va arriba de la entrada y el objetivo abajo.": "On a sell the stop goes above the entry and the target below.",
+  "También publicarla en mi comunidad de Telegram y avisar por WhatsApp (si no, llega solo a quienes siguen las señales de VELTRIX).": "Also publish it in my Telegram community and alert by WhatsApp (otherwise it only reaches those who follow VELTRIX signals).",
   "Cantidad copiada.": "Amount copied.",
   "No se pudo copiar automáticamente.": "Couldn't copy automatically.",
   "Cuánto operar para no perder más de lo que decidiste": "How much to trade so you don't lose more than you decided",

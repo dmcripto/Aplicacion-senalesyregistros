@@ -149,3 +149,29 @@ describe("publicar una señal a mano (cuenta emisora)", () => {
     expect(bad.headers.get("access-control-allow-origin")).toBe("*");
   });
 });
+
+describe("publicar a mano sin comunidad", () => {
+  const postHeaders = (body: string, headers: Record<string, string>) => handler(new Request(`http://x/functions/v1/tradingview-webhook/${EMISOR}`, { method: "POST", headers, body }));
+
+  it("con «x-veltrix-community: 0» llega a los seguidores pero NO a la comunidad ni a WhatsApp, y queda marcada", async () => {
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    const r = await postHeaders("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500", { "x-veltrix-community": "0" });
+    expect(r.status).toBe(201);
+    expect(copies().map((t) => t.user_id).sort()).toEqual(["s1", "s2"]);
+    expect(tg().map((c) => c.body.chat_id)).not.toContain(-1001);
+    expect(db.tables.trades.find((t) => t.user_id === "u1")!.notes).toContain("no va a la comunidad");
+    expect(calls.some((c) => c.url.includes("graph.facebook.com"))).toBe(false);
+  });
+
+  it("sin el encabezado (alertas de TradingView) sigue publicando en la comunidad como siempre", async () => {
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1001 }];
+    await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500");
+    expect(tg().map((c) => c.body.chat_id)).toContain(-1001);
+    expect(db.tables.trades.find((t) => t.user_id === "u1")!.notes).toBeUndefined();
+  });
+
+  it("el encabezado nuevo está permitido por CORS", async () => {
+    const pre = await handler(new Request(`http://x/functions/v1/tradingview-webhook/${EMISOR}`, { method: "OPTIONS" }));
+    expect(pre.headers.get("access-control-allow-headers")).toContain("x-veltrix-community");
+  });
+});

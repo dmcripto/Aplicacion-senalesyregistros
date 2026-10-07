@@ -15,6 +15,7 @@ import { communitySignalMessage, publishToCommunities, signalCardHtml } from "..
 import { botToken, notifyTelegram } from "../_shared/telegram.ts";
 import { waSignalText } from "../_shared/whatsapp.ts";
 import { fanOutSignal } from "../_shared/signalFeed.ts";
+import { FEED_ONLY_NOTE } from "../_shared/autoClose.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -32,7 +33,7 @@ const tooMany = (msg: string, retryAfter: number) =>
 // La web de VELTRIX publica señales manuales por este mismo webhook (cuenta emisora): necesita permiso CORS.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-veltrix-community",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -121,6 +122,8 @@ async function handle(req: Request): Promise<Response> {
     });
   }
 
+  // La web publica señales a mano con «x-veltrix-community: 0»: solo para quienes siguen las señales de VELTRIX, sin comunidad ni WhatsApp.
+  const noCommunity = req.headers.get("x-veltrix-community") === "0";
   const row = {
     user_id: profile.id,
     symbol: alert.symbol,
@@ -129,6 +132,7 @@ async function handle(req: Request): Promise<Response> {
     tp: alert.tp,
     sl: alert.sl,
     date: new Date().toISOString(),
+    ...(noCommunity ? { notes: FEED_ONLY_NOTE } : {}),
   };
   const insertRow = (r: Record<string, unknown>) => supabase.from("trades").insert(r).select().single();
   let { data: trade, error: insertError } = await insertRow(alert.targets?.length ? { ...row, targets: alert.targets } : row);
@@ -166,9 +170,9 @@ async function handle(req: Request): Promise<Response> {
   const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl, targets: alert.targets };
   await runInBackground(
     Promise.all([
-      publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
+      noCommunity ? Promise.resolve() : publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
       // Aviso por WhatsApp (si la persona vinculó su número).
-      notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
+      noCommunity ? Promise.resolve() : notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
       // Cuenta emisora: la señal también llega al diario y a los avisos de quienes activaron «Señales de VELTRIX».
       profile.signal_provider === true ? fanOutSignal(supabase, profile.id, trade.id, sig, row.date) : Promise.resolve(),
     ]),

@@ -22,6 +22,7 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
   }, [userId]);
 
   const [form, setForm] = useState({ symbol: "BTCUSDT", direction: "LONG" as "LONG" | "SHORT", entry: "", tp: "", sl: "" });
+  const [community, setCommunity] = useState(false);
   const [armed, setArmed] = useState(false);
   const [sending, setSending] = useState(false);
 
@@ -42,7 +43,7 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
     setArmed(false);
     setSending(true);
     try {
-      const r = await publishManualSignal(userId, check.text);
+      const r = await publishManualSignal(userId, check.text, { community });
       if (!r.ok) return notify(r.error ?? t("No se pudo publicar la señal."), "err");
       notify(r.duplicate ? t("Esa señal ya se había enviado hace un momento.") : t("Señal publicada: llega a {n} personas y queda en tu diario.", { n: people }), r.duplicate ? "info" : "ok");
       setForm({ ...form, entry: "", tp: "", sl: "" });
@@ -95,6 +96,10 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
               <input value={form.tp} onChange={(e) => setForm({ ...form, tp: e.target.value })} inputMode="decimal" aria-label={t("Objetivo")} placeholder={t("Objetivo")} className={field} />
               <input value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} inputMode="decimal" aria-label="Stop" placeholder="Stop" className={cx(field, "col-span-2")} />
             </div>
+            <label className="flex items-start gap-2 text-[11.5px] leading-snug text-fog">
+              <input type="checkbox" checked={community} onChange={(e) => setCommunity(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#2ec4f1]" />
+              <span>{t("También publicarla en mi comunidad de Telegram y avisar por WhatsApp (si no, llega solo a quienes siguen las señales de VELTRIX).")}</span>
+            </label>
             {form.entry && form.tp && form.sl && !check.ok && <p className="text-[11.5px] text-bear">{check.error}</p>}
             {armed ? (
               <button onClick={publish} disabled={sending} className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2.5 text-[12px] font-extrabold uppercase tracking-wider text-bear hover:bg-bear/30 disabled:opacity-40">
