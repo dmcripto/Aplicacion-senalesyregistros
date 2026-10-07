@@ -515,3 +515,12 @@ describe("escaneo del mercado", () => {
     expect(first?.symbol).toBe("BBBUSDT");
   });
 });
+
+describe("costo de las pruebas con historial", () => {
+  it("usa el costo real de Bitunix (0,12 % ida y vuelta de comisión + deslizamiento) en todos los perfiles y variantes", async () => {
+    const m = await import("../supabase/functions/_shared/botStrategy");
+    expect(m.ROUND_TRIP_COST_PCT).toBeGreaterThanOrEqual(0.12);
+    for (const p of Object.values(m.BOT_PROFILES)) expect(p.feePct).toBe(m.ROUND_TRIP_COST_PCT);
+    for (const v of m.LAB_VARIANTS) expect(v.params.feePct).toBe(m.ROUND_TRIP_COST_PCT);
+  });
+});
