@@ -384,8 +384,13 @@ function SignalGuideBlock({ trade }: { trade: Trade }) {
   }, []);
   const g = signalGuide(trade, money);
   const own = trade.source && trade.source !== "bot" ? trade.source : null;
-  const ex = g.simulated ? null : (own && exchanges.includes(own) ? own : exchanges[0]) ?? null;
-  const url = ex ? exchangeTradeUrl(ex, trade.symbol) : null;
+  // Todos los exchanges conectados (el de la propia señal primero): la persona decide en cuál abre la orden.
+  const targets = g.simulated
+    ? []
+    : [...exchanges].sort((a, b) => Number(b === own) - Number(a === own)).flatMap((id) => {
+        const url = exchangeTradeUrl(id, trade.symbol);
+        return url ? [{ id, url }] : [];
+      });
   return (
     <View style={s.guide}>
       <Text style={s.guideTitle}>{g.simulated ? "🤖 " + t("Señal simulada") : t("CÓMO EJECUTARLA")}</Text>
@@ -409,11 +414,11 @@ function SignalGuideBlock({ trade }: { trade: Trade }) {
           >
             <Text style={s.btnText}>{"📋 "}{t("Copiar datos")}</Text>
           </TouchableOpacity>
-          {url && ex && (
-            <TouchableOpacity style={[s.btn, { borderColor: colors.gold + "88" }]} onPress={() => openLink(url)}>
-              <Text style={[s.btnText, { color: colors.gold }]}>{"↗ "}{t("Abrir en {name}", { name: exchangeName(ex) })}</Text>
+          {targets.map((x) => (
+            <TouchableOpacity key={x.id} style={[s.btn, { borderColor: colors.gold + "88" }]} onPress={() => openLink(x.url)}>
+              <Text style={[s.btnText, { color: colors.gold }]}>{"↗ "}{t("Abrir en {name}", { name: exchangeName(x.id) })}</Text>
             </TouchableOpacity>
-          )}
+          ))}
         </View>
       )}
     </View>
