@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { runBotBacktest, runBotLab } from "./tradesApi";
@@ -26,6 +26,18 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // Mientras el bot está encendido se vuelve a mirar cada minuto si el servidor lo sigue revisando.
+  useEffect(() => {
+    if (!ready || !s.enabled) return;
+    const id = setInterval(() => {
+      setNowMs(Date.now());
+      void store.refresh();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [ready, s.enabled, store]);
+  const stale = botStaleMinutes(s, nowMs);
   const [labBusy, setLabBusy] = useState(false);
   const [lab, setLab] = useState<Extract<BotLab, { ok: true }> | null>(null);
 
@@ -78,6 +90,12 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
     <>
     <Text style={titleStyle}>{t("BOT AUTOMÁTICO")}</Text>
     <View style={st.card}>
+      {stale != null && (
+        <View style={[st.notice, { borderColor: colors.bear + "88", backgroundColor: colors.bear + "14" }]}>
+          <Text style={[st.name, { color: colors.bear }]}>{"⚠️ "}{t("El servidor no está revisando tu bot")}</Text>
+          <Text style={st.hint}>{t("Está encendido, pero hace {when} que no lo revisa: no se están anotando operaciones nuevas. Probá apagarlo y volver a encenderlo; si sigue igual, avisanos.", { when: staleSince(stale) })}</Text>
+        </View>
+      )}
       <View style={st.row}>
         <View style={{ flex: 1 }}>
           <Text style={st.name}>{s.enabled ? t("Bot encendido") : t("Bot apagado")}</Text>

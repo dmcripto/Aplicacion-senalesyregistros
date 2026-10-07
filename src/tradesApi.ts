@@ -309,6 +309,7 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
     maxOpen: Number(data.max_open ?? DEFAULT_BOT.maxOpen),
     dailyLossR: Number(data.daily_loss_r ?? DEFAULT_BOT.dailyLossR),
     lastTickAt: data.last_tick_at ?? null,
+    updatedAt: data.updated_at ?? null,
     rules: rulesSupported ? (row.rules as BotAction[]) : [],
     profile: profileSupported && (BOT_PROFILE_LIST as string[]).includes(row.profile as string) ? (row.profile as BotProfileId) : "balanced",
     notify: notifySupported ? (row.notify as boolean) : true,

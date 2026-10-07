@@ -1558,6 +1558,7 @@ export interface BotSettings {
   maxOpen: number; // operaciones simuladas abiertas a la vez
   dailyLossR: number; // pérdida máxima por día (R): al alcanzarla el bot no abre más ese día
   lastTickAt: string | null; // última vez que el servidor lo revisó
+  updatedAt?: string | null; // última vez que la persona cambió sus ajustes (por ejemplo, lo encendió)
   rules: BotAction[]; // reglas de «Estrategia sugerida» que la persona eligió aplicar al bot
   profile: BotProfileId; // perfil de estrategia
   notify: boolean; // avisar de cada operación del bot (app y Telegram propios)
@@ -1569,6 +1570,21 @@ export type BotScan = 0 | 20 | 40;
 export const BOT_SCAN_LIST: BotScan[] = [0, 20, 40];
 
 export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0 };
+
+/** Si el bot está encendido pero el servidor hace rato que no lo revisa, cuántos minutos van (null = está todo bien o está apagado). */
+export const BOT_STALE_MIN = 15;
+export function botStaleMinutes(s: Pick<BotSettings, "enabled" | "lastTickAt" | "updatedAt">, now = Date.now()): number | null {
+  if (!s.enabled) return null;
+  const at = (x?: string | null) => (x ? new Date(x).getTime() : NaN);
+  // Se cuenta desde lo último que pasó: la última revisión o el momento en que se encendió (lo que sea más reciente).
+  const base = Math.max(...[at(s.lastTickAt), at(s.updatedAt)].filter((n) => Number.isFinite(n)), -Infinity);
+  if (!Number.isFinite(base)) return null; // sin ninguna fecha no se puede saber
+  const min = Math.floor((now - base) / 60_000);
+  return min >= BOT_STALE_MIN ? min : null;
+}
+
+/** «hace 25 min», «hace 3 h»… para el aviso de que el servidor no revisa. */
+export const staleSince = (min: number) => (min < 120 ? tr("{n} min", { n: min }) : tr("{n} h", { n: Math.floor(min / 60) }));
 
 export interface BotStatsRow {
   n: number;
