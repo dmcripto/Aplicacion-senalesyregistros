@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { t } from "../lib";
+import { checkManualSignal, cx, t } from "../lib";
 import type { SignalFeedState } from "../lib";
-import { fetchSignalFeed, setFollowSignals } from "../tradesApi";
+import { fetchSignalFeed, publishManualSignal, setFollowSignals } from "../tradesApi";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -21,7 +21,37 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
     };
   }, [userId]);
 
+  const [form, setForm] = useState({ symbol: "BTCUSDT", direction: "LONG" as "LONG" | "SHORT", entry: "", tp: "", sl: "" });
+  const [armed, setArmed] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const id = window.setTimeout(() => setArmed(false), 5000);
+    return () => window.clearTimeout(id);
+  }, [armed]);
+
   if (!state) return null;
+
+  const num = (v: string) => Number(v.trim().replace(",", "."));
+  const check = checkManualSignal({ symbol: form.symbol, direction: form.direction, entry: num(form.entry), tp: num(form.tp), sl: num(form.sl) });
+  const people = state.followers ?? 0;
+
+  const publish = async () => {
+    if (!check.ok) return;
+    setArmed(false);
+    setSending(true);
+    try {
+      const r = await publishManualSignal(userId, check.text);
+      if (!r.ok) return notify(r.error ?? t("No se pudo publicar la señal."), "err");
+      notify(r.duplicate ? t("Esa señal ya se había enviado hace un momento.") : t("Señal publicada: llega a {n} personas y queda en tu diario.", { n: people }), r.duplicate ? "info" : "ok");
+      setForm({ ...form, entry: "", tp: "", sl: "" });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const field = "num w-full rounded-md border border-line bg-ink px-3 py-2 text-[13px] text-snow outline-none focus:border-gold";
 
   const toggle = async (follow: boolean) => {
     setBusy(true);
@@ -50,6 +80,32 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
             📡 {t("Tu cuenta publica señales: las alertas de TradingView que recibe tu webhook se reparten a quienes las activaron.")}{" "}
             {state.followers != null && <b className="num text-gold">{t("Hoy las reciben {n} personas.", { n: state.followers })}</b>}
           </p>
+        )}
+        {state.provider && (
+          <div className="space-y-2.5 rounded-md border border-line p-3.5">
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog">{t("Publicar una señal a mano")}</p>
+            <p className="text-[11.5px] text-dim">{t("Sirve para publicar sin pasar por TradingView, o para probar el reparto. Se anota en tu diario y llega a quienes las activaron.")}</p>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} aria-label={t("Activo")} placeholder="BTCUSDT" className={field} />
+              <select value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value as "LONG" | "SHORT" })} aria-label={t("Dirección")} className={field}>
+                <option value="LONG">{t("COMPRA")}</option>
+                <option value="SHORT">{t("VENTA")}</option>
+              </select>
+              <input value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} inputMode="decimal" aria-label={t("Entrada")} placeholder={t("Entrada")} className={field} />
+              <input value={form.tp} onChange={(e) => setForm({ ...form, tp: e.target.value })} inputMode="decimal" aria-label={t("Objetivo")} placeholder={t("Objetivo")} className={field} />
+              <input value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} inputMode="decimal" aria-label="Stop" placeholder="Stop" className={cx(field, "col-span-2")} />
+            </div>
+            {form.entry && form.tp && form.sl && !check.ok && <p className="text-[11.5px] text-bear">{check.error}</p>}
+            {armed ? (
+              <button onClick={publish} disabled={sending} className="w-full rounded-md border border-bear bg-bear/15 px-3 py-2.5 text-[12px] font-extrabold uppercase tracking-wider text-bear hover:bg-bear/30 disabled:opacity-40">
+                {t("Confirmar: enviar ahora a {n} personas", { n: people })}
+              </button>
+            ) : (
+              <button onClick={() => setArmed(true)} disabled={!check.ok || sending} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold hover:bg-gold/20 disabled:opacity-40">
+                {sending ? t("Enviando…") : t("Publicar señal")}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </Panel>

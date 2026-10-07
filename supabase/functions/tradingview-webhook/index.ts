@@ -29,7 +29,21 @@ const MAX_PER_DAY = 500;
 const tooMany = (msg: string, retryAfter: number) =>
   new Response(msg, { status: 429, headers: { "Retry-After": String(retryAfter) } });
 
+// La web de VELTRIX publica señales manuales por este mismo webhook (cuenta emisora): necesita permiso CORS.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const res = await handle(req);
+  for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+  return res;
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
@@ -164,4 +178,4 @@ Deno.serve(async (req) => {
     status: 201,
     headers: { "Content-Type": "application/json" },
   });
-});
+}

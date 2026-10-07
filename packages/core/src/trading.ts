@@ -1573,6 +1573,23 @@ export interface BotSettings {
 export type BotScan = 0 | 20 | 40;
 export const BOT_SCAN_LIST: BotScan[] = [0, 20, 40];
 
+/** El texto de una alerta en el formato de VELTRIX (el mismo que manda TradingView). */
+export const buildAlertText = (i: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }) =>
+  `VELTRIX|${i.symbol.trim().toUpperCase()}|${i.direction === "LONG" ? "COMPRA" : "VENTA"}|${i.entry}|${i.tp}|${i.sl}`;
+
+/** Revisa una señal manual con el mismo lector que usa el servidor. Devuelve el texto listo para enviar o el motivo por el que no sirve. */
+export function checkManualSignal(i: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }): { ok: true; text: string } | { ok: false; error: string } {
+  if (![i.entry, i.tp, i.sl].every((n) => Number.isFinite(n) && n > 0)) return { ok: false, error: tr("Completá entrada, objetivo y stop con números mayores que cero.") };
+  // Para una señal que se reparte a otras personas, el objetivo y el stop tienen que estar del lado correcto de la entrada.
+  const long = i.direction === "LONG";
+  if (long ? !(i.sl < i.entry && i.entry < i.tp) : !(i.tp < i.entry && i.entry < i.sl)) {
+    return { ok: false, error: long ? tr("En una compra el stop va debajo de la entrada y el objetivo arriba.") : tr("En una venta el stop va arriba de la entrada y el objetivo abajo.") };
+  }
+  const text = buildAlertText(i);
+  const r = parseAlerts(text);
+  return r.valid.length ? { ok: true, text } : { ok: false, error: r.errors[0] ?? tr("La señal no es válida.") };
+}
+
 // ─── Señales de VELTRIX (las que publica el equipo, opt-in) ─────────────────
 
 export interface SignalFeedState {

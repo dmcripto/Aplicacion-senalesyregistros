@@ -121,3 +121,31 @@ describe("Señales de VELTRIX: reparto a quienes lo activaron", () => {
     expect(r).toEqual({ followers: 602, copied: 602 });
   });
 });
+
+describe("publicar una señal a mano (cuenta emisora)", () => {
+  it("arma el texto de la alerta con el mismo formato de TradingView y lo valida con el lector del servidor", async () => {
+    const { buildAlertText, checkManualSignal } = await import("../packages/core/src/trading");
+    expect(buildAlertText({ symbol: " btcusdt ", direction: "LONG", entry: 85000, tp: 86700, sl: 84150 })).toBe("VELTRIX|BTCUSDT|COMPRA|85000|86700|84150");
+    const ok = checkManualSignal({ symbol: "ethusdt", direction: "SHORT", entry: 3000, tp: 2900, sl: 3050 });
+    expect(ok).toEqual({ ok: true, text: "VELTRIX|ETHUSDT|VENTA|3000|2900|3050" });
+    // objetivo del lado equivocado, ceros y vacíos no se envían
+    expect(checkManualSignal({ symbol: "BTCUSDT", direction: "LONG", entry: 85000, tp: 84000, sl: 84150 }).ok).toBe(false);
+    expect(checkManualSignal({ symbol: "BTCUSDT", direction: "LONG", entry: 85000, tp: 86700, sl: 85500 }).ok).toBe(false); // stop del lado del objetivo
+    expect(checkManualSignal({ symbol: "BTCUSDT", direction: "SHORT", entry: 85000, tp: 86700, sl: 84150 }).ok).toBe(false); // venta con los lados al revés
+    expect(checkManualSignal({ symbol: "BTCUSDT", direction: "LONG", entry: 0, tp: 1, sl: 1 }).ok).toBe(false);
+    expect(checkManualSignal({ symbol: "BTCUSDT", direction: "LONG", entry: NaN, tp: 86000, sl: 84000 }).ok).toBe(false);
+  });
+
+  it("el webhook contesta con permiso CORS (para publicar desde la web) y la señal manual se reparte igual", async () => {
+    const pre = await handler(new Request(`http://x/functions/v1/tradingview-webhook/${EMISOR}`, { method: "OPTIONS" }));
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+    const r = await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500");
+    expect(r.status).toBe(201);
+    expect(r.headers.get("access-control-allow-origin")).toBe("*");
+    expect(copies().map((t) => t.user_id).sort()).toEqual(["s1", "s2"]);
+    const bad = await post("VELTRIX|BTCUSDT|COMPRA|nada|60000|64500");
+    expect(bad.status).toBe(422);
+    expect(bad.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
