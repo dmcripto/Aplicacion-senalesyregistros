@@ -26,7 +26,7 @@ export interface BotParams {
   tf?: BotTimeframe; // tamaño de vela; sin indicar, 1 hora
 }
 
-export type BotTimeframe = "1h" | "4h";
+export type BotTimeframe = "15m" | "1h" | "4h";
 
 /**
  * Costo supuesto de cada operación en las pruebas con historial, ida y vuelta y en % del precio: comisión de mercado de Bitunix
@@ -58,7 +58,7 @@ export const paramsOf = (id: unknown): BotParams => (isProfileId(id) ? BOT_PROFI
 
 export const BOT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
 export const BAR_MS = 3_600_000;
-export const barMsOf = (p: Pick<BotParams, "tf">) => (p.tf === "4h" ? 4 * BAR_MS : BAR_MS);
+export const barMsOf = (p: Pick<BotParams, "tf">) => (p.tf === "4h" ? 4 * BAR_MS : p.tf === "15m" ? BAR_MS / 4 : BAR_MS);
 /** Velas mínimas para poder calcular todo (la EMA lenta manda). */
 export const WARMUP = (p: BotParams = DEFAULT_PARAMS) => p.emaSlow + 5;
 
@@ -258,7 +258,7 @@ async function bybitBars(symbol: string, count: number, fetchFn: Fetch, tf: BotT
   const out: Bar[] = [];
   let end = Date.now();
   while (out.length < count) {
-    const j = (await getJson(fetchFn, `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${tf === "4h" ? 240 : 60}&limit=1000&end=${end}`)) as {
+    const j = (await getJson(fetchFn, `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${tf === "4h" ? 240 : tf === "15m" ? 15 : 60}&limit=1000&end=${end}`)) as {
       result?: { list?: string[][] };
     };
     const rows = j.result?.list ?? [];
@@ -492,28 +492,35 @@ export interface LabVariant {
 }
 
 export const LAB_DAYS = 360;
+/** Días de historia por tamaño de vela: con velas de 15 minutos un año son demasiadas velas para pedir en una sola prueba. */
+export const LAB_DAYS_BY_TF: Record<BotTimeframe, number> = { "15m": 90, "1h": LAB_DAYS, "4h": LAB_DAYS };
 export const LAB_VARIANTS: LabVariant[] = [
   { id: "h1-balanced", params: { ...DEFAULT_PARAMS } }, // referencia: lo que se probó hasta ahora
   { id: "h4-balanced", params: { ...DEFAULT_PARAMS, tf: "4h" } },
   { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
   { id: "h4-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: ROUND_TRIP_COST_PCT, tf: "4h" } },
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
+  // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
+  { id: "m15-balanced", params: { ...DEFAULT_PARAMS, tf: "15m" } },
+  { id: "m15-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 3, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "15m" } },
 ];
 
 export interface LabRow {
   id: string;
   tf: BotTimeframe;
+  days: number; // historia usada para esta variante
   whole: BotStats;
   first: BotStats;
   second: BotStats;
 }
 
 /** Corre cada variante con sus velas (`barsFor` da las velas de cada tamaño) y separa las operaciones en dos mitades (antes y después de `midMs`). */
-export function runLab(barsFor: (tf: BotTimeframe) => Record<string, Bar[]>, s: Omit<SimSettings, "rules">, midMs: number, variants: LabVariant[] = LAB_VARIANTS): LabRow[] {
+export function runLab(barsFor: (tf: BotTimeframe) => Record<string, Bar[]>, s: Omit<SimSettings, "rules">, midMs: number | ((tf: BotTimeframe) => number), variants: LabVariant[] = LAB_VARIANTS): LabRow[] {
   return variants.map((v) => {
     const tf = v.params.tf ?? "1h";
+    const mid = typeof midMs === "function" ? midMs(tf) : midMs;
     const trades = simulate(barsFor(tf), { ...s, rules: [] }, v.params).trades;
     const rs = (list: SimTrade[]) => botStats(list.map((x) => x.r));
-    return { id: v.id, tf, whole: rs(trades), first: rs(trades.filter((x) => x.t < midMs)), second: rs(trades.filter((x) => x.t >= midMs)) };
+    return { id: v.id, tf, days: LAB_DAYS_BY_TF[tf], whole: rs(trades), first: rs(trades.filter((x) => x.t < mid)), second: rs(trades.filter((x) => x.t >= mid)) };
   });
 }

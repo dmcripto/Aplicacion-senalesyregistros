@@ -362,7 +362,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                     </p>
                     <p className="text-[10.5px] leading-relaxed text-dim">{labVariantInfo(v.id).blurb}</p>
                     <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px] text-fog">
-                      {([[t("Año completo"), v.whole], [t("1.ª mitad"), v.first], [t("2.ª mitad"), v.second]] as Array<[string, BotStatsRow]>).map(([name, st]) => (
+                      {([[(v.days ?? 360) < 360 ? t("Todo el período") : t("Año completo"), v.whole], [t("1.ª mitad"), v.first], [t("2.ª mitad"), v.second]] as Array<[string, BotStatsRow]>).map(([name, st]) => (
                         <div key={name}>
                           <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-dim">{name}</p>
                           <StatsLine s={st} />

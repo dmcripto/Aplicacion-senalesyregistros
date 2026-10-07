@@ -13,7 +13,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
@@ -209,12 +209,12 @@ async function runLabTest(userId: string, chosen: string[]) {
   const variants = scanning ? LAB_VARIANTS.filter((v) => v.params.tf === "4h") : LAB_VARIANTS;
   const tfs = [...new Set(variants.map((v) => v.params.tf ?? "1h"))] as BotTimeframe[];
 
-  const bars: Record<BotTimeframe, Record<string, Bar[]>> = { "1h": {}, "4h": {} };
+  const bars: Record<BotTimeframe, Record<string, Bar[]>> = { "15m": {}, "1h": {}, "4h": {} };
   const jobs = symbols.flatMap((symbol) => tfs.map((tf) => ({ symbol, tf })));
   await mapPool(jobs, 8, async ({ symbol, tf }) => {
-    const perDay = tf === "4h" ? 6 : 24;
+    const perDay = tf === "4h" ? 6 : tf === "15m" ? 96 : 24;
     try {
-      bars[tf][symbol] = await barsFor(symbol, LAB_DAYS * perDay + MAX_WARMUP, tf);
+      bars[tf][symbol] = await barsFor(symbol, LAB_DAYS_BY_TF[tf] * perDay + MAX_WARMUP, tf);
     } catch {
       /* ese activo queda afuera */
     }
@@ -222,7 +222,7 @@ async function runLabTest(userId: string, chosen: string[]) {
   const ok = symbols.filter((x) => tfs.every((tf) => bars[tf][x]));
   if (!ok.length) return { ok: false, error: "No se pudieron bajar los precios. Probá de nuevo en unos minutos." };
   const usable = (tf: BotTimeframe) => Object.fromEntries(ok.map((x) => [x, bars[tf][x]]));
-  const mid = Date.now() - (LAB_DAYS / 2) * 24 * 3_600_000;
+  const mid = (tf: BotTimeframe) => Date.now() - (LAB_DAYS_BY_TF[tf] / 2) * 24 * 3_600_000; // cada variante se parte por la mitad de SU período
   return { ok: true, days: LAB_DAYS, variants: runLab(usable, { symbols: ok, ...base }, mid, variants), symbols: ok, scanned: scanning ? ok.length : 0 };
 }
 
