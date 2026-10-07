@@ -571,3 +571,21 @@ export async function setFollowSignals(userId: string, follow: boolean) {
   const { error } = await supabase.from("profiles").update({ follow_signals: follow }).eq("id", userId);
   if (error) throw new Error(error.message);
 }
+
+/**
+ * Publica una señal manual por el propio webhook de la cuenta emisora (la misma ruta que una alerta de TradingView):
+ * se anota en su diario y se reparte a quienes activaron «Señales de VELTRIX».
+ */
+export async function publishManualSignal(userId: string, text: string): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
+  const url = await fetchWebhookUrl(userId);
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "text/plain" }, body: text });
+  } catch {
+    return { ok: false, error: t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") };
+  }
+  if (res.status === 201) return { ok: true };
+  if (res.status === 200) return { ok: true, duplicate: true };
+  const msg = (await res.text().catch(() => "")).slice(0, 200);
+  return { ok: false, error: msg || t("No se pudo publicar la señal.") };
+}
