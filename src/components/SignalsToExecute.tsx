@@ -115,8 +115,13 @@ export default function SignalsToExecute({ trades, prices, loading, now, notify 
           const accent = g.long ? "bull" : "bear";
           const isNew = fresh[tr.id] != null && now.getTime() - fresh[tr.id] < NEW_MS + 20_000;
           const own = tr.source && tr.source !== "bot" ? tr.source : null;
-          const ex = g.simulated ? null : (own && exchanges.includes(own as ExchangeId) ? (own as ExchangeId) : exchanges[0]) ?? null;
-          const url = ex ? exchangeTradeUrl(ex, tr.symbol) : null;
+          // Todos los exchanges conectados (el de la propia señal primero): la persona decide en cuál abre la orden.
+          const targets = g.simulated
+            ? []
+            : [...exchanges].sort((a, b) => Number(b === own) - Number(a === own)).flatMap((id) => {
+                const url = exchangeTradeUrl(id, tr.symbol);
+                return url ? [{ id, url }] : [];
+              });
           return (
             <li key={tr.id} className={cx("min-w-0 rounded-xl border-2 bg-ink/50 p-4", accent === "bull" ? "border-bull/45" : "border-bear/45", isNew && "ring-2 ring-gold/70")}>
               <div className="flex flex-wrap items-center gap-2">
@@ -165,11 +170,11 @@ export default function SignalsToExecute({ trades, prices, loading, now, notify 
                   <button onClick={() => copy(g.copyText)} className="rounded-md border border-line px-3 py-2 text-[12px] font-bold text-snow transition-colors hover:border-line2 hover:bg-white/5">
                     📋 {t("Copiar datos")}
                   </button>
-                  {url && ex && (
-                    <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-[12px] font-bold text-gold transition-colors hover:bg-gold/20">
-                      ↗ {t("Abrir en {name}", { name: exchangeName(ex) })}
+                  {targets.map((x) => (
+                    <a key={x.id} href={x.url} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-[12px] font-bold text-gold transition-colors hover:bg-gold/20">
+                      ↗ {t("Abrir en {name}", { name: exchangeName(x.id) })}
                     </a>
-                  )}
+                  ))}
                 </div>
               )}
             </li>
