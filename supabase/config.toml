@@ -34,3 +34,12 @@ verify_jwt = false
 
 [functions.coach]
 verify_jwt = false
+
+[functions.auto-close]
+verify_jwt = false
+
+[functions.bot]
+verify_jwt = false
+
+[functions.whatsapp]
+verify_jwt = false
