@@ -365,11 +365,11 @@ const sha256Hex = async (text: string) => toHex(await crypto.subtle.digest("SHA-
 
 /**
  * Firma de Bitunix: sha256( sha256(nonce + timestamp + apiKey + parámetros ordenados por nombre y pegados como clave+valor) + secreta ).
- * Los pedidos de VELTRIX son GET, así que no hay cuerpo.
+ * Los pedidos de lectura son GET (sin cuerpo). Los pedidos POST (órdenes del bot con dinero real) suman el cuerpo JSON compacto al final de los parámetros.
  */
-export async function bitunixSign(nonce: string, timestamp: string, apiKey: string, params: Record<string, string | number>, secret: string) {
+export async function bitunixSign(nonce: string, timestamp: string, apiKey: string, params: Record<string, string | number>, secret: string, body = "") {
   const sorted = Object.keys(params).sort().map((k) => k + params[k]).join("");
-  return sha256Hex((await sha256Hex(nonce + timestamp + apiKey + sorted)) + secret);
+  return sha256Hex((await sha256Hex(nonce + timestamp + apiKey + sorted + body)) + secret);
 }
 
 async function bitunixGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {

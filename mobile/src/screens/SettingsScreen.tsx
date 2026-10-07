@@ -14,6 +14,7 @@ import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
 import BotSection from "../BotSection";
+import LiveSection from "../LiveSection";
 import MfaSection, { mfaErrorText, useMfa } from "../MfaSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
@@ -305,6 +306,8 @@ export default function SettingsScreen({
 
       <View {...mark("bot")} />
       <BotSection titleStyle={styles.sectionTitle} />
+
+      <LiveSection titleStyle={styles.sectionTitle} />
 
       <InviteSection />
 
