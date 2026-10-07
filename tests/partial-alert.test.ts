@@ -210,6 +210,15 @@ describe("el cierre automático y las operaciones que no son de la persona", () 
     expect(db.tables.trades[0]).toMatchObject({ outcome: "TP", auto_closed: true });
     expect(chats()).toContain(555);
     expect(chats()).not.toContain(-100);
+    expect(texts().join("\n")).toContain("Cierre automático (prueba)");
+  });
+
+  it("el cierre de una operación normal no dice «prueba»", async () => {
+    db.tables.trades = [trade()];
+    candles = [row(5, 131, 99)];
+    await run();
+    expect(texts().join("\n")).toContain("Cierre automático");
+    expect(texts().join("\n")).not.toContain("(prueba)");
   });
 
   it("el aviso de Target 1 de una señal de prueba tampoco va a la comunidad", async () => {

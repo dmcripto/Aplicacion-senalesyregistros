@@ -163,7 +163,9 @@ Deno.serve(async () => {
     const totalTargets = targetLevels(trade).length;
     const reached = Math.max(detectTargets(trade, candles).filter((at) => at < hit.at).length, trade.targets_hit ?? 0);
     const note = (lang: "es" | "en") => resultNote(hit.outcome, reached, totalTargets, lang);
-    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: lang === "en" ? "Auto-close" : "Cierre automático", note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
+    const test = isTestSignal(trade); // la señal de prueba se avisa como «(prueba)» también al cerrarse
+    const closeLabel = (lang: "es" | "en") => (lang === "en" ? "Auto-close" : "Cierre automático") + (test ? (lang === "en" ? " (test)" : " (prueba)") : "");
+    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: closeLabel(lang), note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
     if (!isTestSignal(trade)) {
       await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
       await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
@@ -176,8 +178,8 @@ Deno.serve(async () => {
       await sendExpoPush(
         tokens.map((t) => ({
           to: t.expo_push_token,
-          title: `${hit.outcome === "TP" ? (en ? "✅ TP hit" : "✅ TP alcanzado") : en ? "❌ SL hit" : "❌ SL alcanzado"} · ${trade.symbol}`,
-          body: [`${en ? "Auto-close" : "Cierre automático"} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`, note(en ? "en" : "es")].filter(Boolean).join(" · "),
+          title: `${hit.outcome === "TP" ? (en ? "✅ TP hit" : "✅ TP alcanzado") : en ? "❌ SL hit" : "❌ SL alcanzado"} · ${trade.symbol}${test ? (en ? " (test)" : " (prueba)") : ""}`,
+          body: [`${closeLabel(en ? "en" : "es")} ${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`, note(en ? "en" : "es")].filter(Boolean).join(" · "),
           data: { tradeId: trade.id },
         })),
       );
