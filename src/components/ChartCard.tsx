@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, binanceSymbol, computeIndicator, cx, fmtPrice, locale, t } from "../lib";
 import type { ChartCandle, IndicatorKind, Trade } from "../lib";
+import { fetchAlerts } from "../tradesApi";
+import type { UserAlert } from "../lib";
+import AlertsSection from "./AlertsSection";
 import Panel from "./Panel";
+
+type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
 const TFS = ["5m", "15m", "1h", "4h", "1d"] as const;
 type Tf = (typeof TFS)[number];
@@ -78,7 +83,7 @@ const BULL = "#16d98a";
 const BEAR = "#ff4d67";
 const CYAN = "#2ec4f1";
 
-function ChartBody({ trades }: { trades: Trade[] }) {
+function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
   const initial = useMemo(() => {
     const p = loadPrefs();
     // Si hay una señal abierta con un activo cripto y nunca se eligió otro, arranca con ese activo.
@@ -95,7 +100,7 @@ function ChartBody({ trades }: { trades: Trade[] }) {
   const [candles, setCandles] = useState<ChartCandle[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const boxRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[]) => void; destroy: () => void } | null>(null);
+  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[]) => void; destroy: () => void } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
 
   const change = (next: Partial<Prefs>) =>
@@ -172,7 +177,7 @@ function ChartBody({ trades }: { trades: Trade[] }) {
       let lastKey = "";
 
       apiRef.current = {
-        update(c, p, levels) {
+        update(c, p, levels, alertLevels) {
           const range = chart.timeScale().getVisibleLogicalRange();
           candle.setData(c.map((x) => ({ time: x.time as any, open: x.open, high: x.high, low: x.low, close: x.close })));
           // Indicadores: se rehacen enteros (son baratos con 500 velas).
@@ -202,14 +207,16 @@ function ChartBody({ trades }: { trades: Trade[] }) {
           // Niveles de las señales abiertas de este activo.
           for (const l of lines) candle.removePriceLine(l);
           lines = [];
+          const add = (price: number, color: string, title: string, dashed = false) =>
+            lines.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: dashed ? lc.LineStyle.Dotted : lc.LineStyle.Dashed, axisLabelVisible: true, title }));
           for (const tr of levels) {
-            const add = (price: number, color: string, title: string, dashed = false) =>
-              lines.push(candle.createPriceLine({ price, color, lineWidth: 1, lineStyle: dashed ? lc.LineStyle.Dotted : lc.LineStyle.Dashed, axisLabelVisible: true, title }));
             add(tr.entry, CYAN, `${t("Entrada")} ${tr.direction}`);
             tr.targets?.forEach((x, i) => add(x, BULL, `TP${i + 1}`, true));
             add(tr.tp, BULL, "TP");
             add(tr.sl, BEAR, "SL");
           }
+          // Mis alertas de precio de este activo.
+          for (const lv of alertLevels) add(lv, "#f5c518", `🔔 ${fmtPrice(lv)}`, true);
           const key = `${p.symbol}|${p.tf}`;
           if (key !== lastKey) {
             lastKey = key;
@@ -230,9 +237,23 @@ function ChartBody({ trades }: { trades: Trade[] }) {
 
   const levels = useMemo(() => trades.filter((x) => x.outcome === "ABIERTA" && binanceSymbol(x.symbol)?.symbol === symbolKey), [trades, symbolKey]);
 
+  // Mis alertas (si todavía no se corrió el SQL de alertas, esa parte no se muestra).
+  const [alerts, setAlerts] = useState<UserAlert[] | null>(null);
+  const reloadAlerts = () => {
+    fetchAlerts(userId)
+      .then(setAlerts)
+      .catch(() => setAlerts(null));
+  };
   useEffect(() => {
-    if (candles && ready) apiRef.current?.update(candles, prefs, levels);
-  }, [candles, prefs, levels, ready]);
+    reloadAlerts();
+    const id = window.setInterval(reloadAlerts, 30_000);
+    return () => window.clearInterval(id);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const alertLevels = useMemo(() => (alerts ?? []).filter((a) => a.active && a.kind === "price" && a.symbol === symbolKey && a.level != null).map((a) => a.level as number), [alerts, symbolKey]);
+
+  useEffect(() => {
+    if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels);
+  }, [candles, prefs, levels, alertLevels, ready]);
 
   const last = candles?.[candles.length - 1];
   const first = candles?.[Math.max(0, candles.length - 1 - (prefs.tf === "1d" ? 1 : prefs.tf === "4h" ? 6 : prefs.tf === "1h" ? 24 : prefs.tf === "15m" ? 96 : 288))];
@@ -323,15 +344,16 @@ function ChartBody({ trades }: { trades: Trade[] }) {
           </div>
         )}
       </div>
+      {alerts && <AlertsSection userId={userId} symbol={symbolKey} tf={prefs.tf} lastPrice={last?.close ?? null} alerts={alerts} reload={reloadAlerts} notify={notify} />}
       <p className="text-[10.5px] leading-relaxed text-dim">{t("Velas de Binance. Los indicadores se calculan con las últimas {n} velas. Es una herramienta de análisis, no asesoramiento financiero.", { n: LIMIT })}</p>
     </div>
   );
 }
 
-export default function ChartCard({ trades }: { trades: Trade[] }) {
+export default function ChartCard({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
   return (
-    <Panel id="chart" title={t("GRÁFICO")} subtitle={t("Velas con 2 indicadores y tus señales abiertas")} summary={t("EMA, RSI, MACD, Bollinger · tocá para abrir")} defaultOpen={false}>
-      <ChartBody trades={trades} />
+    <Panel id="chart" title={t("GRÁFICO")} subtitle={t("Velas con 2 indicadores, tus señales y alertas propias")} summary={t("EMA, RSI, MACD, Bollinger y alertas · tocá para abrir")} defaultOpen={false}>
+      <ChartBody trades={trades} userId={userId} notify={notify} />
     </Panel>
   );
 }
