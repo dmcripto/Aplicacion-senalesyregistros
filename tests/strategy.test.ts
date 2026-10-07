@@ -313,7 +313,7 @@ describe("veredicto de la prueba con y sin reglas", () => {
 
 describe("perfiles del bot: pantalla y servidor", () => {
   it("los números de cada perfil son los mismos en el núcleo y en la función del servidor", () => {
-    for (const id of ["conservative", "balanced", "dynamic", "slow"] as const) {
+    for (const id of ["conservative", "balanced", "dynamic", "slow", "slowwide"] as const) {
       const c = CORE_PROFILES[id], s = SERVER_PROFILES[id];
       expect({ lookback: s.lookback, emaFast: s.emaFast, emaSlow: s.emaSlow, atrMult: s.atrMult, rr: s.rr, tf: s.tf ?? "1h" }).toEqual(c);
     }

@@ -901,7 +901,6 @@ export const EN: Record<string, string> = {
   "Mandarme una señal de prueba": "Send me a test signal",
   "Crea una señal de BTC con el precio de ahora y te avisa por la app y por tu Telegram. Es solo para vos: no se publica en ninguna comunidad. Borrala del Diario cuando termines de probar.": "It creates a BTC signal at the current price and alerts you in the app and on your Telegram. It's just for you: it isn't posted in any community. Delete it from the Journal when you're done testing.",
   "Lento (4 horas)": "Slow (4 hours)",
-  "Velas de 4 horas: pocas operaciones y menos comisiones. Es la que mejor salió en el laboratorio (todavía sin confirmar en vivo).": "4-hour candles: few trades and lower fees. It's the one that did best in the lab (not yet confirmed live).",
   "Mira velas de {tf} ya cerradas, nunca el futuro.": "It looks at already-closed {tf} candles, never the future.",
   "4 horas": "4 hours",
   "1 hora": "1 hour",
@@ -1147,4 +1146,7 @@ export const EN: Record<string, string> = {
   "cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.": "every time an open trade hits a target (TP1, TP2…; if the signal has no targets, when it moves 1R in your favor), we alert you (and your community) to take partial profits and secure the SL.",
   "AVISOS DE TARGETS": "TARGET ALERTS",
   "Cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.": "Every time an open trade hits a target (TP1, TP2…; if the signal has no targets, when it moves 1R in your favor), we alert you (and your community) to take partial profits and secure the SL.",
+  "Velas de 4 horas: pocas operaciones y menos comisiones. Con el costo real de Bitunix ya no salió positiva en el laboratorio.": "4-hour candles: few trades and fewer fees. With Bitunix's real cost it no longer came out positive in the lab.",
+  "Lento · objetivo amplio": "Slow · wide target",
+  "Velas de 4 horas, stop ancho y objetivo del triple de lo arriesgado. Acierta menos veces. Fue la única que pasó la vara del laboratorio con costos reales (pocas operaciones: todavía sin confirmar en vivo).": "4-hour candles, wide stop and a target of three times the amount risked. It wins less often. It was the only one that passed the lab's bar with real costs (few trades: not yet confirmed live).",
 };

@@ -159,7 +159,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
         {profileSupported && (
           <div>
             <span className={label}>{t("Perfil de estrategia")}</span>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
               {BOT_PROFILE_LIST.map((id) => (
                 <button
                   key={id}
