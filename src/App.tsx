@@ -432,7 +432,7 @@ function WelcomeCard({ onLoadSample }: { onLoadSample?: () => void }) {
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
-function Dashboard({ userId }: { userId: string }) {
+function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const { trades, loading, removeLocal, restoreLocal } = useTrades(userId);
   // La guía de inicio se muestra mientras no hay operaciones; después se puede volver a abrir desde el pie.
   const [guide, setGuide] = useState(false);
@@ -757,6 +757,11 @@ function Dashboard({ userId }: { userId: string }) {
             <IconDownload className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{t("Exportar CSV")}</span>
           </button>
           <LangSwitch />
+          {email && (
+            <span className="hidden max-w-[200px] truncate text-[11px] text-dim lg:inline" title={email}>
+              {email}
+            </span>
+          )}
           <button
             onClick={() => supabase.auth.signOut()}
             className="rounded-md border border-line px-3 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow sm:px-3.5"
@@ -952,6 +957,12 @@ function Dashboard({ userId }: { userId: string }) {
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-5 lg:px-8">
           <p className="text-[11.5px] text-dim">
             <span className="font-bold text-fog">VELTRIX</span> — {t("tu diario se sincroniza en la nube entre web y móvil.")}
+            {email && (
+              <>
+                {" · "}
+                {t("Sesión de")} <span className="num text-fog">{email}</span>
+              </>
+            )}
             {trades.length > 0 && (
               <>
                 {" · "}
@@ -1062,7 +1073,7 @@ export default function App() {
 
   return (
     <MfaProvider>
-      <Dashboard userId={session.user.id} />
+      <Dashboard userId={session.user.id} email={session.user.email} />
     </MfaProvider>
   );
 }
