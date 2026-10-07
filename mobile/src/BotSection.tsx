@@ -291,7 +291,7 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
                 {labPasses(v) ? ` · ${t("pasa la vara")}` : ""}
               </Text>
               <Text style={st.dim}>{labVariantInfo(v.id).blurb}</Text>
-              <View style={st.row}><Text style={st.dim}>{t("Año completo")}</Text><Line s={v.whole} /></View>
+              <View style={st.row}><Text style={st.dim}>{(v.days ?? 360) < 360 ? t("Todo el período") : t("Año completo")}</Text><Line s={v.whole} /></View>
               <View style={st.row}><Text style={st.dim}>{t("1.ª mitad")}</Text><Line s={v.first} /></View>
               <View style={st.row}><Text style={st.dim}>{t("2.ª mitad")}</Text><Line s={v.second} /></View>
             </View>

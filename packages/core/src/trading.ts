@@ -1650,7 +1650,9 @@ export type BotBacktest =
 
 export interface BotLabRow {
   id: string;
-  tf: "1h" | "4h";
+  tf: "15m" | "1h" | "4h";
+  /** Historia usada en esta variante (360 con velas de 1 y 4 horas, 90 con velas de 15 minutos). */
+  days?: number;
   whole: BotStatsRow;
   first: BotStatsRow;
   second: BotStatsRow;
@@ -1667,6 +1669,10 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
       return { name: tr("Velas de 4 horas · conservador"), blurb: tr("Espera rupturas grandes y deja más espacio al stop.") };
     case "h4-wide":
       return { name: tr("Velas de 4 horas · objetivo amplio"), blurb: tr("Acierta menos veces, pero busca ganar el triple de lo que arriesga.") };
+    case "m15-balanced":
+      return { name: tr("Velas de 15 minutos · equilibrado"), blurb: tr("Más operaciones y más comisiones. Solo se miden los últimos 90 días: evidencia más débil.") };
+    case "m15-wide":
+      return { name: tr("Velas de 15 minutos · stop amplio"), blurb: tr("Intenta que la comisión pese menos dejando más espacio al stop. Solo 90 días: evidencia más débil.") };
     default:
       return { name: tr("Velas de 4 horas · dinámico"), blurb: tr("Reacciona antes y busca un objetivo más cercano.") };
   }
@@ -1674,7 +1680,10 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
 
 /** Una variante solo cuenta si gana entera y en cada mitad del año, con operaciones suficientes (si no, es suerte o es ruido). */
 export function labPasses(r: BotLabRow): boolean {
-  return r.whole.n >= 30 && r.first.n >= 10 && r.second.n >= 10 && r.whole.expectancy > 0.05 && r.first.expectancy > 0 && r.second.expectancy > 0;
+  // Con menos de medio año de historia la vara es más alta: hacen falta más operaciones para fiarse.
+  const short = (r.days ?? 360) < 180;
+  const [nAll, nHalf] = short ? [80, 30] : [30, 10];
+  return r.whole.n >= nAll && r.first.n >= nHalf && r.second.n >= nHalf && r.whole.expectancy > 0.05 && r.first.expectancy > 0 && r.second.expectancy > 0;
 }
 
 /** Frase honesta sobre el laboratorio: probar muchas versiones y elegir la mejor engaña, así que la vara es alta. */

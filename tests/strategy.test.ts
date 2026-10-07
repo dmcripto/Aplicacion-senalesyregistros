@@ -360,6 +360,13 @@ describe("laboratorio de variantes (núcleo)", () => {
     expect(labPasses(row("a", [60, 0.3], [50, 0.3], [5, 0.3]))).toBe(false); // una mitad casi sin operaciones
   });
 
+  it("con menos de medio año de historia (velas de 15 minutos) la vara es más alta", () => {
+    const short = (whole: [number, number], a: [number, number], b: [number, number]): BotLabRow => ({ ...row("m15-wide", whole, a, b), tf: "15m", days: 90 });
+    expect(labPasses(short([60, 0.2], [30, 0.1], [30, 0.3]))).toBe(false); // alcanzaría con un año, pero con 90 días no
+    expect(labPasses(short([100, 0.2], [50, 0.1], [50, 0.3]))).toBe(true);
+    expect(labPasses(short([100, 0.2], [80, 0.1], [20, 0.3]))).toBe(false); // una mitad con pocas operaciones
+  });
+
   it("el veredicto no promete nada si ninguna pasa y advierte de la suerte si alguna pasa", () => {
     const none = labVerdict([row("h1-balanced", [100, -0.1], [50, -0.1], [50, -0.1]), row("h4-wide", [60, -0.05], [30, 0.1], [30, -0.2])]);
     expect(none).toContain("Ninguna versión");

@@ -426,10 +426,19 @@ describe("velas de 4 horas y laboratorio", () => {
     const mid = T0 + (2600 * 4 * BAR_MS) / 2;
     const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
     expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
-    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h"]);
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "15m", "15m"]);
     for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
     expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
     expect(LAB_DAYS).toBe(360);
+  });
+
+  it("cada variante se parte por la mitad de su propio período", () => {
+    const four = market4h(9);
+    const rows = runLab(() => ({ BTCUSDT: four }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, (tf) => (tf === "15m" ? T0 : T0 + 1e12));
+    const m15 = rows.find((r) => r.id === "m15-balanced")!;
+    expect(m15.first.n).toBe(0); // la mitad se puso antes de todo: nada cae en la primera
+    expect(m15.whole.n).toBeGreaterThan(0);
+    expect(m15.second.n).toBe(m15.whole.n);
   });
 
   it("las variantes de 4 horas no tocan los perfiles del bot", () => {
@@ -513,6 +522,16 @@ describe("escaneo del mercado", () => {
     const r = simulate(data, { symbols: ["AAAUSDT", "BBBUSDT"], maxOpen: 1, dailyLossR: 20, rules: [], timeZone: "UTC" });
     const first = [...r.trades].sort((a, b) => a.t - b.t).find((t) => t.t === T0 + 299 * BAR_MS);
     expect(first?.symbol).toBe("BBBUSDT");
+  });
+});
+
+describe("variantes de 15 minutos", () => {
+  it("la vela de 15 minutos dura un cuarto de hora y no es un perfil del bot", () => {
+    expect(barMsOf({ tf: "15m" })).toBe(BAR_MS / 4);
+    expect(barMsOf({ tf: "4h" })).toBe(4 * BAR_MS);
+    expect(barMsOf({})).toBe(BAR_MS);
+    expect(LAB_VARIANTS.filter((v) => v.params.tf === "15m").map((v) => v.id)).toEqual(["m15-balanced", "m15-wide"]);
+    for (const id of BOT_PROFILE_IDS) expect(BOT_PROFILES[id].tf).not.toBe("15m");
   });
 });
 
