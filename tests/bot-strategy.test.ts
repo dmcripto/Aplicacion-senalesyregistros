@@ -304,11 +304,11 @@ describe("simulación del bot completo", () => {
 });
 
 describe("perfiles de estrategia", () => {
-  it("hay cuatro perfiles distintos y el equilibrado es el de siempre", () => {
-    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "slow"]);
+  it("hay cinco perfiles distintos y el equilibrado es el de siempre", () => {
+    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "slow", "slowwide"]);
     expect(BOT_PROFILES.balanced).toEqual(DEFAULT_PARAMS);
     const keys = BOT_PROFILE_IDS.map((id) => JSON.stringify(BOT_PROFILES[id]));
-    expect(new Set(keys).size).toBe(4);
+    expect(new Set(keys).size).toBe(5);
   });
 
   it("el perfil lento es el equilibrado con velas de 4 horas", () => {
@@ -316,6 +316,13 @@ describe("perfiles de estrategia", () => {
     expect(isProfileId("slow")).toBe(true);
     expect(paramsOf("slow").tf).toBe("4h");
     expect(describeParams(BOT_PROFILES.slow)).toContain("velas de 4 horas");
+  });
+
+  it("el perfil «lento · objetivo amplio» es la variante del laboratorio que pasó la vara", () => {
+    expect(BOT_PROFILES.slowwide).toMatchObject({ lookback: 30, atrMult: 2.5, rr: 3, tf: "4h" });
+    expect(LAB_VARIANTS.find((x) => x.id === "h4-wide")!.params).toEqual(BOT_PROFILES.slowwide);
+    expect(isProfileId("slowwide")).toBe(true);
+    expect(paramsOf("slowwide").rr).toBe(3);
   });
 
   it("un perfil desconocido cae en el equilibrado", () => {

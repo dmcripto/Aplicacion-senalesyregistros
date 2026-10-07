@@ -37,8 +37,8 @@ export const ROUND_TRIP_COST_PCT = 0.14;
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: ROUND_TRIP_COST_PCT };
 
 /** Perfiles de estrategia que cada persona puede elegir (no se dejan los números libres: se sobreajustan con facilidad). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "slow";
-export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "slow"];
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "slow" | "slowwide";
+export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "slow", "slowwide"];
 export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   // menos señales: canal más largo y stop más holgado
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT },
@@ -47,6 +47,8 @@ export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrLen: 14, atrMult: 1.2, rr: 1.5, feePct: ROUND_TRIP_COST_PCT },
   // los mismos números del equilibrado, con velas de 4 horas: menos operaciones y menos comisiones
   slow: { ...DEFAULT_PARAMS, tf: "4h" },
+  // velas de 4 horas, stop más ancho (2,5 ATR) y objetivo de 3R: acierta menos veces, pero gana el triple de lo que arriesga
+  slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
 };
 /** La estrategia en una frase (para la nota de cada operación simulada). */
 export const describeParams = (p: BotParams) => {
@@ -498,7 +500,7 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h1-balanced", params: { ...DEFAULT_PARAMS } }, // referencia: lo que se probó hasta ahora
   { id: "h4-balanced", params: { ...DEFAULT_PARAMS, tf: "4h" } },
   { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
-  { id: "h4-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: ROUND_TRIP_COST_PCT, tf: "4h" } },
+  { id: "h4-wide", params: { ...BOT_PROFILES.slowwide } },
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
   // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
   { id: "m15-balanced", params: { ...DEFAULT_PARAMS, tf: "15m" } },
