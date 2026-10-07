@@ -80,6 +80,7 @@ import LiquidationMap from "./components/LiquidationMap";
 import CoachCard from "./components/CoachCard";
 import WhatsAppCard from "./components/WhatsAppCard";
 import TodayCard from "./components/TodayCard";
+import EconomyCard from "./components/EconomyCard";
 import SignalsToExecute from "./components/SignalsToExecute";
 import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
@@ -778,6 +779,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
         <LimitBanner status={limitStatus} />
         <SignalsToExecute trades={trades} prices={prices} loading={loading} now={now} notify={notify} />
+        <EconomyCard now={now} />
         {!empty && (
           <>
             <Reveal>

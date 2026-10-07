@@ -278,3 +278,46 @@ describe("/anunciar escrito dentro del grupo (en el tema Noticias)", () => {
     expect(posted()).toHaveLength(0);
   });
 });
+
+describe("/noticias: activar la agenda económica en el tema de noticias", () => {
+  const group = (text: string, opts: { thread?: number } = {}) =>
+    update({ update_id: ++uid, message: { message_id: 9, chat: { id: -1003, type: "supergroup" }, from: { id: 77, language_code: "es" }, text, ...(opts.thread ? { is_topic_message: true, message_thread_id: opts.thread } : {}) } });
+  const posted = () => sent.filter((x) => x.method === "sendMessage" && x.payload.chat_id === -1003);
+  let role = "administrator";
+
+  beforeEach(() => {
+    role = "administrator";
+    db.tables.telegram_communities = [{ id: "c1", user_id: "u1", chat_id: -1003, thread_id: 5 }];
+    const base = (globalThis as any).fetch;
+    vi.stubGlobal("fetch", async (url: any, init: any) => {
+      const method = String(url).split("/").pop()!;
+      if (method === "getChatMember") return new Response(JSON.stringify({ ok: true, result: { status: role } }));
+      return base(url, init);
+    });
+  });
+
+  it("un administrador lo activa en el tema donde escribe y el aviso sale en ese mismo tema", async () => {
+    await group("/noticias", { thread: 12 });
+    expect(db.tables.telegram_communities[0]).toMatchObject({ news_enabled: true, news_thread_id: 12, thread_id: 5 }); // las señales siguen en su tema
+    expect(posted()[0].payload.message_thread_id).toBe(12);
+    expect(posted()[0].payload.text).toContain("agenda económica");
+  });
+
+  it("/noticias off lo apaga", async () => {
+    await group("/noticias", { thread: 12 });
+    await group("/noticias off", { thread: 12 });
+    expect(db.tables.telegram_communities[0]).toMatchObject({ news_enabled: false, news_thread_id: null });
+  });
+
+  it("quien no es administrador no cambia nada", async () => {
+    role = "member";
+    await group("/noticias", { thread: 12 });
+    expect(db.tables.telegram_communities[0].news_enabled).toBeUndefined();
+  });
+
+  it("en un grupo que no está conectado explica cómo conectarlo", async () => {
+    db.tables.telegram_communities = [];
+    await group("/news", { thread: 12 });
+    expect(posted()[0].payload.text).toContain("/comunidad");
+  });
+});
