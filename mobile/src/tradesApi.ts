@@ -288,8 +288,10 @@ export const syncExchanges = () => callExchanges({ action: "sync" });
 
 /** Desconectar borra la conexión y la clave guardada. Las operaciones ya importadas quedan en tu diario. */
 export async function disconnectExchange(id: string) {
-  const { error } = await supabase.from("exchange_connections").delete().eq("id", id);
+  const { data, error } = await supabase.from("exchange_connections").delete().eq("id", id).select("id");
   if (error) throw error;
+  // Con la verificación en dos pasos activa, el servidor ignora el borrado si falta el código reciente (no da error, no borra nada).
+  if (!data?.length) throw new Error(t("No se pudo desconectar. Si tenés la verificación en dos pasos activada, confirmá con tu código e intentá de nuevo."));
 }
 
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────

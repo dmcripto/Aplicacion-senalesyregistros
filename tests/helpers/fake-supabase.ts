@@ -3,12 +3,13 @@
 
 type Row = Record<string, any>;
 
-export const db: { tables: Record<string, Row[]>; users: Record<string, { id: string }>; missingColumns: string[] } = { tables: {}, users: {}, missingColumns: [] };
+export const db: { tables: Record<string, Row[]>; users: Record<string, { id: string }>; missingColumns: string[]; rpcs: Record<string, (args: any) => { data?: any; error?: { message: string } | null }> } = { tables: {}, users: {}, missingColumns: [], rpcs: {} };
 
 /** Deja la base vacía con las tablas indicadas (y un usuario "good" → u1). */
 export function resetDb(tables: Record<string, Row[]> = {}) {
   db.tables = { profiles: [], trades: [], device_tokens: [], ...tables };
   db.users = { good: { id: "u1" } };
+  db.rpcs = {};
   db.missingColumns = []; // columnas que «todavía no existen» (para probar qué pasa si falta correr un SQL)
   seq = 0;
 }
@@ -108,5 +109,11 @@ class Query {
 
 export const createClient = () => ({
   from: (t: string) => new Query(t),
+  rpc: async (name: string, args: any) => {
+    const f = db.rpcs[name];
+    if (!f) return { data: null, error: { message: `function ${name} does not exist` } };
+    const r = f(args);
+    return { data: r.data ?? null, error: r.error ?? null };
+  },
   auth: { getUser: async (tok: string) => ({ data: { user: db.users[tok] ?? null } }) },
 });

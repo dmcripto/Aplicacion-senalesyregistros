@@ -58,6 +58,7 @@ import type { NewTrade } from "./lib";
 import { LangSwitch, legalUrl } from "./lang";
 import Auth from "./components/Auth";
 import ResetPassword from "./components/ResetPassword";
+import { MfaCard, MfaProvider, mfaErrorText, useMfa } from "./components/Mfa";
 import EquityChart from "./components/EquityChart";
 import TradeForm from "./components/TradeForm";
 import TradeTable from "./components/TradeTable";
@@ -231,6 +232,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
   const [autoClose, setAutoCloseState] = useState(true);
   const botReady = useBot().status === "ready"; // la señal de prueba es solo para cuentas habilitadas
   const [testing, setTesting] = useState(false);
+  const mfa = useMfa();
 
   const sendTest = async () => {
     setTesting(true);
@@ -269,11 +271,12 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
   const regenerate = async () => {
     setRegenArmed(false);
+    if (!(await mfa.ask(t("Vas a cambiar la URL de tu webhook: la anterior dejará de funcionar.")))) return;
     try {
       setUrl(await regenerateWebhookUrl());
       notify(t("URL regenerada. Actualizala en tus alertas de TradingView: la anterior dejó de funcionar."));
     } catch (err) {
-      notify(err instanceof Error ? err.message : t("No se pudo regenerar la URL."), "err");
+      notify(mfaErrorText(err, t("No se pudo regenerar la URL.")), "err");
     }
   };
 
@@ -469,12 +472,17 @@ function Dashboard({ userId }: { userId: string }) {
     return () => window.clearTimeout(id);
   }, [deleteArmed]);
 
+  const mfaGate = useMfa();
   const deleteAccount = async () => {
+    if (!(await mfaGate.ask(t("Vas a eliminar tu cuenta y todos tus datos.")))) {
+      setDeleteArmed(false);
+      return;
+    }
     try {
       await deleteMyAccount();
     } catch (err) {
       setDeleteArmed(false);
-      notify(err instanceof Error ? err.message : t("No se pudo eliminar la cuenta."), "err");
+      notify(mfaErrorText(err, t("No se pudo eliminar la cuenta.")), "err");
     }
   };
 
@@ -927,6 +935,9 @@ function Dashboard({ userId }: { userId: string }) {
               <Reveal delay={170}>
                 <InviteCard notify={notify} />
               </Reveal>
+              <Reveal delay={174}>
+                <MfaCard notify={notify} />
+              </Reveal>
             </div>
           </div>
         </section>
@@ -1045,5 +1056,9 @@ export default function App() {
 
   if (!session) return <Auth initialNotice={authNotice} />;
 
-  return <Dashboard userId={session.user.id} />;
+  return (
+    <MfaProvider>
+      <Dashboard userId={session.user.id} />
+    </MfaProvider>
+  );
 }

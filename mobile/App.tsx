@@ -15,6 +15,7 @@ import {
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import { useSession, useTrades } from "./src/hooks";
+import { MfaProvider } from "./src/MfaSection";
 import { registerForPushNotifications } from "./src/push";
 import LoginScreen from "./src/screens/LoginScreen";
 import ResetPasswordScreen from "./src/screens/ResetPasswordScreen";
@@ -237,7 +238,9 @@ export default function App() {
           <ActivityIndicator color={colors.gold} />
         </View>
       ) : session ? (
-        <Dashboard userId={session.user.id} email={session.user.email} />
+        <MfaProvider>
+          <Dashboard userId={session.user.id} email={session.user.email} />
+        </MfaProvider>
       ) : (
         <LoginScreen initialNotice={authNotice} />
       )}

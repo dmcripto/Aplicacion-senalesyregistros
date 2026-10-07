@@ -118,6 +118,16 @@ async function runSync(conn: Connection, master: string, unit: number) {
 }
 
 /** Compara dos textos sin dar pistas por el tiempo que tarda. */
+/** Marcas de la sesión (la firma ya la verificó auth.getUser): acá solo se leen las del 2FA. */
+function claimsOf(token: string): Record<string, unknown> {
+  try {
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
+  } catch {
+    return {};
+  }
+}
+
 function sameSecret(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -194,6 +204,14 @@ Deno.serve(async (req) => {
   const unit = await unitOf(user.id);
 
   if (body.action === "connect") {
+    // 2FA opcional: quien lo activó confirma con un código reciente antes de conectar un exchange.
+    const { data: stepOk, error: stepErr } = await admin.rpc("mfa_step_ok", { uid: user.id, claims: claimsOf(token) });
+    if (stepErr) {
+      // Si todavía no se corrió la migración del 2FA, nadie puede tenerlo activado: no se bloquea nada.
+      if (!/mfa_step_ok/i.test(stepErr.message ?? "")) return json({ ok: false, error: "No se pudo verificar la sesión." }, 500);
+    } else if (stepOk === false) {
+      return json({ ok: false, code: "mfa_required", error: "Confirmá con el código de Google Authenticator para hacer este cambio." }, 403);
+    }
     const exchange = body.exchange as ExchangeId;
     const apiKey = String(body.apiKey ?? "").trim();
     const apiSecret = String(body.apiSecret ?? "").trim();

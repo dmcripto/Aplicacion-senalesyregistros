@@ -14,6 +14,7 @@ import { colors } from "../theme";
 import { LangSwitch } from "../lang";
 import ExchangeSection from "../ExchangeSection";
 import BotSection from "../BotSection";
+import MfaSection, { mfaErrorText, useMfa } from "../MfaSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
 import WhatsAppSection from "../WhatsAppSection";
@@ -38,6 +39,7 @@ export default function SettingsScreen({
   onSaveLimits: (l: DailyLimits) => Promise<void>;
   onSaveMoney: (m: MoneySettings) => Promise<void>;
 }) {
+  const mfa = useMfa();
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -206,10 +208,12 @@ export default function SettingsScreen({
         {
           text: t("Regenerar"),
           style: "destructive",
-          onPress: () =>
+          onPress: async () => {
+            if (!(await mfa.ask(t("Vas a cambiar la URL de tu webhook: la anterior dejará de funcionar.")))) return;
             regenerateWebhookUrl()
               .then(setUrl)
-              .catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo regenerar la URL."))),
+              .catch((e) => Alert.alert(t("Error"), mfaErrorText(e, t("No se pudo regenerar la URL."))));
+          },
         },
       ],
     );
@@ -222,8 +226,10 @@ export default function SettingsScreen({
         {
           text: t("Eliminar todo"),
           style: "destructive",
-          onPress: () =>
-            deleteMyAccount().catch((e) => Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo eliminar la cuenta."))),
+          onPress: async () => {
+            if (!(await mfa.ask(t("Vas a eliminar tu cuenta y todos tus datos.")))) return;
+            deleteMyAccount().catch((e) => Alert.alert(t("Error"), mfaErrorText(e, t("No se pudo eliminar la cuenta."))));
+          },
         },
       ],
     );
@@ -301,6 +307,8 @@ export default function SettingsScreen({
       <BotSection titleStyle={styles.sectionTitle} />
 
       <InviteSection />
+
+      <MfaSection titleStyle={styles.sectionTitle} />
 
       <View {...mark("limits")} />
       <Text style={styles.sectionTitle}>{t("LÍMITES DIARIOS")}</Text>

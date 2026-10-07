@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { EXCHANGE_LIST, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, t } from "@dmcripto/core";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "@dmcripto/core";
+import { mfaErrorText, useMfa } from "./MfaSection";
 import { connectExchange, disconnectExchange, fetchConnections, syncExchanges } from "./tradesApi";
 import { useMoney } from "./money";
 import { colors } from "./theme";
@@ -46,6 +47,7 @@ function CapitalStep({ onSave, currency }: { onSave: (m: MoneySettings) => Promi
 
 /** Conexión de solo lectura con ocho exchanges (dentro de Ajustes). */
 export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: MoneySettings) => Promise<void> }) {
+  const mfa = useMfa();
   const { unit, money } = useMoney();
   const [conns, setConns] = useState<ExchangeConnection[]>([]);
   const [exchange, setExchange] = useState<ExchangeId>("binance");
@@ -69,10 +71,11 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
   }, [reload]);
 
   const connect = async () => {
+    if (!(await mfa.ask(t("Vas a conectar un exchange a tu cuenta.")))) return;
     setBusy(true);
     try {
       const r = await connectExchange(exchange, apiKey.trim(), apiSecret.trim(), needsPassphrase(exchange) ? passphrase.trim() : undefined);
-      if (!r.ok) return Alert.alert("Error", r.error ?? t("No se pudo conectar."));
+      if (!r.ok) return Alert.alert("Error", r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")));
       setApiKey("");
       setApiSecret("");
       setPassphrase("");
@@ -104,7 +107,10 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
       {
         text: t("Desconectar"),
         style: "destructive",
-        onPress: () => disconnectExchange(c.id).then(reload).catch((e) => Alert.alert("Error", e instanceof Error ? e.message : t("No se pudo desconectar."))),
+        onPress: async () => {
+          if (!(await mfa.ask(t("Vas a desconectar un exchange: se borra la clave guardada.")))) return;
+          disconnectExchange(c.id).then(reload).catch((e) => Alert.alert("Error", mfaErrorText(e, t("No se pudo desconectar."))));
+        },
       },
     ]);
 
