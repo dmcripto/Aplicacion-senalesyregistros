@@ -681,3 +681,27 @@ export async function deleteAlert(id: string) {
   const { error } = await supabase.from("price_alerts").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+// ─── Pausa del bot por datos económicos ─────────────────────────────────────
+
+export interface NewsPauseState {
+  enabled: boolean;
+  before: number; // minutos antes del dato
+  after: number; // minutos después
+  pausedUntil: string | null; // si el bot está en pausa ahora, hasta cuándo
+  pausedEvent: string | null;
+}
+
+/** Ajustes de la pausa (de fábrica si todavía no los tocó). Devuelve null si falta el SQL: entonces rige la pausa de fábrica y no se puede cambiar. */
+export async function fetchNewsPause(userId: string): Promise<NewsPauseState | null> {
+  const { data, error } = await supabase.from("bot_news_pause").select("enabled,before_min,after_min,paused_until,paused_event").eq("user_id", userId).maybeSingle();
+  if (error) return null;
+  const r = data as { enabled?: boolean; before_min?: number; after_min?: number; paused_until?: string | null; paused_event?: string | null } | null;
+  return { enabled: r?.enabled !== false, before: r?.before_min ?? 30, after: r?.after_min ?? 30, pausedUntil: r?.paused_until ?? null, pausedEvent: r?.paused_event ?? null };
+}
+
+export async function saveNewsPause(userId: string, p: Pick<NewsPauseState, "enabled" | "before" | "after">) {
+  const clamp = (n: number) => Math.min(180, Math.max(0, Math.round(Number.isFinite(n) ? n : 30)));
+  const { error } = await supabase.from("bot_news_pause").upsert({ user_id: userId, enabled: p.enabled, before_min: clamp(p.before), after_min: clamp(p.after), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
+}

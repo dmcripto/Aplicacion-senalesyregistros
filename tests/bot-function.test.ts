@@ -90,6 +90,82 @@ describe("función bot · corrida periódica", () => {
     expect(db.tables.bot_signals[0].trade_id).toBe(t.id);
   });
 
+  describe("pausa por datos económicos", () => {
+    const news = (minFromNow: number, over: Record<string, unknown> = {}) => ({ id: "e1", starts_at: new Date(Date.now() + minFromNow * 60_000).toISOString(), title: "CPI m/m", title_es: "Inflación (CPI) m/m", country: "USD", impact: "High", ...over });
+
+    it("con un dato de alto impacto a minutos de salir, la señal se anota pero NO se abre la operación, y la web ve la pausa", async () => {
+      enable();
+      db.tables.economic_events = [news(10)];
+      const r = await tick();
+      expect(r.body.opened).toBe(0);
+      expect(db.tables.trades).toHaveLength(0);
+      expect(db.tables.bot_signals).toHaveLength(1); // anotada: no se persigue cuando termine la pausa
+      expect(db.tables.bot_signals[0].trade_id).toBeUndefined();
+      expect(db.tables.bot_news_pause[0]).toMatchObject({ user_id: "u1", paused_event: "USD Inflación (CPI) m/m" });
+      expect(db.tables.bot_news_pause[0].paused_until).toBeTruthy();
+      // en la corrida siguiente de la misma vela no se vuelve a anotar ni a abrir
+      await tick();
+      expect(db.tables.trades).toHaveLength(0);
+      expect(db.tables.bot_signals).toHaveLength(1);
+    });
+
+    it("pasada la pausa se limpia el aviso y el bot vuelve a abrir con la señal siguiente", async () => {
+      enable();
+      db.tables.economic_events = [news(10)];
+      await tick();
+      db.tables.economic_events = [news(-120)]; // el dato ya pasó hace mucho
+      db.tables.bot_signals = [];
+      const r = await tick();
+      expect(r.body.opened).toBe(1);
+      expect(db.tables.bot_news_pause[0].paused_until).toBeNull();
+    });
+
+    it("datos de impacto medio, lejanos, o con la pausa apagada, no frenan al bot", async () => {
+      enable();
+      db.tables.economic_events = [news(10, { impact: "Medium" })];
+      expect((await tick()).body.opened).toBe(1);
+      resetDb({ bot_settings: [], bot_signals: [], trades: [], economic_events: [news(120)] });
+      enable();
+      expect((await tick()).body.opened).toBe(1);
+      resetDb({ bot_settings: [], bot_signals: [], trades: [], economic_events: [news(10)], bot_news_pause: [{ user_id: "u1", enabled: false }] });
+      enable();
+      expect((await tick()).body.opened).toBe(1);
+    });
+
+    it("respeta los minutos que eligió la persona", async () => {
+      enable();
+      db.tables.economic_events = [news(20)];
+      db.tables.bot_news_pause = [{ user_id: "u1", enabled: true, before_min: 10, after_min: 10 }];
+      expect((await tick()).body.opened).toBe(1); // faltan 20: su pausa es de 10
+    });
+
+    it("las operaciones ya abiertas siguen cerrándose durante la pausa", async () => {
+      enable();
+      db.tables.economic_events = [news(5)];
+      db.tables.trades = [{ id: "o1", user_id: "u1", symbol: "BTCUSDT", direction: "LONG", entry: 100, sl: 50, tp: 120, source: "bot", outcome: "ABIERTA", date: new Date(Date.now() - 3_600_000).toISOString() }];
+      klines = series(285, false);
+      await tick();
+      expect(db.tables.trades).toHaveLength(1); // sin nuevas
+    });
+
+    it("quien tiene el bot real encendido ve en «Últimas órdenes» que se omitió por el dato", async () => {
+      enable();
+      db.tables.bot_live = [{ user_id: "u1", enabled: true }];
+      db.tables.economic_events = [news(10)];
+      await tick();
+      expect(db.tables.live_orders).toHaveLength(1);
+      expect(db.tables.live_orders[0]).toMatchObject({ user_id: "u1", symbol: "BTCUSDT", side: "BUY", kind: "bot", status: "skipped" });
+      expect(db.tables.live_orders[0].note).toContain("Omitida por dato económico: USD Inflación (CPI) m/m");
+    });
+
+    it("sin la tabla de la pausa (falta el SQL) igual pausa con los valores de fábrica", async () => {
+      enable();
+      db.tables.economic_events = [news(10)];
+      db.missingSelect = ["before_min"];
+      expect((await tick()).body.opened).toBe(0);
+    });
+  });
+
   it("con el bot real encendido le pide la orden a la función «trade» (con el secreto); sin él, no", async () => {
     const calls: Array<{ url: string; headers: any; body: any }> = [];
     const base = globalThis.fetch;
