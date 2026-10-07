@@ -1077,7 +1077,7 @@ export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: b
   { id: "bingx", name: "BingX" },
 ];
 export const needsPassphrase = (id: string) => !!EXCHANGE_LIST.find((e) => e.id === id)?.passphrase;
-export const exchangeName = (id: string) => (id === "bot" ? tr("Bot simulado") : EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id);
+export const exchangeName = (id: string) => (id === "bot" ? tr("Bot simulado") : id === "veltrix" ? tr("Señal VELTRIX") : EXCHANGE_LIST.find((e) => e.id === id)?.name ?? id);
 
 /** Pasos para crear la clave de solo lectura en cada exchange. */
 export function exchangeSteps(id: ExchangeId): string[] {
@@ -1569,6 +1569,14 @@ export interface BotSettings {
 /** Cuántos futuros (los de más volumen) mira el bot además de los elegidos. */
 export type BotScan = 0 | 20 | 40;
 export const BOT_SCAN_LIST: BotScan[] = [0, 20, 40];
+
+// ─── Señales de VELTRIX (las que publica el equipo, opt-in) ─────────────────
+
+export interface SignalFeedState {
+  follow: boolean; // la persona recibe las señales de VELTRIX
+  provider: boolean; // esta cuenta las publica
+  followers: number | null; // solo para quien las publica: cuántas personas las reciben
+}
 
 // ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
 
