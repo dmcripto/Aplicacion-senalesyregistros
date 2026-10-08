@@ -11,8 +11,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
+import { chartImage, parseChartArgs } from "../_shared/chartImage.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
-import { botToken, esc, sendMessage, tgApi } from "../_shared/telegram.ts";
+import { botToken, esc, sendMessage, sendPhoto, tgApi } from "../_shared/telegram.ts";
 import { ANNOUNCEMENTS, announcementIds } from "../_shared/announcements.ts";
 import type { Lang } from "../_shared/telegram.ts";
 
@@ -44,7 +45,7 @@ const T = {
   es: {
     help:
       "<b>VELTRIX</b> 👋\n\nPegá acá una señal (o reenviá el mensaje de un canal) y la registro en tu diario.\n\n" +
-      "/abiertas — tus señales abiertas\n/resumen — tus resultados en R\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
+      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» para ver 2 medias)\n/resumen — tus resultados en R\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
       "Ejemplo:\n<code>BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "Este chat todavía no está conectado a una cuenta de VELTRIX.\n\nEntrá a la app o la web → «Conectar Telegram» y tocá el botón: te trae de vuelta acá ya vinculado.",
@@ -90,7 +91,7 @@ const T = {
   en: {
     help:
       "<b>VELTRIX</b> 👋\n\nPaste a signal here (or forward a channel message) and I'll log it in your journal.\n\n" +
-      "/open — your open signals\n/summary — your results in R\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
+      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” for 2 moving averages)\n/summary — your results in R\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
       "Example:\n<code>BTCUSDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "This chat isn't connected to a VELTRIX account yet.\n\nOpen the app or the web → “Connect Telegram” and tap the button: it brings you back here already linked.",
@@ -351,6 +352,36 @@ async function newsCommand(msg: any, arg: string | undefined) {
   return reply(off ? T[lang].newsOff : T[lang].newsOn);
 }
 
+const chartLast = new Map<number, number>();
+
+/**
+ * /grafico BTCUSDT 4h [ema] (también /chart y /gr) → manda una imagen con las velas. Funciona en el chat privado de quien tiene
+ * la cuenta vinculada y en las comunidades conectadas con /comunidad (ahí lo puede usar cualquiera, en el mismo tema).
+ */
+async function chartCommand(msg: any, args: string[], lang: Lang) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token) return;
+  const extra = msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {};
+  const es = lang === "es";
+  const req = parseChartArgs(args);
+  if (!req) {
+    return say(chatId, es
+      ? "Usá <code>/grafico</code> seguido de la moneda y el intervalo.\n\nEjemplos:\n<code>/grafico BTCUSDT 4h</code>\n<code>/grafico ETH 1d ema</code>\n\nIntervalos: 1m 5m 15m 30m 1h 4h 1d 1w"
+      : "Use <code>/chart</code> followed by the coin and interval.\n\nExamples:\n<code>/chart BTCUSDT 4h</code>\n<code>/chart ETH 1d ema</code>\n\nIntervals: 1m 5m 15m 30m 1h 4h 1d 1w", extra);
+  }
+  const now = Date.now();
+  if (now - (chartLast.get(chatId) ?? 0) < 8000) return;
+  chartLast.set(chatId, now);
+  const run = async () => {
+    const res = await chartImage(req, lang);
+    if (res === "notfound") return say(chatId, es ? `No encontré <b>${esc(req.symbol)}</b> en Binance. Probá con otra moneda, por ejemplo <code>/grafico BTCUSDT 4h</code>.` : `I couldn't find <b>${esc(req.symbol)}</b> on Binance. Try another coin, e.g. <code>/chart BTCUSDT 4h</code>.`, extra);
+    if (!res) return say(chatId, es ? "No pude dibujar el gráfico ahora. Probá de nuevo en un momento." : "I couldn't draw the chart right now. Try again in a moment.", extra);
+    await sendPhoto(token, chatId, res.png, res.caption, extra as Record<string, number>);
+  };
+  await runInBackground(run());
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
     const text = String(msg.text ?? "").trim();
@@ -359,6 +390,11 @@ async function handleMessage(msg: any) {
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
     if (cmd === "/noticias" || cmd === "/news") return newsCommand(msg, rest[0]);
     if (cmd === "/anunciar" || cmd === "/announce") return announceHere(msg, rest);
+    if (cmd === "/grafico" || cmd === "/gráfico" || cmd === "/chart" || cmd === "/gr") {
+      const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+      if (!com) return; // solo en las comunidades conectadas a una cuenta de VELTRIX
+      return chartCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)));
+    }
     if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint, msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     return;
   }
@@ -381,6 +417,11 @@ async function handleMessage(msg: any) {
     case "/abiertas":
     case "/open":
       return listOpen(chatId, link, lang);
+    case "/grafico":
+    case "/gráfico":
+    case "/chart":
+    case "/gr":
+      return chartCommand(msg, rest, lang);
     case "/resumen":
     case "/summary":
       return summary(chatId, link, lang);

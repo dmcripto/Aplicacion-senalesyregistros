@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, locale, t } from "../lib";
-import type { ChartCandle, IndicatorKind, Trade } from "../lib";
-import { fetchAlerts } from "../tradesApi";
+import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtUsdShort, locale, t } from "../lib";
+import type { ChartCandle, IndicatorKind, LiquidationMap, Trade } from "../lib";
+import { fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
 import AlertsSection from "./AlertsSection";
 import ChartDrawings from "./ChartDrawings";
@@ -24,6 +24,7 @@ interface Prefs {
   symbol: string;
   tf: Tf;
   slots: [Slot, Slot];
+  liq: boolean; // mapa de liquidaciones sobre las velas
 }
 const DEFAULTS: Prefs = {
   symbol: "BTCUSDT",
@@ -32,6 +33,7 @@ const DEFAULTS: Prefs = {
     { kind: "ema", period: 50 },
     { kind: "rsi", period: 14 },
   ],
+  liq: false,
 };
 
 const loadPrefs = (): Prefs => {
@@ -46,6 +48,7 @@ const loadPrefs = (): Prefs => {
       symbol: typeof v.symbol === "string" && binanceSymbol(v.symbol) ? v.symbol : DEFAULTS.symbol,
       tf: TFS.includes(v.tf) ? v.tf : DEFAULTS.tf,
       slots: [slot(v.slots?.[0], DEFAULTS.slots[0]), slot(v.slots?.[1], DEFAULTS.slots[1])],
+      liq: v.liq === true,
     };
   } catch {
     return DEFAULTS;
@@ -84,6 +87,8 @@ const indName = (k: Slot["kind"]) =>
 const BULL = "#26a69a"; // verde y rojo de TradingView
 const BEAR = "#ef5350";
 const CYAN = "#2ec4f1";
+const LIQ_LONG = "#ff9f43"; // niveles donde se liquidarían los largos (naranja)
+const LIQ_SHORT = "#7c8cff"; // y donde se liquidarían los cortos (violeta azulado)
 
 function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
   const initial = useMemo(() => {
@@ -102,7 +107,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   const [candles, setCandles] = useState<ChartCandle[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const boxRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[]) => void; destroy: () => void; chart: any; series: any } | null>(null);
+  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"]) => void; destroy: () => void; chart: any; series: any } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
 
   const change = (next: Partial<Prefs>) =>
@@ -175,11 +180,12 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       });
       let extra: Array<{ remove: () => void }> = [];
       let lines: any[] = [];
+      let liqLines: any[] = [];
       const candle = chart.addSeries(lc.CandlestickSeries, { upColor: BULL, downColor: BEAR, borderUpColor: BULL, borderDownColor: BEAR, wickUpColor: BULL, wickDownColor: BEAR });
       let lastKey = "";
 
       apiRef.current = {
-        update(c, p, levels, alertLevels) {
+        update(c, p, levels, alertLevels, liq) {
           const range = chart.timeScale().getVisibleLogicalRange();
           candle.setData(c.map((x) => ({ time: x.time as any, open: x.open, high: x.high, low: x.low, close: x.close })));
           // Indicadores: se rehacen enteros (son baratos con 500 velas).
@@ -234,6 +240,22 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           }
           // Mis alertas de precio de este activo.
           for (const lv of alertLevels) add(lv, "#f5c518", `🔔 ${fmtPrice(lv)}`, true);
+          // Mapa de liquidaciones: los niveles donde se concentran las liquidaciones estimadas (más gruesa = más dinero).
+          for (const l of liqLines) candle.removePriceLine(l);
+          liqLines = [];
+          const maxUsd = Math.max(1, ...liq.map((h) => h.usd));
+          for (const h of liq) {
+            liqLines.push(
+              candle.createPriceLine({
+                price: h.price,
+                color: h.side === "long" ? LIQ_LONG : LIQ_SHORT,
+                lineWidth: h.usd > maxUsd * 0.66 ? 3 : h.usd > maxUsd * 0.33 ? 2 : 1,
+                lineStyle: lc.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: `${h.side === "long" ? t("Liq. largos") : t("Liq. cortos")} ${fmtUsdShort(h.usd)}`,
+              }),
+            );
+          }
           const key = `${p.symbol}|${p.tf}`;
           if (key !== lastKey) {
             lastKey = key;
@@ -270,9 +292,43 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
   const alertLevels = useMemo(() => (alerts ?? []).filter((a) => a.active && a.kind === "price" && a.symbol === symbolKey && a.level != null).map((a) => a.level as number), [alerts, symbolKey]);
 
+  // Mapa de liquidaciones del activo (solo si está encendido; el servidor lo guarda unos minutos, así que pedirlo seguido no cuesta).
+  const [liqMap, setLiqMap] = useState<LiquidationMap | null>(null);
+  const [liqState, setLiqState] = useState<"off" | "loading" | "ok" | "none">("off");
+  const liqCoin = symbolKey.replace(/(USDT|USDC|BUSD|USD)$/, "");
   useEffect(() => {
-    if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels);
-  }, [candles, prefs, levels, alertLevels, ready]);
+    if (!prefs.liq) {
+      setLiqState("off");
+      setLiqMap(null);
+      return;
+    }
+    let dead = false;
+    setLiqState("loading");
+    const load = () =>
+      fetchLiquidationMap(liqCoin)
+        .then((r) => {
+          if (dead) return;
+          if (r.ok && r.data) {
+            setLiqMap(r.data);
+            setLiqState("ok");
+          } else {
+            setLiqMap(null);
+            setLiqState("none");
+          }
+        })
+        .catch(() => !dead && (setLiqMap(null), setLiqState("none")));
+    void load();
+    const id = window.setInterval(load, 5 * 60_000);
+    return () => {
+      dead = true;
+      window.clearInterval(id);
+    };
+  }, [prefs.liq, liqCoin]);
+  const liqSpots = useMemo(() => (prefs.liq && liqMap ? liqMap.hotspots : []), [prefs.liq, liqMap]);
+
+  useEffect(() => {
+    if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels, liqSpots);
+  }, [candles, prefs, levels, alertLevels, liqSpots, ready]);
 
   const last = candles?.[candles.length - 1];
   const first = candles?.[Math.max(0, candles.length - 1 - (prefs.tf === "1d" ? 1 : prefs.tf === "4h" ? 6 : prefs.tf === "1h" ? 24 : prefs.tf === "15m" ? 96 : 288))];
@@ -347,6 +403,25 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
             </label>
           );
         })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          aria-pressed={prefs.liq}
+          onClick={() => change({ liq: !prefs.liq })}
+          className={cx("flex items-center gap-2 rounded border px-3 py-1.5 text-[11.5px] font-semibold", prefs.liq ? "border-[#ff9f43]/70 bg-[#ff9f43]/10 text-[#ff9f43]" : "border-[#2a2e39] bg-[#131722] text-[#787b86] hover:text-fog")}
+        >
+          <span className="h-2.5 w-2.5 rounded-full" style={{ background: prefs.liq ? LIQ_LONG : "#4b5160" }} aria-hidden />
+          {t("Mapa de liquidaciones")}
+        </button>
+        {prefs.liq && liqState === "loading" && <span className="text-[11.5px] text-dim">{t("Calculando…")}</span>}
+        {prefs.liq && liqState === "none" && <span className="text-[11.5px] text-dim">{t("Este activo no tiene mapa de liquidaciones.")}</span>}
+        {prefs.liq && liqState === "ok" && (
+          <span className="text-[11.5px] text-dim">
+            <span style={{ color: LIQ_LONG }}>■</span> {t("largos")} · <span style={{ color: LIQ_SHORT }}>■</span> {t("cortos")} · {t("más gruesa = más dinero")}
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
