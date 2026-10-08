@@ -120,3 +120,14 @@ describe("/precio", () => {
     expect(quoteMessage([{ symbol: "BTCUSDT", price: 1, change: null }], "en")).toContain("Prices now");
   });
 });
+
+describe("/ayuda del grupo", () => {
+  it("lista lo público y lo de administradores en cada idioma", async () => {
+    const { groupHelpMessage } = await import("../supabase/functions/_shared/groupHelp");
+    const es = groupHelpMessage("es");
+    expect(es).toContain("/precio");
+    expect(es).toContain("/grafico");
+    expect(es).toContain("Solo administradores");
+    expect(groupHelpMessage("en")).toContain("/price");
+  });
+});

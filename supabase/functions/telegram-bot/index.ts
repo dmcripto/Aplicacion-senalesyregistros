@@ -12,6 +12,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
 import { chartImage, parseChartArgs } from "../_shared/chartImage.ts";
+import { groupHelpMessage } from "../_shared/groupHelp.ts";
 import { fetchQuotes, parseQuoteArgs, quoteMessage } from "../_shared/priceQuote.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, sendMessage, sendPhoto, tgApi } from "../_shared/telegram.ts";
@@ -484,6 +485,15 @@ async function handleMessage(msg: any) {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
       if (!com) return; // solo en las comunidades conectadas a una cuenta de VELTRIX
       return chartCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)));
+    }
+    if (cmd === "/ayuda" || cmd === "/help") {
+      const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+      if (!com) return;
+      const now = Date.now();
+      if (now - (priceLast.get(-msg.chat.id) ?? 0) < 15000) return;
+      priceLast.set(-msg.chat.id, now);
+      const lang = await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code));
+      return say(msg.chat.id, groupHelpMessage(lang), msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     }
     if (cmd === "/precio" || cmd === "/price" || cmd === "/p") {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
