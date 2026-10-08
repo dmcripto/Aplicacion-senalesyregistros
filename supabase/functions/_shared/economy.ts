@@ -238,19 +238,19 @@ export function reminderMessage(e: EconEvent, now: number, lang: "es" | "en"): s
 
 // ─── Publicar en «Noticias» ─────────────────────────────────────────────────
 
-interface NewsDeps {
+export interface NewsDeps {
   supabase: any;
   /** Manda un mensaje de Telegram a un chat (y tema); devuelve la respuesta de la API. */
   send: (chatId: number, html: string, thread: number | null) => Promise<{ ok?: boolean; error_code?: number } | void>;
 }
 
 /** Marca «ya publicado» antes de enviar (si dos corridas coinciden, solo una publica). Devuelve true si le tocaba a esta. */
-async function claim(supabase: any, key: string, chatId: number): Promise<boolean> {
+export async function claim(supabase: any, key: string, chatId: number): Promise<boolean> {
   const { data, error } = await supabase.from("economic_posts").upsert({ key, chat_id: chatId }, { onConflict: "key,chat_id", ignoreDuplicates: true }).select("key");
   return !error && !!data?.length;
 }
 
-const unclaim = (supabase: any, key: string, chatId: number) => supabase.from("economic_posts").delete().eq("key", key).eq("chat_id", chatId);
+export const unclaim = (supabase: any, key: string, chatId: number) => supabase.from("economic_posts").delete().eq("key", key).eq("chat_id", chatId);
 
 /**
  * Publica lo que corresponda en las comunidades con noticias activadas: el resumen del día (desde las 8:00 de la zona de la

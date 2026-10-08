@@ -12,6 +12,7 @@ import { notifyWhatsApp, waResultParams } from "../_shared/waCloud.ts";
 import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml, resultNote } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { postEconomyNews, refreshEvents } from "../_shared/economy.ts";
+import { postSessionAlerts } from "../_shared/sessions.ts";
 import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
@@ -97,6 +98,17 @@ Deno.serve(async () => {
     } catch (e) {
       console.error("economy:", e instanceof Error ? e.message : e);
     }
+  }
+
+  // Apertura y cierre de las bolsas (Tokio, Londres, Nueva York) en el tema de noticias: se revisa cada minuto.
+  try {
+    const token = botToken();
+    await postSessionAlerts({
+      supabase,
+      send: async (chatId, html, thread) => (token ? await sendMessage(token, chatId, html, thread ? { message_thread_id: thread } : {}) : undefined),
+    });
+  } catch (e) {
+    console.error("sessions:", e instanceof Error ? e.message : e);
   }
 
   // Alertas propias de las personas (precio, RSI, EMA): se revisan cada minuto.
