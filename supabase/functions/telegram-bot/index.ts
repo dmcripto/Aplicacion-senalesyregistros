@@ -81,7 +81,7 @@ const T = {
     sell: "VENTA",
     entry: "Entrada",
     groupsHint: "Escribime por privado 🙂",
-    adminOnly: "Solo un administrador de este chat puede conectar la comunidad.",
+    adminOnly: "😊 Ese comando sirve para configurar el bot y lo usan los administradores del grupo. Vos podés pedirme un gráfico cuando quieras: <code>/grafico BTC 4h</code>",
     communityBad: "Ese código no es válido o venció. Generá uno nuevo en la app o la web, en «Bot de Telegram → Conectar comunidad».",
     communityLinked: "✅ Comunidad conectada. Acá voy a publicar las señales y los resultados (TP/SL) de la cuenta de VELTRIX que la conectó.\n\nPara dejar de publicar: /desconectarcomunidad",
     communityRemoved: "Listo, dejé de publicar en este chat.",
@@ -127,7 +127,7 @@ const T = {
     sell: "SELL",
     entry: "Entry",
     groupsHint: "Message me in private 🙂",
-    adminOnly: "Only an admin of this chat can connect the community.",
+    adminOnly: "😊 That command is for setting up the bot and is used by the group admins. You can ask me for a chart any time: <code>/chart BTC 4h</code>",
     communityBad: "That code isn't valid or has expired. Generate a new one in the app or the web, under “Telegram bot → Connect community”.",
     communityLinked: "✅ Community connected. I'll post here the signals and results (TP/SL) of the VELTRIX account that connected it.\n\nTo stop posting: /disconnectcommunity",
     communityRemoved: "Done, I stopped posting in this chat.",
@@ -304,9 +304,7 @@ async function communityCommand(msg: any, cmd: string, rawCode: string | undefin
   const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
   // En grupos, solo un administrador de Telegram puede conectar. En canales solo publican administradores.
   if (msg.chat.type !== "channel") {
-    const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
-    const status = r?.result?.status;
-    if (status !== "creator" && status !== "administrator") return reply(T[fallback].adminOnly);
+    if (!(await isAdminOf(token, msg))) return reply(T[fallback].adminOnly);
   }
   if (cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") {
     await admin.from("telegram_communities").delete().eq("chat_id", chatId);
@@ -337,9 +335,7 @@ async function newsCommand(msg: any, arg: string | undefined) {
   const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
   const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
   if (msg.chat.type !== "channel") {
-    const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: msg.from?.id });
-    const status = r?.result?.status;
-    if (status !== "creator" && status !== "administrator") return reply(T[fallback].adminOnly);
+    if (!(await isAdminOf(token, msg))) return reply(T[fallback].adminOnly);
   }
   const { data: row } = await admin.from("telegram_communities").select("id,user_id").eq("chat_id", chatId).limit(1).maybeSingle();
   if (!row) return reply(T[fallback].newsNoCommunity);
@@ -353,8 +349,10 @@ async function newsCommand(msg: any, arg: string | undefined) {
   return reply(off ? T[lang].newsOff : T[lang].newsOn);
 }
 
-const isAdminOf = async (token: string, chatId: number, userId: number | undefined) => {
-  const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: userId });
+/** ¿Quien escribió es administrador? También cuenta quien escribe «como el grupo» (administrador anónimo). */
+const isAdminOf = async (token: string, msg: any) => {
+  if (msg.sender_chat && msg.sender_chat.id === msg.chat.id) return true;
+  const r = await tgApi(token, "getChatMember", { chat_id: msg.chat.id, user_id: msg.from?.id });
   return r?.result?.status === "creator" || r?.result?.status === "administrator";
 };
 
@@ -398,7 +396,7 @@ async function welcomeCommand(msg: any, text: string) {
   const fallback = guessLang(msg.from?.language_code);
   const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
   const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
-  if (!(await isAdminOf(token, chatId, msg.from?.id))) return reply(T[fallback].adminOnly);
+  if (!(await isAdminOf(token, msg))) return reply(T[fallback].adminOnly);
   const { data: row } = await admin.from("telegram_communities").select("*").eq("chat_id", chatId).limit(1).maybeSingle();
   if (!row) return reply(T[fallback].newsNoCommunity);
   const lang = await langOf((row as any).user_id, fallback);
