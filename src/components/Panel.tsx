@@ -24,7 +24,13 @@ const save = (id: string, open: boolean) => {
 const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
 
 /** Abre o cierra todas las secciones, o abre una puntual (para los atajos del menú). */
-export const openAllPanels = (open: boolean) => window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: { all: open } }));
+let lastAll: { at: number; open: boolean } | null = null;
+export const openAllPanels = (open: boolean) => {
+  lastAll = { at: Date.now(), open };
+  window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: { all: open } }));
+};
+/** Una sección que recién aparece (porque su pantalla se bajó después del aviso «abrir todas») respeta ese aviso si es reciente. */
+const recentAll = () => (lastAll && Date.now() - lastAll.at < 6000 ? lastAll.open : null);
 export const jumpToPanel = (id: string) => {
   window.dispatchEvent(new CustomEvent(PANEL_EVENT, { detail: { id } }));
   window.setTimeout(() => document.getElementById(`panel-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
@@ -48,6 +54,8 @@ interface Props {
 
 export default function Panel({ id, title, subtitle, summary, defaultOpen = true, phoneOpen, right, plain, children }: Props) {
   const [open, setOpen] = useState<boolean>(() => {
+    const recent = recentAll();
+    if (recent !== null) return recent;
     const saved = load()[id];
     if (typeof saved === "boolean") return saved;
     return isPhone() && phoneOpen !== undefined ? phoneOpen : defaultOpen;
