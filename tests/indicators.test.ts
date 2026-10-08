@@ -143,3 +143,39 @@ describe("volumen con ballenas y día anterior", () => {
     expect(ci("adx", 14, c).lines.map((l) => l.name)).toEqual(["ADX 14", "DI+", "DI−"]);
   });
 });
+
+import { SESSIONS, sessionLevels } from "../packages/core/src/indicators";
+
+describe("sesiones de mercado", () => {
+  const DAY0 = 1_700_000_000 - (1_700_000_000 % 86_400); // medianoche UTC
+  const hourly = (n: number, f: (h: number) => [number, number]): ChartCandle[] =>
+    Array.from({ length: n }, (_, i) => {
+      const [h, l] = f(i % 24);
+      return { time: DAY0 + i * 3600, open: (h + l) / 2, high: h, low: l, close: (h + l) / 2, volume: 1 };
+    });
+  it("el nivel de una sesión aparece al terminar y se mantiene hasta que termina la siguiente", () => {
+    const asia = SESSIONS[0];
+    const c = hourly(48, (h) => (h >= 0 && h < 8 ? [100 + h, 90 - h] : [120, 80]));
+    const lv = sessionLevels(c, asia);
+    expect(lv.high[3]).toBeNull(); // todavía en la sesión: sin nivel
+    expect(lv.high[8]).toBe(107); // terminó a las 8:00: máximo de las 00 a las 07
+    expect(lv.low[8]).toBe(83);
+    expect(lv.high[20]).toBe(107); // se mantiene
+    expect(lv.high[24 + 8]).toBe(107); // el siguiente día, igual patrón
+  });
+  it("con velas de un día no hay sesiones y no se rompe", () => {
+    const c: ChartCandle[] = Array.from({ length: 5 }, (_, i) => ({ time: DAY0 + i * 86_400, open: 1, high: 2, low: 0, close: 1, volume: 1 }));
+    const r = ci("sess", 0, c);
+    expect(r.lines).toHaveLength(6);
+    expect(r.lines[0].values.every((v) => v === 8 || v === null || typeof v === "number")).toBe(true);
+    expect(r.pane).toBe("price");
+    expect(r.lines.map((l) => l.tag)).toEqual(["Asia ↑", "Asia ↓", "Londres ↑", "Londres ↓", "NY ↑", "NY ↓"]);
+  });
+  it("Londres y NY se solapan con Asia/Londres sin mezclarse", () => {
+    const c = hourly(24, (h) => [100 + h, 100 - h]);
+    const ldn = sessionLevels(c, SESSIONS[1]);
+    expect(ldn.high[16]).toBe(115); // 7:00 a 15:59 → máximo a las 15:00
+    expect(ldn.low[16]).toBe(85);
+    expect(ldn.high[10]).toBeNull();
+  });
+});
