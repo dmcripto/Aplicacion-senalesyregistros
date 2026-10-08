@@ -268,7 +268,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                 <source src="/bot-automatico.mp4" type="video/mp4" />
               </video>
             )}
-            <p className="leading-relaxed text-dim">{t("1 min 30 s · el bot opera en modo simulado, sin dinero real. Contenido educativo, no asesoramiento financiero.")}</p>
+            <p className="leading-relaxed text-dim">{t("1 min 50 s · por defecto el bot opera en modo simulado, sin dinero real; el modo real es opcional y arriesga plata de verdad. Contenido educativo, no asesoramiento financiero.")}</p>
           </div>
         </details>
 
