@@ -77,6 +77,8 @@ describe("comando /grafico", () => {
     const svg = chartSvg({ symbol: "BTCUSDT", interval: "1h", ema: true }, bars, "Binance", "es");
     expect(svg.match(/<rect /g)!.length).toBeGreaterThan(120);
     expect(svg).toContain("EMA 20");
+    expect(svg).not.toContain("CH_");
+    expect(svg).toMatch(/ H <tspan/);
     expect(svg).toContain("BTCUSDT");
     expect(chEma([1, 2, 3], 2)).toHaveLength(3);
   });

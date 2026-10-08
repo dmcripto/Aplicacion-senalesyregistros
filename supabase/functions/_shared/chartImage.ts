@@ -200,7 +200,7 @@ export function chartSvg(req: ChartRequest, bars: Ohlc[], source: string, lang: 
   <rect x="${PLOT_R + 2}" y="${(ly - 13).toFixed(1)}" width="${CH_W - PLOT_R - 4}" height="26" rx="3" fill="${lastCol}"/>
   <text x="${PLOT_R + 10}" y="${(ly + 5).toFixed(1)}" font-size="15" font-weight="700" fill="#ffffff">${esc(fmtChartPrice(last.c))}</text>
   <text x="24" y="40" font-size="26" font-weight="700" fill="#ffffff">${base} <tspan fill="${CH_C.text}" font-weight="400" font-size="20">· ${esc(req.interval)} · ${esc(source)}</tspan></text>
-  <text x="24" y="72" font-size="16" fill="${CH_C.text}">O <tspan fill="${lastCol}">${esc(fmtChartPrice(last.o))}</tspan>  CH_H <tspan fill="${lastCol}">${esc(fmtChartPrice(last.h))}</tspan>  L <tspan fill="${lastCol}">${esc(fmtChartPrice(last.l))}</tspan>  C <tspan fill="${lastCol}">${esc(fmtChartPrice(last.c))}</tspan>  <tspan fill="${chg >= 0 ? CH_C.bull : CH_C.bear}">${chg >= 0 ? "+" : "−"}${Math.abs(chg).toFixed(2)}%</tspan>${legend}</text>
+  <text x="24" y="72" font-size="16" fill="${CH_C.text}">O <tspan fill="${lastCol}">${esc(fmtChartPrice(last.o))}</tspan>  H <tspan fill="${lastCol}">${esc(fmtChartPrice(last.h))}</tspan>  L <tspan fill="${lastCol}">${esc(fmtChartPrice(last.l))}</tspan>  C <tspan fill="${lastCol}">${esc(fmtChartPrice(last.c))}</tspan>  <tspan fill="${chg >= 0 ? CH_C.bull : CH_C.bear}">${chg >= 0 ? "+" : "−"}${Math.abs(chg).toFixed(2)}%</tspan>${legend}</text>
   <text x="${CH_W - 24}" y="40" font-size="22" font-weight="700" letter-spacing="5" text-anchor="end" fill="${CH_C.cyan}">VELTRIX</text>
 </svg>`;
 }
