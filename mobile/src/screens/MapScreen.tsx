@@ -5,6 +5,7 @@ import { t } from "@dmcripto/core";
 import LiquidationMapView from "../LiquidationMapView";
 import ChartSection from "../ChartSection";
 import EconomySection from "../EconomySection";
+import { ScreenHead } from "../HomeParts";
 import { colors } from "../theme";
 
 type Part = "chart" | "liq" | "agenda";
@@ -19,6 +20,7 @@ export default function MapScreen({ userId, trades }: { userId: string; trades: 
   ];
   return (
     <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <ScreenHead icon="candles" tone="green" title={t("Mercado")} sub={t("Gráfico con indicadores, liquidaciones y agenda económica")} />
       <View style={st.seg}>
         {parts.map((p) => (
           <TouchableOpacity key={p.k} onPress={() => setPart(p.k)} style={[st.segBtn, part === p.k && st.segOn]}>

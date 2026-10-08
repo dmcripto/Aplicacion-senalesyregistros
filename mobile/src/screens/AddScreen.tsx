@@ -6,6 +6,7 @@ import type { DailyStatus, Direction, NewTrade, ParseResult, Trade } from "@dmcr
 import { insertFullTrades, insertTrades } from "../tradesApi";
 import { colors } from "../theme";
 import { t } from "@dmcripto/core";
+import { ScreenHead } from "../HomeParts";
 
 export default function AddScreen({ userId, onAdded, limitStatus }: { userId: string; onAdded: () => void; limitStatus?: DailyStatus }) {
   const [mode, setMode] = useState<"paste" | "manual">("paste");
@@ -121,6 +122,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView style={s.screen} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        <ScreenHead icon="plus" tone="cyan" title={t("Registrar")} sub={t("Pegá una señal de cualquier fuente o cargala a mano")} />
         <View style={s.tabs}>
           {(["paste", "manual"] as const).map((m) => (
             <TouchableOpacity key={m} style={[s.tab, mode === m && s.tabOn]} onPress={() => setMode(m)}>
