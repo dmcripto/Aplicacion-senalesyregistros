@@ -222,6 +222,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .field:hover {
   border-color: var(--color-line2);
 }
+main select,
 select.field {
   appearance: none;
   -webkit-appearance: none;
