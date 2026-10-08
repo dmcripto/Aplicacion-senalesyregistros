@@ -1,0 +1,68 @@
+name: Build Android local (gratis)
+
+# Compila la app Android en la máquina de GitHub (no en la nube de Expo), así que NO consume
+# los builds del plan gratuito de Expo. Usa la misma cuenta y la misma firma de siempre
+# (las credenciales las baja EAS con el EXPO_TOKEN), por lo que la app se actualiza encima de
+# la instalada sin desinstalar nada.
+#
+# El APK queda como "artifact" de la ejecución (Actions → la corrida → Artifacts).
+# Si marcás "publicar", además se publica en una Release con un link de descarga directo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Publicar el APK en una Release (link público de descarga)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install root dependencies (npm workspaces)
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Build APK on this machine
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas build --platform android --profile preview --local --non-interactive --output "$GITHUB_WORKSPACE/VELTRIX.apk"
+
+      - name: Read app version
+        id: ver
+        run: echo "v=$(node -p "require('./mobile/app.json').expo.version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELTRIX-android-${{ steps.ver.outputs.v }}
+          path: VELTRIX.apk
+          retention-days: 30
+
+      - name: Publish release
+        if: ${{ inputs.publicar }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-v${{ steps.ver.outputs.v }}-${{ github.run_number }}"
+          gh release create "$TAG" VELTRIX.apk --title "VELTRIX Android ${{ steps.ver.outputs.v }}" --notes "APK de VELTRIX ${{ steps.ver.outputs.v }}." --prerelease
+          echo "Descarga: https://github.com/${{ github.repository }}/releases/download/$TAG/VELTRIX.apk"
