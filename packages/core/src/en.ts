@@ -579,6 +579,7 @@ export const EN: Record<string, string> = {
   "Liq. cortos": "Short liq.",
   "Este activo no tiene mapa de liquidaciones.": "This asset has no liquidation map.",
   "más gruesa = más dinero": "thicker = more money",
+  "🔥 Mapa de liquidaciones": "🔥 Liquidation map",
   "1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.": "1. In Bitunix create a commercial API key with permission to trade futures (never withdrawals) and move to futures only what you want to risk. 2. Paste it here: it's stored encrypted and it's the only one the bot uses.",
   "Ahora el bot envía órdenes reales.": "The bot now sends real orders.",
   "Apaga el bot real, cancela las órdenes pendientes y cierra las posiciones abiertas. Siempre revisá Bitunix por las dudas.": "Turns the real bot off, cancels pending orders and closes open positions. Always double-check Bitunix.",

@@ -17,14 +17,13 @@ const LIMIT = 500;
 const REFRESH_MS = 30_000;
 
 interface Slot {
-  kind: IndicatorKind | "none";
+  kind: IndicatorKind | "none" | "liq"; // «liq» = mapa de liquidaciones (se dibuja sobre las velas)
   period: number;
 }
 interface Prefs {
   symbol: string;
   tf: Tf;
   slots: [Slot, Slot];
-  liq: boolean; // mapa de liquidaciones sobre las velas
 }
 const DEFAULTS: Prefs = {
   symbol: "BTCUSDT",
@@ -33,7 +32,6 @@ const DEFAULTS: Prefs = {
     { kind: "ema", period: 50 },
     { kind: "rsi", period: 14 },
   ],
-  liq: false,
 };
 
 const loadPrefs = (): Prefs => {
@@ -41,14 +39,13 @@ const loadPrefs = (): Prefs => {
     const v = JSON.parse(localStorage.getItem(KEY) ?? "null");
     if (!v || typeof v !== "object") return DEFAULTS;
     const slot = (s: any, d: Slot): Slot => ({
-      kind: s && (s.kind === "none" || INDICATOR_KINDS.includes(s.kind)) ? s.kind : d.kind,
+      kind: s && (s.kind === "none" || s.kind === "liq" || INDICATOR_KINDS.includes(s.kind)) ? s.kind : d.kind,
       period: Number.isFinite(Number(s?.period)) && Number(s.period) > 0 ? Math.min(500, Math.round(Number(s.period))) : d.period,
     });
     return {
       symbol: typeof v.symbol === "string" && binanceSymbol(v.symbol) ? v.symbol : DEFAULTS.symbol,
       tf: TFS.includes(v.tf) ? v.tf : DEFAULTS.tf,
       slots: [slot(v.slots?.[0], DEFAULTS.slots[0]), slot(v.slots?.[1], DEFAULTS.slots[1])],
-      liq: v.liq === true,
     };
   } catch {
     return DEFAULTS;
@@ -82,7 +79,7 @@ async function fetchCandles(raw: string, tf: Tf, signal: AbortSignal): Promise<C
 }
 
 const indName = (k: Slot["kind"]) =>
-  ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)"), sess: t("Sesiones: Asia, Londres y Nueva York") })[k];
+  ({ none: t("Ninguno"), liq: t("🔥 Mapa de liquidaciones"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)"), sess: t("Sesiones: Asia, Londres y Nueva York") })[k];
 
 const BULL = "#26a69a"; // verde y rojo de TradingView
 const BEAR = "#ef5350";
@@ -109,6 +106,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   const boxRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"]) => void; destroy: () => void; chart: any; series: any } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
+  const liqOn = prefs.slots.some((x) => x.kind === "liq");
 
   const change = (next: Partial<Prefs>) =>
     setPrefs((p) => {
@@ -120,7 +118,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
     setPrefs((p) => {
       const slots: [Slot, Slot] = [{ ...p.slots[0] }, { ...p.slots[1] }];
       slots[i] = { ...slots[i], ...s };
-      if (s.kind && s.kind !== "none" && s.kind !== p.slots[i].kind) slots[i].period = INDICATOR_DEFAULT_PERIOD[s.kind] || slots[i].period;
+      if (s.kind && s.kind !== "none" && s.kind !== "liq" && s.kind !== p.slots[i].kind) slots[i].period = INDICATOR_DEFAULT_PERIOD[s.kind] || slots[i].period;
       const n = { ...p, slots };
       savePrefs(n);
       return n;
@@ -193,7 +191,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           extra = [];
           let sub = 0;
           p.slots.forEach((s, i) => {
-            if (s.kind === "none") return;
+            if (s.kind === "none" || s.kind === "liq") return;
             const r = computeIndicator(s.kind, s.period, c, i as 0 | 1);
             const pane = r.pane === "price" ? 0 : ++sub;
             r.lines.forEach((l, li) => {
@@ -297,7 +295,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   const [liqState, setLiqState] = useState<"off" | "loading" | "ok" | "none">("off");
   const liqCoin = symbolKey.replace(/(USDT|USDC|BUSD|USD)$/, "");
   useEffect(() => {
-    if (!prefs.liq) {
+    if (!liqOn) {
       setLiqState("off");
       setLiqMap(null);
       return;
@@ -323,8 +321,8 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       dead = true;
       window.clearInterval(id);
     };
-  }, [prefs.liq, liqCoin]);
-  const liqSpots = useMemo(() => (prefs.liq && liqMap ? liqMap.hotspots : []), [prefs.liq, liqMap]);
+  }, [liqOn, liqCoin]);
+  const liqSpots = useMemo(() => (liqOn && liqMap ? liqMap.hotspots : []), [liqOn, liqMap]);
 
   useEffect(() => {
     if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels, liqSpots);
@@ -391,13 +389,13 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} aria-hidden />
               <span className="shrink-0 font-semibold text-fog">{t("Indicador {n}", { n: i + 1 })}</span>
               <select value={s.kind} onChange={(e) => setSlot(i, { kind: e.target.value as Slot["kind"] })} className={cx(field, "w-0 min-w-0 flex-1")}>
-                {(["none", ...INDICATOR_KINDS] as const).map((k) => (
+                {(["none", ...INDICATOR_KINDS, "liq"] as const).map((k) => (
                   <option key={k} value={k}>
                     {indName(k)}
                   </option>
                 ))}
               </select>
-              {s.kind !== "none" && !INDICATOR_NO_PERIOD.includes(s.kind) && (
+              {s.kind !== "none" && s.kind !== "liq" && !INDICATOR_NO_PERIOD.includes(s.kind) && (
                 <input type="number" min={2} max={500} value={s.period} onChange={(e) => setSlot(i, { period: Number(e.target.value) })} className={cx(field, "num w-16")} aria-label={t("Período")} />
               )}
             </label>
@@ -405,24 +403,17 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          aria-pressed={prefs.liq}
-          onClick={() => change({ liq: !prefs.liq })}
-          className={cx("flex items-center gap-2 rounded border px-3 py-1.5 text-[11.5px] font-semibold", prefs.liq ? "border-[#ff9f43]/70 bg-[#ff9f43]/10 text-[#ff9f43]" : "border-[#2a2e39] bg-[#131722] text-[#787b86] hover:text-fog")}
-        >
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: prefs.liq ? LIQ_LONG : "#4b5160" }} aria-hidden />
-          {t("Mapa de liquidaciones")}
-        </button>
-        {prefs.liq && liqState === "loading" && <span className="text-[11.5px] text-dim">{t("Calculando…")}</span>}
-        {prefs.liq && liqState === "none" && <span className="text-[11.5px] text-dim">{t("Este activo no tiene mapa de liquidaciones.")}</span>}
-        {prefs.liq && liqState === "ok" && (
-          <span className="text-[11.5px] text-dim">
-            <span style={{ color: LIQ_LONG }}>■</span> {t("largos")} · <span style={{ color: LIQ_SHORT }}>■</span> {t("cortos")} · {t("más gruesa = más dinero")}
-          </span>
-        )}
-      </div>
+      {liqOn && (
+        <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-dim">
+          {liqState === "loading" && <span>{t("Calculando…")}</span>}
+          {liqState === "none" && <span>{t("Este activo no tiene mapa de liquidaciones.")}</span>}
+          {liqState === "ok" && (
+            <span>
+              <span style={{ color: LIQ_LONG }}>■</span> {t("largos")} · <span style={{ color: LIQ_SHORT }}>■</span> {t("cortos")} · {t("más gruesa = más dinero")}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="num text-[15px] font-bold text-snow">{last ? fmtPrice(last.close) : "—"}</span>
