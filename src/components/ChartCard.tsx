@@ -4,12 +4,14 @@ import type { ChartCandle, IndicatorKind, Trade } from "../lib";
 import { fetchAlerts } from "../tradesApi";
 import type { UserAlert } from "../lib";
 import AlertsSection from "./AlertsSection";
+import ChartDrawings from "./ChartDrawings";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
 const TFS = ["5m", "15m", "1h", "4h", "1d"] as const;
 type Tf = (typeof TFS)[number];
+const TF_SEC: Record<Tf, number> = { "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400 };
 const KEY = "veltrix_chart_v1";
 const LIMIT = 500;
 const REFRESH_MS = 30_000;
@@ -100,7 +102,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   const [candles, setCandles] = useState<ChartCandle[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const boxRef = useRef<HTMLDivElement>(null);
-  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[]) => void; destroy: () => void } | null>(null);
+  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[]) => void; destroy: () => void; chart: any; series: any } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
 
   const change = (next: Partial<Prefs>) =>
@@ -239,6 +241,8 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           } else if (range) chart.timeScale().setVisibleLogicalRange(range);
         },
         destroy: () => chart.remove(),
+        chart,
+        series: candle,
       };
       setReady((n) => n + 1);
     });
@@ -352,7 +356,8 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       </div>
 
       <div className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
-        <div ref={boxRef} className="h-[460px] w-full" />
+        <div ref={boxRef} className="ml-10 h-[460px]" />
+        <ChartDrawings api={apiRef.current} ready={ready} candles={candles} tfSec={TF_SEC[prefs.tf]} symbol={symbolKey} />
         {state !== "ok" && (
           <div className="absolute inset-0 grid place-items-center bg-ink/70 px-6 text-center text-[12.5px] text-dim">
             {state === "loading" ? t("Cargando velas…") : t("No se pudieron cargar las velas de este activo. Probá con otro (por ejemplo BTCUSDT).")}
