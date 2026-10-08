@@ -83,6 +83,7 @@ const CoachCard = lazy(() => import("./components/CoachCard"));
 const WhatsAppCard = lazy(() => import("./components/WhatsAppCard"));
 import TodayCard from "./components/TodayCard";
 import EconomyCard from "./components/EconomyCard";
+import { RiskTips, SessionCard } from "./components/SideCards";
 import SignalsToExecute from "./components/SignalsToExecute";
 import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
@@ -811,8 +812,14 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {view === "journal" && (
           <>
             <PageHead view="journal" right={actions} />
+            {!empty && <StatsBand trades={trades} />}
             <div className={cx("grid grid-cols-[minmax(0,1fr)] items-start gap-5", !empty && "lg:grid-cols-[minmax(0,1fr)_400px]")}>
-              {!empty && <EquityChart trades={trades} />}
+              {!empty && (
+                <div className="min-w-0 space-y-5">
+                  <EquityChart trades={trades} />
+                  <MonthlySummary trades={trades} />
+                </div>
+              )}
               <TradeForm onAdd={addTrades} notify={notify} />
             </div>
             {loading ? (
@@ -832,12 +839,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                 />
               )
             )}
-            {!empty && (
-              <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
-                <MonthlySummary trades={trades} />
-                {trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
-              </div>
-            )}
+            {!empty && trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
           </>
         )}
 
@@ -849,10 +851,14 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             ) : (
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
-                  <Analysis trades={trades} />
+                  <div className="min-w-0 space-y-5">
+                    <Analysis trades={trades} />
+                    <MonthlySummary trades={trades} />
+                    {trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
+                    {FEATURES.coach && <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />}
+                  </div>
                   <StrategyCard trades={trades} notify={notify} />
                 </div>
-                {FEATURES.coach && <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />}
               </>
             )}
           </>
@@ -865,6 +871,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
               <RiskCalculator notify={notify} />
               <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
             </div>
+            <RiskTips />
           </>
         )}
 
@@ -919,7 +926,10 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                 <MoneyCard money={money} trades={trades} onSave={persistMoney} />
                 <InviteCard notify={notify} />
               </div>
-              <MfaCard notify={notify} />
+              <div className="min-w-0 space-y-5">
+                <MfaCard notify={notify} />
+                <SessionCard email={email} onSignOut={() => supabase.auth.signOut()} onGuide={() => { go("home"); setGuide(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+              </div>
             </div>
           </>
         )}
