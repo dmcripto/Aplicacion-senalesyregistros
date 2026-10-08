@@ -45,7 +45,7 @@ const T = {
   es: {
     help:
       "<b>VELTRIX</b> 👋\n\nPegá acá una señal (o reenviá el mensaje de un canal) y la registro en tu diario.\n\n" +
-      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» para ver 2 medias)\n/resumen — tus resultados en R\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
+      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» o «liq» para ver medias o liquidaciones)\n/resumen — tus resultados en R\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
       "Ejemplo:\n<code>BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "Este chat todavía no está conectado a una cuenta de VELTRIX.\n\nEntrá a la app o la web → «Conectar Telegram» y tocá el botón: te trae de vuelta acá ya vinculado.",
@@ -91,7 +91,7 @@ const T = {
   en: {
     help:
       "<b>VELTRIX</b> 👋\n\nPaste a signal here (or forward a channel message) and I'll log it in your journal.\n\n" +
-      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” for 2 moving averages)\n/summary — your results in R\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
+      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” or “liq” for averages or liquidations)\n/summary — your results in R\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
       "Example:\n<code>BTCUSDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "This chat isn't connected to a VELTRIX account yet.\n\nOpen the app or the web → “Connect Telegram” and tap the button: it brings you back here already linked.",
@@ -367,8 +367,8 @@ async function chartCommand(msg: any, args: string[], lang: Lang) {
   const req = parseChartArgs(args);
   if (!req) {
     return say(chatId, es
-      ? "Usá <code>/grafico</code> seguido de la moneda y el intervalo.\n\nEjemplos:\n<code>/grafico BTCUSDT 4h</code>\n<code>/grafico ETH 1d ema</code>\n\nIntervalos: 1m 5m 15m 30m 1h 4h 1d 1w"
-      : "Use <code>/chart</code> followed by the coin and interval.\n\nExamples:\n<code>/chart BTCUSDT 4h</code>\n<code>/chart ETH 1d ema</code>\n\nIntervals: 1m 5m 15m 30m 1h 4h 1d 1w", extra);
+      ? "Usá <code>/grafico</code> seguido de la moneda y el intervalo.\n\nEjemplos:\n<code>/grafico BTCUSDT 4h</code>\n<code>/grafico ETH 1d ema</code>\n<code>/grafico BTC 4h liq</code>\n\nIntervalos: 1m 5m 15m 30m 1h 4h 1d 1w"
+      : "Use <code>/chart</code> followed by the coin and interval.\n\nExamples:\n<code>/chart BTCUSDT 4h</code>\n<code>/chart ETH 1d ema</code>\n<code>/chart BTC 4h liq</code>\n\nIntervals: 1m 5m 15m 30m 1h 4h 1d 1w", extra);
   }
   const now = Date.now();
   if (now - (chartLast.get(chatId) ?? 0) < 8000) return;

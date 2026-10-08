@@ -66,20 +66,24 @@ describe("comando /grafico", () => {
     expect(normalizeInterval("4H")).toBe("4h");
     expect(normalizeInterval("D")).toBe("1d");
     expect(normalizeInterval("7m")).toBeNull();
-    expect(parseChartArgs(["BTCUSDT", "4h"])).toEqual({ symbol: "BTCUSDT", interval: "4h", ema: false });
-    expect(parseChartArgs(["1d", "eth", "ema"])).toEqual({ symbol: "ETHUSDT", interval: "1d", ema: true });
-    expect(parseChartArgs(["sol"])).toEqual({ symbol: "SOLUSDT", interval: "1h", ema: false });
+    expect(parseChartArgs(["BTCUSDT", "4h"])).toEqual({ symbol: "BTCUSDT", interval: "4h", ema: false, liq: false });
+    expect(parseChartArgs(["1d", "eth", "ema"])).toEqual({ symbol: "ETHUSDT", interval: "1d", ema: true, liq: false });
+    expect(parseChartArgs(["sol"])).toEqual({ symbol: "SOLUSDT", interval: "1h", ema: false, liq: false });
+    expect(parseChartArgs(["btc", "4h", "liq"])).toEqual({ symbol: "BTCUSDT", interval: "4h", ema: false, liq: true });
     expect(parseChartArgs([])).toBeNull();
   });
 
   it("dibuja velas, volumen y las dos EMA", () => {
     const bars: Ohlc[] = Array.from({ length: 60 }, (_, i) => ({ t: 1_700_000_000_000 + i * 3_600_000, o: 100 + i, h: 105 + i, l: 98 + i, c: 102 + i, v: 10 + i }));
-    const svg = chartSvg({ symbol: "BTCUSDT", interval: "1h", ema: true }, bars, "Binance", "es");
+    const svg = chartSvg({ symbol: "BTCUSDT", interval: "1h", ema: true, liq: false }, bars, "Binance", "es");
     expect(svg.match(/<rect /g)!.length).toBeGreaterThan(120);
     expect(svg).toContain("EMA 20");
     expect(svg).not.toContain("CH_");
     expect(svg).toMatch(/ H <tspan/);
     expect(svg).toContain("BTCUSDT");
+    const withLiq = chartSvg({ symbol: "BTCUSDT", interval: "1h", ema: false, liq: true }, bars, "Binance", "es", [{ side: "long", price: 120, usd: 5e7, pct: -2 }, { side: "short", price: 9999, usd: 1e7, pct: 5 }]);
+    expect(withLiq).toContain("Liq. largos $50.0M");
+    expect(withLiq).not.toContain("Liq. cortos");
     expect(chEma([1, 2, 3], 2)).toHaveLength(3);
   });
 });
