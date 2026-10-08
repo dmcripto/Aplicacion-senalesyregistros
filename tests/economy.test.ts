@@ -52,13 +52,14 @@ const ev = (over: Partial<EconEvent> = {}): EconEvent => ({
 });
 
 describe("mensajes", () => {
-  it("el resumen del día lista los datos de hoy en la hora de la cuenta", () => {
+  it("el resumen del día lista los datos de hoy con los horarios en UTC", () => {
     const html = digestMessage([ev(), ev({ id: "x", starts_at: "2026-10-09T12:30:00.000Z" })], NOW, "America/Argentina/Buenos_Aires", "es")!;
     expect(html).toContain("AGENDA ECONÓMICA");
-    expect(html).toContain("<b>09:30</b>");
+    expect(html).toContain("<b>12:30</b>"); // 09:30 de Buenos Aires = 12:30 UTC
     expect(html).toContain("Inflación (CPI) m/m");
     expect(html).toContain("Esperado: <b>0.3%</b> · Anterior: <b>0.4%</b>");
-    expect(html).toContain("America/Argentina/Buenos_Aires");
+    expect(html).toContain("Horarios en UTC");
+    expect(html).not.toContain("America/Argentina");
     expect(html.match(/🇺🇸/g)).toHaveLength(1); // el de otro día no entra
   });
   it("en inglés usa el nombre original", () => {
