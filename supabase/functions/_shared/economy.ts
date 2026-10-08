@@ -198,7 +198,10 @@ function figures(e: EconEvent, lang: "es" | "en"): string {
   return parts.join(" · ");
 }
 
-/** Resumen del día: los datos de hoy (en la zona horaria de quien conectó la comunidad). Null si hoy no hay nada. */
+/**
+ * Resumen del día: los datos de hoy (el «hoy» de quien conectó la comunidad). Los horarios van en UTC, igual para todos:
+ * en un grupo hay gente de varios países y cada uno lo pasa a su hora. Null si hoy no hay nada.
+ */
 export function digestMessage(events: EconEvent[], now: number, tzIn: string | null | undefined, lang: "es" | "en"): string | null {
   const tz = validTz(tzIn);
   if (!tz) return null;
@@ -209,7 +212,7 @@ export function digestMessage(events: EconEvent[], now: number, tzIn: string | n
   const day = new Intl.DateTimeFormat(en ? "en-US" : "es-AR", { timeZone: tz, weekday: "long", day: "numeric", month: "long" }).format(new Date(now));
   const lines = [`🗓 <b>${en ? "ECONOMIC CALENDAR" : "AGENDA ECONÓMICA"}</b> · ${esc(day)}`, ""];
   for (const e of list) {
-    lines.push(`${impactDot(e.impact)} <b>${hhmm(e.starts_at, tz)}</b> ${flagOf(e.country)} ${nameOf(e, lang)}`);
+    lines.push(`${impactDot(e.impact)} <b>${hhmm(e.starts_at, "UTC")}</b> ${flagOf(e.country)} ${nameOf(e, lang)}`);
     const f = figures(e, lang);
     if (f) lines.push(`     ${f}`);
   }
@@ -218,7 +221,7 @@ export function digestMessage(events: EconEvent[], now: number, tzIn: string | n
     en
       ? "💡 Releases marked 🔴 often move crypto hard: expect volatility around the time."
       : "💡 Los datos marcados 🔴 suelen mover fuerte al mercado cripto: ojo con la volatilidad cerca de la hora.",
-    `<i>${en ? `Times in ${esc(tz)}.` : `Horarios en ${esc(tz)}.`}</i>`,
+    `<i>${en ? "Times in UTC (universal time): convert to your local time." : "Horarios en UTC (hora universal): pasalos a tu hora local."}</i>`,
   );
   return lines.join("\n");
 }
