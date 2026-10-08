@@ -12,6 +12,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
 import { chartImage, parseChartArgs } from "../_shared/chartImage.ts";
+import { fetchQuotes, parseQuoteArgs, quoteMessage } from "../_shared/priceQuote.ts";
 import { communitySignalMessage, publishToCommunities } from "../_shared/community.ts";
 import { botToken, esc, sendMessage, sendPhoto, tgApi } from "../_shared/telegram.ts";
 import { ANNOUNCEMENTS, announcementIds } from "../_shared/announcements.ts";
@@ -452,6 +453,23 @@ async function chartCommand(msg: any, args: string[], lang: Lang) {
   await runInBackground(run());
 }
 
+const priceLast = new Map<number, number>();
+
+/** /precio [monedas]: lo puede pedir cualquiera del grupo (solo en comunidades conectadas), con un respiro de 5 s por chat. */
+async function priceCommand(msg: any, args: string[], lang: Lang) {
+  const chatId: number = msg.chat.id;
+  const extra = msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {};
+  const now = Date.now();
+  if (now - (priceLast.get(chatId) ?? 0) < 5000) return;
+  priceLast.set(chatId, now);
+  const run = async () => {
+    const quotes = await fetchQuotes(parseQuoteArgs(args));
+    if (!quotes.length) return say(chatId, lang === "es" ? "No encontré esa moneda en Binance. Probá con <code>/precio BTC ETH</code>." : "I couldn't find that coin on Binance. Try <code>/price BTC ETH</code>.", extra);
+    await say(chatId, quoteMessage(quotes, lang), extra);
+  };
+  await runInBackground(run());
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
     if (Array.isArray(msg.new_chat_members) && msg.new_chat_members.length) return welcomeJoin(msg);
@@ -466,6 +484,11 @@ async function handleMessage(msg: any) {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
       if (!com) return; // solo en las comunidades conectadas a una cuenta de VELTRIX
       return chartCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)));
+    }
+    if (cmd === "/precio" || cmd === "/price" || cmd === "/p") {
+      const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+      if (!com) return;
+      return priceCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)));
     }
     if (msg.chat?.id && /^\/\w+/.test(text)) await say(msg.chat.id, T[guessLang(msg.from?.language_code)].groupsHint, msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
     return;

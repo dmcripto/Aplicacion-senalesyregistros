@@ -108,3 +108,15 @@ describe("bienvenida", () => {
     expect(welcomeHello([luis], "es")).toContain("¡Bienvenido/a");
   });
 });
+
+describe("/precio", () => {
+  it("sin monedas muestra las principales, con repetidas y límite", async () => {
+    const { parseQuoteArgs, quoteLine, quoteMessage } = await import("../supabase/functions/_shared/priceQuote");
+    expect(parseQuoteArgs([])).toEqual(["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]);
+    expect(parseQuoteArgs(["btc,", "ETH", "eth", "!!"])).toEqual(["BTCUSDT", "ETHUSDT"]);
+    expect(parseQuoteArgs("a1 b2 c3 d4 e5 f6 g7 h8 i9 j0".split(" ")).length).toBe(8);
+    expect(quoteLine({ symbol: "BTCUSDT", price: 65000.5, change: 2.413 })).toBe("<b>BTC</b>  <code>65,000.50</code> 🟢▲ 2.41%");
+    expect(quoteLine({ symbol: "SOLUSDT", price: 150, change: -1.2 })).toContain("🔴▼ 1.20%");
+    expect(quoteMessage([{ symbol: "BTCUSDT", price: 1, change: null }], "en")).toContain("Prices now");
+  });
+});
