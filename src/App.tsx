@@ -88,11 +88,16 @@ import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
 import ShareCard from "./components/ShareCard";
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
-import { t } from "./lib";
+import { t, fmtPrice } from "./lib";
+import { useQuotes } from "./components/HomeExtras";
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
+const TICKER_COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "LINKUSDT"] as const;
+
 function Ticker({ trades }: { trades: Trade[] }) {
+  const quotes = useQuotes(TICKER_COINS);
+  const priced = TICKER_COINS.filter((c) => quotes[c]);
   const closed = useMemo(
     () =>
       trades
@@ -107,6 +112,22 @@ function Ticker({ trades }: { trades: Trade[] }) {
 
   const renderTrack = (ariaHidden: boolean) => (
     <div aria-hidden={ariaHidden} className="flex shrink-0 items-center">
+      {priced.map((c) => {
+        const q = quotes[c];
+        const up = (q.change ?? 0) >= 0;
+        return (
+          <span key={(ariaHidden ? "pb-" : "pa-") + c} className="num flex items-center gap-1.5 px-4 text-[11px] font-semibold">
+            <span className="text-snow">{c.replace("USDT", "")}</span>
+            <span className="text-fog">{fmtPrice(q.price)}</span>
+            {q.change != null && (
+              <span className={up ? "text-bull" : "text-bear"}>
+                {up ? "▲" : "▼"} {Math.abs(q.change).toFixed(2)}%
+              </span>
+            )}
+            <span className="pl-4 text-line2">◆</span>
+          </span>
+        );
+      })}
       {closed.map((t) => {
         const r = resultR(t) ?? 0;
         return (
@@ -127,7 +148,7 @@ function Ticker({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="relative overflow-hidden border-b border-line bg-panel/85 backdrop-blur-sm">
-      {closed.length ? (
+      {closed.length || priced.length ? (
         <div className="ticker-track flex w-max py-1.5">
           {renderTrack(false)}
           {renderTrack(true)}

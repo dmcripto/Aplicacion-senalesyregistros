@@ -8,13 +8,13 @@ import type { View } from "../nav";
 
 const COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"] as const;
 
-interface Quote {
+export interface Quote {
   price: number;
   change: number | null; // % en 24 h
 }
 
 /** Precios de las monedas principales con su variación de 24 horas (datos públicos de Binance, se actualizan solos). */
-function useQuotes(): Record<string, Quote> {
+export function useQuotes(coins: readonly string[] = COINS): Record<string, Quote> {
   const [q, setQ] = useState<Record<string, Quote>>({});
   useEffect(() => {
     let stop = false;
@@ -22,7 +22,7 @@ function useQuotes(): Record<string, Quote> {
       if (document.hidden) return;
       const out: Record<string, Quote> = {};
       await Promise.all(
-        COINS.map(async (c) => {
+        coins.map(async (c) => {
           try {
             const res = await fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${c}`, { signal: AbortSignal.timeout(6000) });
             if (!res.ok) return;
@@ -43,7 +43,8 @@ function useQuotes(): Record<string, Quote> {
       stop = true;
       window.clearInterval(id);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coins.join(",")]);
   return q;
 }
 
