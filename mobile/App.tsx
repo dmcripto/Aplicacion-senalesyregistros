@@ -44,7 +44,7 @@ const ONBOARDING_KEY = "veltrix_onboarding_v1";
 
 type Tab = "signals" | "journal" | "add" | "risk" | "map" | "settings";
 const TABS: Array<{ key: Tab; label: string }> = [
-  { key: "signals", label: "Señales" },
+  { key: "signals", label: "Inicio" },
   { key: "journal", label: "Diario" },
   { key: "add", label: "Registrar" },
   { key: "risk", label: "Riesgo" },
@@ -180,6 +180,9 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             refreshing={refreshing}
             refresh={refresh}
             limitStatus={limitStatus}
+            userId={userId}
+            email={email}
+            go={(tb) => goTab(tb)}
             onCalculate={(t) => {
               setCalcTrade(t);
               goTab("risk");

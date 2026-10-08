@@ -7,6 +7,7 @@ import ShareCardModal from "../ShareCardModal";
 import CoachCard from "../CoachCard";
 import { colors } from "../theme";
 import { t } from "@dmcripto/core";
+import { ScreenHead } from "../HomeParts";
 
 type Filter = "all" | "won" | "lost";
 const LABELS: Record<Filter, string> = { all: "Todas", won: "Ganadas", lost: "Perdidas" };
@@ -41,6 +42,7 @@ export default function JournalScreen({
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.gold} />}
       ListHeaderComponent={
         <>
+          <ScreenHead icon="journal" tone="violet" title={t("Diario")} sub={t("Tu historial, tu curva y qué corregir")} />
           <StatsGrid trades={trades} />
           <TouchableOpacity style={s.shareBtn} onPress={() => setSharing(true)} disabled={!closed.length}>
             <Text style={s.shareText}>{t("↗ Compartir mi resultado")}</Text>

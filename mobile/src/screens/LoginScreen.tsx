@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { Highlights, Steps, FEATURE_ICON } from "../LandingBits";
+import { Icon, TONES } from "../icons";
 import {
   ActivityIndicator,
   Animated,
@@ -44,7 +46,7 @@ function FeatureCard({ f, i, scrollY, vh }: { f: { icon: string; title: string; 
   return (
     <Animated.View onLayout={(e) => setY(e.nativeEvent.layout.y)} style={[styles.feature, { opacity, transform: [{ translateX: dx }] }]}>
       <Animated.View style={[styles.featureIcon, { transform: [{ scale: iconScale }] }]}>
-        <Text style={{ fontSize: 22 }}>{f.icon}</Text>
+        <Icon name={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[0]} color={TONES[(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[1]]} size={22} />
       </Animated.View>
       <View style={{ flex: 1 }}>
         <Text style={styles.featureTitle}>{f.title}</Text>
@@ -160,6 +162,7 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
         <Text style={styles.title}>VELTRIX</Text>
         <Text style={styles.headline}>{welcome.headline}</Text>
         <Text style={styles.lead}>{welcome.lead}</Text>
+        <Highlights />
       </View>
 
       <LiveDemo />
@@ -172,6 +175,8 @@ export default function LoginScreen({ initialNotice }: { initialNotice?: string 
           <Text style={styles.ctaGhostText}>{t("Ya tengo cuenta")}</Text>
         </TouchableOpacity>
       </View>
+
+      <Steps />
 
       <Text style={styles.sectionTitle}>{t("Así te llegan los avisos")}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={252} decelerationRate="fast" contentContainerStyle={{ gap: 12, paddingRight: 20 }}>

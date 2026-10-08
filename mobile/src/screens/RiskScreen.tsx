@@ -7,6 +7,7 @@ import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
+import { ScreenHead } from "../HomeParts";
 
 const STORE_KEY = "veltrix_risk_settings_v1";
 
@@ -100,8 +101,7 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
           <>
-        <Text style={s.title}>{t("CALCULADORA DE RIESGO")}</Text>
-        <Text style={s.sub}>{t("Cuánto operar para no perder más de lo que decidiste.")}</Text>
+        <ScreenHead icon="calc" tone="amber" title={t("Riesgo")} sub={t("Cuánto operar para no perder más de lo que decidiste")} />
 
         <View style={s.card}>
           <Text style={s.section}>{t("TU CUENTA")}</Text>

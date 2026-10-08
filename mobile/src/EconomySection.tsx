@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { econTitleEs, getLang, t } from "@dmcripto/core";
 import { fetchEconomy } from "./tradesApi";
 import type { EconomyEvent } from "./tradesApi";
+import { IconTile } from "./icons";
 import { colors } from "./theme";
 
 const FLAG: Record<string, string> = { USD: "🇺🇸", EUR: "🇪🇺", GBP: "🇬🇧", JPY: "🇯🇵", CNY: "🇨🇳", CAD: "🇨🇦", AUD: "🇦🇺", NZD: "🇳🇿", CHF: "🇨🇭" };
@@ -18,7 +19,7 @@ function countdown(ms: number): string {
 }
 
 /** Agenda económica: los próximos datos que suelen mover el mercado, en tu hora local. */
-export default function EconomySection() {
+export default function EconomySection({ limit = 12 }: { limit?: number }) {
   const [events, setEvents] = useState<EconomyEvent[] | null>(null);
   const [now, setNow] = useState(() => new Date());
 
@@ -41,13 +42,16 @@ export default function EconomySection() {
   const tomorrow = new Date(now.getTime() + 86_400_000);
   const dayLabel = (d: Date) => (dayKey(d) === dayKey(now) ? t("Hoy") : dayKey(d) === dayKey(tomorrow) ? t("Mañana") : d.toLocaleDateString(en ? "en-US" : "es-AR", { weekday: "short", day: "numeric" }));
   const hour = (d: Date) => d.toLocaleTimeString(en ? "en-GB" : "es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const list = events.slice(0, 12);
+  const list = events.slice(0, limit);
   const next = list.find((e) => new Date(e.starts_at).getTime() > now.getTime());
 
   return (
     <View style={st.card}>
       <View style={st.head}>
-        <Text style={st.title}>🗓 {t("AGENDA ECONÓMICA")}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <IconTile name="calendar" tone="amber" size={30} />
+          <Text style={st.title}>{t("AGENDA ECONÓMICA")}</Text>
+        </View>
         {next && (
           <Text style={st.next}>
             {t("Próximo dato")}: {countdown(new Date(next.starts_at).getTime() - now.getTime())}

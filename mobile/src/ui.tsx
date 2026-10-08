@@ -72,7 +72,7 @@ export function TabIcon({ name, color, size = 22 }: { name: TabIconName; color: 
   const p = { stroke: color, strokeWidth: 1.9, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, fill: "none" };
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      {name === "signals" && <Polyline points="2.5,12 7,12 9.5,5 14,19.5 16.5,12 21.5,12" {...p} />}
+      {name === "signals" && <Path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10" {...p} />}
       {name === "journal" && (
         <>
           <Path d="M5 4.5h11a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3V4.5z" {...p} />
