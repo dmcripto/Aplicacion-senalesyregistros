@@ -41,10 +41,6 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const welcome = welcomeContent();
   useEffect(() => trackGlow(), []);
   const lang = getLang();
-  const goForm = (m: "login" | "signup") => {
-    setMode(m);
-    document.getElementById("acceso")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const submit = async (ev: FormEvent) => {
     ev.preventDefault();
@@ -110,65 +106,39 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   };
 
   return (
-    <div className="mx-auto grid min-h-screen w-full max-w-5xl content-center gap-8 px-4 py-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-x-12 lg:gap-y-8">
-      <div className="fixed right-3 top-3 z-10"><LangSwitch /></div>
-
-      <section className="flex flex-col items-center text-center lg:col-start-1 lg:items-start lg:text-left">
-        <span className="brand-logo"><ShieldLogo className="h-16 w-16" /></span>
-        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[0.04em] text-snow"><span className="brand-word">VELTRIX</span></h1>
-        <p className="mt-2 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
-        <p className="mt-2 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
-        <ul className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
-          {HIGHLIGHTS.map(([icon, tone, label]) => (
-            <li key={icon} className="lift flex items-center gap-2 rounded-full border border-line bg-panel/80 py-1 pl-1 pr-3 text-[12px] font-semibold text-snow">
-              <IconTile name={icon} tone={tone} size="sm" />
-              {label()}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <div className="flex justify-center lg:col-start-1 lg:justify-start">
-        <LiveDemo />
-      </div>
-
-      <div className="flex gap-3 lg:hidden">
-        <button type="button" onClick={() => goForm("signup")} className="flex-1 rounded-md bg-gold px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98]">
-          {t("Crear cuenta")}
-        </button>
-        <button type="button" onClick={() => goForm("login")} className="flex-1 rounded-md border border-cyan/50 px-4 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/10">
-          {t("Ya tengo cuenta")}
-        </button>
-      </div>
-
-      <section className="lg:col-start-1">
-        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Así te llegan los avisos")}</h2>
-        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
-          {([["signal", "1 · Llega la señal"], ["target", "2 · Aviso de cada target"], ["result", "3 · Resultado al cerrar"]] as const).map(([k, cap]) => (
-            <figure key={k} className="lift w-[68%] shrink-0 snap-center rounded-xl sm:w-[44%] lg:w-auto">
-              <img src={`/welcome/${k}-${lang}.png`} alt={t(cap)} loading="lazy" width={600} height={600} className="w-full rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,.45)]" />
-              <figcaption className="mt-2 text-center text-[11.5px] font-semibold text-fog">{t(cap)}</figcaption>
-            </figure>
-          ))}
+    <div className="mx-auto min-h-screen w-full max-w-7xl px-4 pb-12 lg:px-8">
+      {/* Barra de arriba: marca a la izquierda, idioma y comunidad a la derecha */}
+      <header className="flex items-center justify-between gap-3 py-4">
+        <div className="flex items-center gap-2.5">
+          <span className="brand-logo"><ShieldLogo className="h-9 w-9" /></span>
+          <span className="font-display text-xl font-extrabold tracking-[0.06em] text-snow"><span className="brand-word">VELTRIX</span></span>
         </div>
-      </section>
-
-      <section className="lg:col-start-1">
-        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {welcome.features.map((f) => (
-            <div key={f.title} className="lift flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
-              <IconTile name={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[0]} tone={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[1]} />
-              <div>
-                <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
-                <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="hidden items-center gap-2 rounded-md border border-cyan/40 px-3 py-1.5 text-[12px] font-semibold text-cyan transition-colors hover:bg-cyan/10 sm:flex">
+            <IconTelegram className="h-3.5 w-3.5" />
+            Telegram
+          </a>
+          <LangSwitch />
         </div>
-      </section>
+      </header>
 
-      <div id="acceso" data-tilt="soft" className="glass glow-card auth-card rise-in w-full max-w-sm scroll-mt-4 self-start justify-self-center rounded-lg shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:row-span-4 lg:max-w-md lg:justify-self-end">
+      {/* Portada: presentación a un lado y el acceso al otro */}
+      <div className="grid items-center gap-10 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16 lg:py-12">
+        <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
+          <h1 className="font-display text-4xl font-extrabold leading-[1.1] text-snow sm:text-5xl">
+            <span className="text-gold">{welcome.headline}</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fog sm:text-[16px]">{welcome.lead}</p>
+          <ul className="mt-5 flex flex-wrap justify-center gap-2.5 lg:justify-start">
+            {HIGHLIGHTS.map(([icon, tone, label]) => (
+              <li key={icon} className="lift flex items-center gap-2 rounded-full border border-line bg-panel/80 py-1 pl-1 pr-3.5 text-[12.5px] font-semibold text-snow">
+                <IconTile name={icon} tone={tone} size="sm" />
+                {label()}
+              </li>
+            ))}
+          </ul>
+        </section>
+      <div id="acceso" data-tilt="soft" className="glass glow-card auth-card rise-in w-full max-w-md scroll-mt-4 self-center justify-self-center rounded-lg shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:max-w-md lg:justify-self-end">
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
           <div className="relative mb-1 flex gap-1 rounded-lg border border-line bg-ink p-1">
             <span
@@ -313,7 +283,49 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
           {t("VELTRIX no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}
         </p>
       </div>
+      </div>
 
+      {/* Cómo se ve: la señal en vivo y los avisos que llegan */}
+      <div className="grid items-center gap-8 border-t border-line/60 py-10 lg:grid-cols-2 lg:gap-14 lg:py-14">
+        <div className="flex justify-center"><LiveDemo /></div>
+      <section>
+        <h2 className="mb-3 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Así te llegan los avisos")}</h2>
+        <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 lg:mx-0 lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0">
+          {([["signal", "1 · Llega la señal"], ["target", "2 · Aviso de cada target"], ["result", "3 · Resultado al cerrar"]] as const).map(([k, cap]) => (
+            <figure key={k} className="lift w-[68%] shrink-0 snap-center rounded-xl sm:w-[44%] lg:w-auto">
+              <img src={`/welcome/${k}-${lang}.png`} alt={t(cap)} loading="lazy" width={600} height={600} className="w-full rounded-xl border border-line shadow-[0_12px_36px_rgba(0,0,0,.45)]" />
+              <figcaption className="mt-2 text-center text-[11.5px] font-semibold text-fog">{t(cap)}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      </div>
+
+      {/* Qué se puede hacer */}
+      <section className="border-t border-line/60 pt-10 lg:pt-14">
+        <h2 className="mb-5 text-center text-[11px] font-bold uppercase tracking-[0.22em] text-fog lg:text-left">{t("Qué podés hacer con VELTRIX")}</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {welcome.features.map((f) => (
+            <div key={f.title} className="lift flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
+              <IconTile name={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[0]} tone={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[1]} />
+              <div>
+                <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
+                <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+
+      <footer className="mt-10 border-t border-line/60 pt-6 text-center text-[11px] leading-relaxed text-dim">
+        <p>{t("VELTRIX no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}</p>
+        <p className="mt-2 flex justify-center gap-4">
+          <a href={legalUrl("terms")} target="_blank" rel="noopener" className="hover:text-fog hover:underline">{t("términos de uso")}</a>
+          <a href={legalUrl("privacy")} target="_blank" rel="noopener" className="hover:text-fog hover:underline">{t("política de privacidad")}</a>
+        </p>
+      </footer>
     </div>
   );
 }
