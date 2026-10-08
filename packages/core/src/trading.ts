@@ -8,6 +8,7 @@ export * from "./i18n";
 export * from "./mfa";
 export * from "./indicators";
 export * from "./alerts";
+export * from "./economy";
 import { buildStrategy } from "./strategy";
 export type { BotAction, BotDim, Confidence, EdgeVerdict, StrategyMetrics, StrategyPlan, StrategyRule, StrategyValidation } from "./strategy";
 export type { StrategySource } from "./strategy";

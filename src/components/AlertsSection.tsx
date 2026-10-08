@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ALERT_TFS, MAX_ACTIVE_ALERTS, checkAlertDraft, cx, fmtPrice, t } from "../lib";
 import type { AlertKind, AlertSide, AlertTf, UserAlert } from "../lib";
 import { createAlert, deleteAlert, setAlertActive } from "../tradesApi";
@@ -36,6 +36,7 @@ export default function AlertsSection({
   const [kind, setKind] = useState<AlertKind>("price");
   const [dir, setDir] = useState<AlertSide>("above");
   const [level, setLevel] = useState("");
+  const touched = useRef(false); // si la persona ya escribió su propio nivel, no se lo pisamos
   const [period, setPeriod] = useState("14");
   const [tf, setTf] = useState<AlertTf>(chartTf);
   const [once, setOnce] = useState(true);
@@ -52,7 +53,8 @@ export default function AlertsSection({
     try {
       await createAlert(userId, draft);
       notify(t("Alerta creada: te aviso por la app y por Telegram."), "ok");
-      setLevel("");
+      touched.current = false;
+      setLevel(suggestion);
       reload();
     } catch (e) {
       notify(e instanceof Error ? e.message : t("No se pudo crear la alerta."), "err");
@@ -68,6 +70,15 @@ export default function AlertsSection({
       notify(e instanceof Error ? e.message : t("No se pudo guardar el cambio."), "err");
     }
   };
+
+  // El nivel arranca con un valor de ejemplo editable: el precio actual (precio) o 30 (RSI). Al cambiar de tipo se vuelve a proponer.
+  const suggestion = kind === "price" ? (lastPrice ? String(Number(lastPrice.toPrecision(7))) : "") : kind === "rsi" ? "30" : "";
+  useEffect(() => {
+    touched.current = false;
+  }, [kind, symbol]);
+  useEffect(() => {
+    if (!touched.current) setLevel(suggestion);
+  }, [suggestion]);
 
   const lvlPlaceholder = kind === "price" ? (lastPrice ? fmtPrice(lastPrice) : "100000") : kind === "rsi" ? "30" : "";
 
@@ -93,7 +104,10 @@ export default function AlertsSection({
           <option value="below">{kind === "ema" ? t("Cierra por debajo") : t("Cruza por debajo")}</option>
         </select>
         {kind !== "ema" ? (
-          <input value={level} onChange={(e) => setLevel(e.target.value)} inputMode="decimal" placeholder={lvlPlaceholder} className={cx(field, "num w-full sm:w-28")} aria-label={kind === "price" ? t("Precio") : t("Nivel del RSI")} />
+          <input value={level} onChange={(e) => {
+              touched.current = true;
+              setLevel(e.target.value);
+            }} inputMode="decimal" placeholder={lvlPlaceholder} className={cx(field, "num w-full sm:w-28")} aria-label={kind === "price" ? t("Precio") : t("Nivel del RSI")} />
         ) : (
           <span className="hidden sm:block" />
         )}
