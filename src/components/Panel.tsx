@@ -41,10 +41,12 @@ interface Props {
   phoneOpen?: boolean;
   /** Controles a la derecha del título (por ejemplo, un selector). */
   right?: ReactNode;
+  /** Sin efectos (inclinación, resplandor): para secciones de trabajo como el gráfico, donde molestan. */
+  plain?: boolean;
   children: ReactNode;
 }
 
-export default function Panel({ id, title, subtitle, summary, defaultOpen = true, phoneOpen, right, children }: Props) {
+export default function Panel({ id, title, subtitle, summary, defaultOpen = true, phoneOpen, right, plain, children }: Props) {
   const [open, setOpen] = useState<boolean>(() => {
     const saved = load()[id];
     if (typeof saved === "boolean") return saved;
@@ -76,8 +78,8 @@ export default function Panel({ id, title, subtitle, summary, defaultOpen = true
   const line = open ? subtitle : (summary ?? subtitle);
 
   return (
-    <section id={`panel-${id}`} className="glass glow-card scroll-mt-16 overflow-hidden rounded-xl">
-      <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5 sm:py-4", open && "border-b border-line")}>
+    <section id={`panel-${id}`} className={cx("scroll-mt-16 overflow-hidden", plain ? "rounded-md border border-[#2a2e39] bg-[#131722]" : "glass glow-card rounded-xl")}>
+      <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5 sm:py-4", open && (plain ? "border-b border-[#2a2e39]" : "border-b border-line"))}>
         <h2 className="min-w-[11rem] flex-1">
           <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 text-left">
             <span className="min-w-0 flex-1">
@@ -93,7 +95,7 @@ export default function Panel({ id, title, subtitle, summary, defaultOpen = true
         </h2>
         {open && right ? <div className="shrink-0">{right}</div> : null}
       </div>
-      {open ? <div className="panel-body">{children}</div> : null}
+      {open ? <div className={plain ? undefined : "panel-body"}>{children}</div> : null}
     </section>
   );
 }
