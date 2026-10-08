@@ -109,7 +109,7 @@ export default function SignalsToExecute({ trades, prices, loading, now, notify 
         {perm === "granted" && <span className="text-[11px] font-semibold text-bull">🔔 {t("Avisos del navegador activados")}</span>}
       </div>
 
-      <ul className="grid gap-3 lg:grid-cols-2">
+      <ul className="grid gap-3">
         {open.slice(0, 6).map((tr) => {
           const g = signalGuide(tr, money);
           const accent = g.long ? "bull" : "bear";
