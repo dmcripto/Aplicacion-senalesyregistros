@@ -23,6 +23,7 @@ import WhatsAppSection from "../WhatsAppSection";
 import { useBot } from "../botStore";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
+import { ScreenHead } from "../HomeParts";
 
 export default function SettingsScreen({
   userId,
@@ -257,7 +258,8 @@ export default function SettingsScreen({
           ))}
         </ScrollView>
       </View>
-      <View style={{ height: 12 }} />
+      <View style={{ height: 16 }} />
+      <ScreenHead icon="sliders" tone="cyan" title={t("Ajustes")} sub={t("Conexiones, bot, capital, avisos y tu cuenta")} />
       <CommunityCard />
 
       <Text style={styles.sectionTitle}>{t("IDIOMA")} / LANGUAGE</Text>
@@ -501,11 +503,14 @@ const styles = StyleSheet.create({
   chipText: { color: colors.fog, fontSize: 11, fontWeight: "800", letterSpacing: 0.8, textTransform: "uppercase" },
   sectionTitle: {
     color: colors.fog,
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-    marginTop: 8,
+    fontSize: 10.5,
+    fontWeight: "800",
+    letterSpacing: 1.6,
+    marginBottom: 10,
+    marginTop: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.gold,
+    paddingLeft: 9,
   },
   card: {
     backgroundColor: colors.panel,
