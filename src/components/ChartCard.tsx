@@ -79,8 +79,8 @@ async function fetchCandles(raw: string, tf: Tf, signal: AbortSignal): Promise<C
 const indName = (k: Slot["kind"]) =>
   ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)"), sess: t("Sesiones: Asia, Londres y Nueva York") })[k];
 
-const BULL = "#16d98a";
-const BEAR = "#ff4d67";
+const BULL = "#26a69a"; // verde y rojo de TradingView
+const BEAR = "#ef5350";
 const CYAN = "#2ec4f1";
 
 function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
@@ -155,11 +155,11 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       const chart = lc.createChart(el, {
         autoSize: true,
         height: 460,
-        layout: { background: { type: lc.ColorType.Solid, color: "transparent" }, textColor: "#93a5ba", fontSize: 11, panes: { separatorColor: "#223042", separatorHoverColor: "#2e415a" } },
-        grid: { vertLines: { color: "rgba(34,48,66,0.45)" }, horzLines: { color: "rgba(34,48,66,0.45)" } },
-        rightPriceScale: { borderColor: "#223042" },
+        layout: { background: { type: lc.ColorType.Solid, color: "#131722" }, textColor: "#b2b5be", fontSize: 11, panes: { separatorColor: "#2a2e39", separatorHoverColor: "#363a45" } },
+        grid: { vertLines: { color: "#1e222d" }, horzLines: { color: "#1e222d" } },
+        rightPriceScale: { borderColor: "#2a2e39" },
         timeScale: {
-          borderColor: "#223042",
+          borderColor: "#2a2e39",
           timeVisible: true,
           rightOffset: 6,
           tickMarkFormatter: (time: number, type: number) => {
@@ -280,7 +280,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
     setDraft(b.symbol);
     change({ symbol: b.symbol });
   };
-  const field = "rounded-md border border-line bg-ink px-2.5 py-1.5 text-[12.5px] text-snow outline-none focus:border-gold";
+  const field = "rounded border border-[#363a45] bg-[#1e222d] px-2.5 py-1.5 text-[12.5px] text-[#d1d4dc] outline-none focus:border-[#2962ff]";
   const quick = [...new Set(["BTCUSDT", "ETHUSDT", "SOLUSDT", ...trades.filter((x) => x.outcome === "ABIERTA").map((x) => binanceSymbol(x.symbol)?.symbol).filter(Boolean) as string[]])].slice(0, 6);
 
   return (
@@ -327,7 +327,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           const s = prefs.slots[i];
           const dot = i === 0 ? "#f5c518" : "#c084fc";
           return (
-            <label key={i} className="flex items-center gap-2 rounded-lg border border-line bg-ink/40 px-3 py-2 text-[11.5px] text-dim">
+            <label key={i} className="flex items-center gap-2 rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-[11.5px] text-[#787b86]">
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} aria-hidden />
               <span className="shrink-0 font-semibold text-fog">{t("Indicador {n}", { n: i + 1 })}</span>
               <select value={s.kind} onChange={(e) => setSlot(i, { kind: e.target.value as Slot["kind"] })} className={cx(field, "w-0 min-w-0 flex-1")}>
@@ -351,7 +351,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         {levels.length > 0 && <span className="text-[11.5px] text-gold">{t("Se muestran tus señales abiertas de este activo: entrada, TP y SL.")}</span>}
       </div>
 
-      <div className="relative overflow-hidden rounded-lg border border-line bg-ink/30">
+      <div className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
         <div ref={boxRef} className="h-[460px] w-full" />
         {state !== "ok" && (
           <div className="absolute inset-0 grid place-items-center bg-ink/70 px-6 text-center text-[12.5px] text-dim">
@@ -367,7 +367,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
 
 export default function ChartCard({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
   return (
-    <Panel id="chart" title={t("GRÁFICO")} subtitle={t("Velas con 2 indicadores, tus señales y alertas propias")} summary={t("EMA, RSI, MACD, Bollinger y alertas · tocá para abrir")} defaultOpen={false}>
+    <Panel id="chart" title={t("GRÁFICO")} subtitle={t("Velas con 2 indicadores, tus señales y alertas propias")} summary={t("EMA, RSI, MACD, Bollinger y alertas · tocá para abrir")} defaultOpen={false} plain>
       <ChartBody trades={trades} userId={userId} notify={notify} />
     </Panel>
   );
