@@ -21,7 +21,7 @@ function initial(): Lang {
 
 function applyDocLang(l: Lang) {
   document.documentElement.lang = l;
-  document.title = l === "en" ? "VELTRIX · Trading Journal" : "VELTRIX · Diario de Trading";
+  document.title = l === "en" ? "VELTRIX · Your live trading hub" : "VELTRIX · Tu centro de trading en vivo";
 }
 
 interface LangCtx {
