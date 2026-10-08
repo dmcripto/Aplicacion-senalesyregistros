@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, binanceSymbol, computeIndicator, cx, fmtPrice, locale, t } from "../lib";
+import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, locale, t } from "../lib";
 import type { ChartCandle, IndicatorKind, Trade } from "../lib";
 import { fetchAlerts } from "../tradesApi";
 import type { UserAlert } from "../lib";
@@ -77,7 +77,7 @@ async function fetchCandles(raw: string, tf: Tf, signal: AbortSignal): Promise<C
 }
 
 const indName = (k: Slot["kind"]) =>
-  ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD") })[k];
+  ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)") })[k];
 
 const BULL = "#16d98a";
 const BEAR = "#ff4d67";
@@ -193,9 +193,24 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
               const series =
                 l.kind === "hist"
                   ? chart.addSeries(lc.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, base: 0 }, pane)
-                  : chart.addSeries(lc.LineSeries, { color: l.color, lineWidth: 2, priceLineVisible: false, lastValueVisible: r.pane === "sub" && li === (r.lines.length > 1 ? 1 : 0), title: r.pane === "sub" ? l.name : "" }, pane);
+                  : chart.addSeries(
+                      lc.LineSeries,
+                      {
+                        color: l.color,
+                        lineWidth: l.thin ? 1 : 2,
+                        lineStyle: l.thin ? lc.LineStyle.Dotted : lc.LineStyle.Solid,
+                        lineType: l.step ? lc.LineType.WithSteps : lc.LineType.Simple,
+                        priceLineVisible: false,
+                        crosshairMarkerVisible: !l.thin,
+                        lastValueVisible: !l.thin && r.pane === "sub" && li === (r.lines.length > 1 ? 1 : 0),
+                        title: r.pane === "sub" ? l.name : "",
+                      },
+                      pane,
+                    );
               series.setData(
-                l.kind === "hist" ? data.map((d) => ({ ...d, color: d.value >= 0 ? "rgba(22,217,138,0.55)" : "rgba(255,77,103,0.55)" })) : data,
+                l.kind === "hist"
+                  ? l.values.flatMap((v, k) => (v == null ? [] : [{ time: c[k].time as any, value: v, color: l.colors?.[k] ?? (v >= 0 ? "rgba(22,217,138,0.55)" : "rgba(255,77,103,0.55)") }]))
+                  : data,
               );
               if (li === 0 && r.guides.length && r.pane === "sub") for (const g of r.guides) series.createPriceLine({ price: g, color: "rgba(147,165,186,0.45)", lineWidth: 1, lineStyle: lc.LineStyle.Dashed, axisLabelVisible: true, title: "" });
               extra.push({ remove: () => chart.removeSeries(series) });
@@ -322,7 +337,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
                   </option>
                 ))}
               </select>
-              {s.kind !== "none" && s.kind !== "macd" && (
+              {s.kind !== "none" && !INDICATOR_NO_PERIOD.includes(s.kind) && (
                 <input type="number" min={2} max={500} value={s.period} onChange={(e) => setSlot(i, { period: Number(e.target.value) })} className={cx(field, "num w-16")} aria-label={t("Período")} />
               )}
             </label>
