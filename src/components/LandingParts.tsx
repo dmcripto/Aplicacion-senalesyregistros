@@ -80,7 +80,7 @@ const shareText = () => t("Mirá VELTRIX: recibí las señales de TradingView en
 /** Botones para compartir VELTRIX. El enlace lleva una etiqueta para contar cuántas visitas llegan por acá. */
 export function ShareBand() {
   const [copied, setCopied] = useState(false);
-  const link = `${window.location.origin}/?ref=compartir`;
+  const link = `${window.location.origin}/?ref=compartir&v=2`;
   const enc = encodeURIComponent;
   const text = shareText();
   const canShare = typeof navigator !== "undefined" && "share" in navigator;
