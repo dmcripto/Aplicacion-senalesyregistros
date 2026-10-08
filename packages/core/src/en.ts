@@ -956,6 +956,7 @@ export const EN: Record<string, string> = {
   "Sesiones": "Sessions",
   "Volumen": "Volume",
   "Agenda": "Calendar",
+  "Conexiones, bot, capital, avisos y tu cuenta": "Connections, bot, capital, alerts and your account",
   "Inicio": "Home",
   "Exchanges": "Exchanges",
   "Telegram": "Telegram",
