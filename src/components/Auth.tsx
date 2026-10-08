@@ -9,6 +9,7 @@ import LiveDemo from "./LiveDemo";
 import { trackGlow } from "../glowTracking";
 import { pendingInvite, trackSignup } from "../refTracking";
 import { IconTile } from "../icons";
+import { Faq, FinalCta, HowItWorks, ShareBand, StickyCta, TrustRow } from "./LandingParts";
 import type { IconName, Tone } from "../icons";
 
 /** Ícono de línea (con su color) para cada función de la bienvenida; el texto viene del núcleo con un emoji que acá no se usa. */
@@ -39,6 +40,10 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const welcome = welcomeContent();
+  const goSignup = () => {
+    setMode("signup");
+    document.getElementById("acceso")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   useEffect(() => trackGlow(), []);
   const lang = getLang();
 
@@ -125,10 +130,18 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
       {/* Portada: presentación a un lado y el acceso al otro */}
       <div className="grid items-center gap-10 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16 lg:py-12">
         <section className="flex flex-col items-center text-center lg:items-start lg:text-left">
-          <h1 className="font-display text-4xl font-extrabold leading-[1.1] text-snow sm:text-5xl">
-            <span className="text-gold">{welcome.headline}</span>
+          <h1 className="font-display text-5xl font-extrabold leading-[1.05] sm:text-6xl">
+            <span className="bg-gradient-to-r from-gold via-cyan to-bull bg-clip-text text-transparent">{welcome.headline}</span>
           </h1>
           <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-fog sm:text-[16px]">{welcome.lead}</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3 lg:justify-start">
+            <button type="button" onClick={goSignup} className="btn-shine rounded-md bg-gold px-7 py-3 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98]">
+              {t("Crear mi cuenta")}
+            </button>
+            <a href="#como" onClick={(e) => { e.preventDefault(); document.getElementById("como")?.scrollIntoView({ behavior: "smooth" }); }} className="rounded-md border border-cyan/50 px-6 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/10">
+              {t("Ver cómo funciona")}
+            </a>
+          </div>
           <ul className="mt-5 flex flex-wrap justify-center gap-2.5 lg:justify-start">
             {HIGHLIGHTS.map(([icon, tone, label]) => (
               <li key={icon} className="lift flex items-center gap-2 rounded-full border border-line bg-panel/80 py-1 pl-1 pr-3.5 text-[12.5px] font-semibold text-snow">
@@ -137,6 +150,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
               </li>
             ))}
           </ul>
+          <TrustRow />
         </section>
       <div id="acceso" data-tilt="soft" className="glass glow-card auth-card rise-in w-full max-w-md scroll-mt-4 self-center justify-self-center rounded-lg shadow-[0_24px_70px_rgba(0,0,0,.5)] lg:max-w-md lg:justify-self-end">
         <form onSubmit={submit} className="space-y-3.5 px-6 py-6">
@@ -285,6 +299,8 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
       </div>
       </div>
 
+      <HowItWorks />
+
       {/* Cómo se ve: la señal en vivo y los avisos que llegan */}
       <div className="grid items-center gap-8 border-t border-line/60 py-10 lg:grid-cols-2 lg:gap-14 lg:py-14">
         <div className="flex justify-center"><LiveDemo /></div>
@@ -318,6 +334,13 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         </div>
       </section>
 
+
+      <div className="mt-10 space-y-10 lg:mt-14 lg:space-y-14">
+        <Faq />
+        <ShareBand />
+        <FinalCta onSignup={goSignup} />
+      </div>
+      <StickyCta onSignup={goSignup} />
 
       <footer className="mt-10 border-t border-line/60 pt-6 text-center text-[11px] leading-relaxed text-dim">
         <p>{t("VELTRIX no brinda asesoramiento financiero. Operar implica riesgo de pérdida. No está afiliado a TradingView.")}</p>
