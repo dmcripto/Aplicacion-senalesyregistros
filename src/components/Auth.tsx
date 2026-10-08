@@ -8,6 +8,25 @@ import { getLang, t, welcomeContent } from "../lib";
 import LiveDemo from "./LiveDemo";
 import { trackGlow } from "../glowTracking";
 import { pendingInvite, trackSignup } from "../refTracking";
+import { IconTile } from "../icons";
+import type { IconName, Tone } from "../icons";
+
+/** Ícono de línea (con su color) para cada función de la bienvenida; el texto viene del núcleo con un emoji que acá no se usa. */
+const FEATURE_ICON: Record<string, [IconName, Tone]> = {
+  "📡": ["radio", "cyan"],
+  "🎯": ["trend", "green"],
+  "📒": ["journal", "violet"],
+  "🛡️": ["shield", "green"],
+  "🗺️": ["drop", "amber"],
+  "👥": ["send", "cyan"],
+};
+/** Lo que incluye, en una fila de etiquetas debajo de la presentación. */
+const HIGHLIGHTS: Array<[IconName, Tone, () => string]> = [
+  [ "radio", "cyan", () => t("Señales en vivo")],
+  [ "candles", "green", () => t("Gráfico con indicadores")],
+  [ "calendar", "amber", () => t("Agenda económica")],
+  [ "bell", "violet", () => t("Alertas propias")],
+];
 
 export default function Auth({ initialNotice }: { initialNotice?: string | null } = {}) {
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -99,6 +118,14 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[0.04em] text-snow"><span className="brand-word">VELTRIX</span></h1>
         <p className="mt-2 font-display text-2xl font-bold leading-tight text-gold sm:text-3xl">{welcome.headline}</p>
         <p className="mt-2 max-w-md text-[14px] leading-relaxed text-fog">{welcome.lead}</p>
+        <ul className="mt-4 flex flex-wrap justify-center gap-2 lg:justify-start">
+          {HIGHLIGHTS.map(([icon, tone, label]) => (
+            <li key={icon} className="lift flex items-center gap-2 rounded-full border border-line bg-panel/80 py-1 pl-1 pr-3 text-[12px] font-semibold text-snow">
+              <IconTile name={icon} tone={tone} size="sm" />
+              {label()}
+            </li>
+          ))}
+        </ul>
       </section>
 
       <div className="flex justify-center lg:col-start-1 lg:justify-start">
@@ -131,7 +158,7 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
         <div className="grid gap-3 sm:grid-cols-2">
           {welcome.features.map((f) => (
             <div key={f.title} className="lift flex items-start gap-3 rounded-lg border border-line bg-panel/80 p-3.5">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-cyan/25 bg-cyan/10 text-[22px]">{f.icon}</span>
+              <IconTile name={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[0]} tone={(FEATURE_ICON[f.icon] ?? ["bolt", "cyan"])[1]} />
               <div>
                 <h3 className="text-[14px] font-bold text-snow">{f.title}</h3>
                 <p className="mt-0.5 text-[12px] leading-snug text-fog">{f.text}</p>
