@@ -219,6 +219,8 @@ export const EN: Record<string, string> = {
   "Reglas de tu estrategia sugerida": "Rules from your suggested strategy",
   "Salen de tus operaciones, pero el bot usa su propia estrategia: probalas en modo simulado antes de confiar en ellas.": "They come from your trades, but the bot uses its own strategy: try them in simulated mode before trusting them.",
   "Tras {n} pérdidas seguidas el bot frena el resto del día.": "After {n} losses in a row the bot stops for the rest of the day.",
+  "Ver cómo funciona (video)": "See how it works (video)",
+  "1 min 30 s · el bot opera en modo simulado, sin dinero real. Contenido educativo, no asesoramiento financiero.": "1 min 30 s · the bot runs in simulated mode, with no real money. Educational content, not financial advice.",
   "Ninguno": "None",
   "EMA (media exponencial)": "EMA (exponential average)",
   "SMA (media simple)": "SMA (simple average)",
