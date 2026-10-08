@@ -67,3 +67,79 @@ describe("indicadores", () => {
     expect(computeIndicator("ema", 20, c, 1).lines[0].color).not.toBe(computeIndicator("ema", 20, c, 0).lines[0].color); // colores distintos por ranura
   });
 });
+
+import { adx, atrSeries, computeIndicator as ci, fairValueGaps } from "../packages/core/src/indicators";
+
+const mk = (rows: Array<[number, number, number, number, number?]>): ChartCandle[] => rows.map(([o, h, l, c, v], i) => ({ time: 1_700_000_000 + i * 3600, open: o, high: h, low: l, close: c, volume: v ?? 10 }));
+
+describe("ADX / DI", () => {
+  const up = mk(Array.from({ length: 80 }, (_, i) => [100 + i, 101.5 + i, 99.5 + i, 101 + i] as [number, number, number, number]));
+  const flat = mk(Array.from({ length: 80 }, (_, i) => (i % 2 ? [100, 100.5, 99.5, 100.2] : [100.2, 100.6, 99.4, 100]) as [number, number, number, number]));
+  it("tendencia clara: ADX alto y DI+ por encima de DI−; rango: ADX bajo", () => {
+    const a = adx(up, 14);
+    expect(a.adx[79]).toBeGreaterThan(40);
+    expect(a.plus[79]!).toBeGreaterThan(a.minus[79]!);
+    expect(adx(flat, 14).adx[79]!).toBeLessThan(20);
+  });
+  it("valores entre 0 y 100 y vacío hasta tener datos", () => {
+    const a = adx(up, 14);
+    for (const v of [...a.adx, ...a.plus, ...a.minus]) if (v != null) expect(v).toBeGreaterThanOrEqual(0), expect(v).toBeLessThanOrEqual(100);
+    expect(a.adx[10]).toBeNull();
+    expect(a.plus[14]).not.toBeNull();
+  });
+  it("ATR constante cuando todas las velas miden lo mismo", () => {
+    const c = mk(Array.from({ length: 30 }, () => [100, 102, 98, 100] as [number, number, number, number]));
+    expect(atrSeries(c, 14)[29]).toBeCloseTo(4, 10);
+  });
+});
+
+describe("FVG (huecos)", () => {
+  const base: Array<[number, number, number, number, number?]> = Array.from({ length: 20 }, () => [100, 102, 98, 100]);
+  it("detecta un hueco alcista y lo mantiene mientras no se llene; ignora los chicos", () => {
+    const rows = [...base, [100, 102, 99, 101.5], [102, 110, 101.8, 109], [109, 112, 107, 111], [111, 113, 109, 112]] as Array<[number, number, number, number]>;
+    const z = fairValueGaps(mk(rows));
+    expect(z).toHaveLength(1);
+    expect(z[0]).toMatchObject({ bull: true, bottom: 102, top: 107, start: 20 });
+    // hueco diminuto (0,1): ruido
+    const tiny = [...base, [100, 102, 99, 101.5], [102, 103, 102.1, 102.8], [102.8, 104, 102.2, 103.5]] as Array<[number, number, number, number]>;
+    expect(fairValueGaps(mk(tiny))).toHaveLength(0);
+  });
+  it("un hueco que el precio atraviesa por completo deja de mostrarse; el bajista es simétrico", () => {
+    const filled = [...base, [100, 102, 99, 101.5], [102, 110, 101.8, 109], [109, 112, 107, 111], [111, 113, 100, 101]] as Array<[number, number, number, number]>;
+    expect(fairValueGaps(mk(filled))).toHaveLength(0);
+    const bear = [...base, [100, 101, 98.5, 99], [98, 98.2, 90, 91], [91, 93, 89, 90]] as Array<[number, number, number, number]>;
+    const z = fairValueGaps(mk(bear));
+    expect(z[0]).toMatchObject({ bull: false, top: 98.5, bottom: 93 });
+  });
+});
+
+describe("volumen con ballenas y día anterior", () => {
+  it("marca como ballena (color fluor) solo el volumen muy por encima de la media", () => {
+    const rows: Array<[number, number, number, number, number]> = Array.from({ length: 30 }, () => [100, 101, 99, 100.5, 10]);
+    rows[29] = [100, 103, 99, 102, 80]; // sube con 8× la media
+    rows[28] = [100, 101, 98, 99, 80]; // baja con volumen enorme
+    const r = ci("vol", 20, mk(rows));
+    const bars = r.lines[0];
+    expect(bars.colors![29]).toBe("#ccff00");
+    expect(bars.colors![28]).toBe("#ff00ff");
+    expect(bars.colors![5]).toContain("rgba");
+    expect(r.pane).toBe("sub");
+  });
+  it("máximo y mínimo del día anterior, escalonados y vacíos el primer día", () => {
+    const day = 86_400;
+    const c: ChartCandle[] = [];
+    for (let d = 0; d < 3; d++) for (let h = 0; h < 4; h++) c.push({ time: 1_700_006_400 - (1_700_006_400 % day) + d * day + h * 3600, open: 10, high: 10 + d * 5 + h, low: 5 - d, close: 10, volume: 1 });
+    const r = ci("pdhl", 0, c);
+    expect(r.lines[0].values[0]).toBeNull(); // primer día: no hay día anterior
+    expect(r.lines[0].values[4]).toBe(13); // máximo del día 0 = 10+0+3
+    expect(r.lines[1].values[4]).toBe(5);
+    expect(r.lines[0].values[8]).toBe(18); // máximo del día 1 = 10+5+3
+    expect(r.lines[0].step).toBe(true);
+  });
+  it("fvg y pdhl no tienen período y quedan sobre las velas", () => {
+    const c = mk(Array.from({ length: 40 }, (_, i) => [100 + i, 102 + i, 99 + i, 101 + i] as [number, number, number, number]));
+    expect(ci("pdhl", 0, c).pane).toBe("price");
+    expect(ci("fvg", 0, c).pane).toBe("price");
+    expect(ci("adx", 14, c).lines.map((l) => l.name)).toEqual(["ADX 14", "DI+", "DI−"]);
+  });
+});
