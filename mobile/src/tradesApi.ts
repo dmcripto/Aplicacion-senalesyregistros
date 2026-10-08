@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -577,5 +577,121 @@ export async function fetchSignalFeed(userId: string): Promise<SignalFeedState> 
 
 export async function setFollowSignals(userId: string, follow: boolean) {
   const { error } = await supabase.from("profiles").update({ follow_signals: follow }).eq("id", userId);
+  if (error) throw new Error(error.message);
+}
+
+/** Dato económico de la agenda (calendario público, lo carga el servidor). */
+export interface EconomyEvent {
+  id: string;
+  starts_at: string;
+  country: string;
+  title: string;
+  title_es: string;
+  impact: "High" | "Medium";
+  forecast: string | null;
+  previous: string | null;
+}
+
+/** Datos económicos de las próximas ~48 horas (y los de la última media hora). Sin el SQL de la agenda devuelve lista vacía. */
+export async function fetchEconomy(now = Date.now()): Promise<EconomyEvent[]> {
+  const { data, error } = await supabase
+    .from("economic_events")
+    .select("id,starts_at,country,title,title_es,impact,forecast,previous")
+    .gte("starts_at", new Date(now - 30 * 60_000).toISOString())
+    .lte("starts_at", new Date(now + 48 * 3_600_000).toISOString())
+    .order("starts_at")
+    .limit(40);
+  if (error || !data) return [];
+  return data as EconomyEvent[];
+}
+
+// ─── Alertas propias (precio, RSI, EMA) ─────────────────────────────────────
+
+interface AlertRow {
+  id: string;
+  symbol: string;
+  kind: UserAlert["kind"];
+  tf: UserAlert["tf"];
+  dir: UserAlert["dir"];
+  level: number | null;
+  period: number | null;
+  once: boolean;
+  active: boolean;
+  triggered_at: string | null;
+  trigger_count: number | null;
+}
+
+/** Mis alertas (las más nuevas primero). Sin el SQL de alertas lanza error y la sección no se muestra. */
+export async function fetchAlerts(userId: string): Promise<UserAlert[]> {
+  const { data, error } = await supabase
+    .from("price_alerts")
+    .select("id,symbol,kind,tf,dir,level,period,once,active,triggered_at,trigger_count")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw new Error(error.message);
+  return (data as AlertRow[]).map((r) => ({
+    id: r.id,
+    symbol: r.symbol,
+    kind: r.kind,
+    tf: r.tf,
+    dir: r.dir,
+    level: r.level == null ? null : Number(r.level),
+    period: r.period,
+    once: r.once,
+    active: r.active,
+    triggeredAt: r.triggered_at,
+    triggerCount: r.trigger_count ?? 0,
+  }));
+}
+
+const alertError = (message: string) => (/Máximo 10 alertas/.test(message) ? t("Ya tenés 10 alertas activas. Pausá o borrá alguna para crear otra.") : message);
+
+export async function createAlert(userId: string, d: AlertDraft) {
+  const { error } = await supabase.from("price_alerts").insert({
+    user_id: userId,
+    symbol: d.symbol,
+    kind: d.kind,
+    tf: d.tf,
+    dir: d.dir,
+    level: d.kind === "ema" ? null : d.level,
+    period: d.kind === "price" ? null : d.period,
+    once: d.once,
+  });
+  if (error) throw new Error(alertError(error.message));
+}
+
+/** Pausar o reactivar. Al reactivar se vuelve a medir desde cero (así no salta por algo que ya había cruzado). */
+export async function setAlertActive(id: string, active: boolean) {
+  const { error } = await supabase.from("price_alerts").update(active ? { active: true, last_side: null, checked_at: null } : { active: false }).eq("id", id);
+  if (error) throw new Error(alertError(error.message));
+}
+
+export async function deleteAlert(id: string) {
+  const { error } = await supabase.from("price_alerts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// ─── Pausa del bot por datos económicos ─────────────────────────────────────
+
+export interface NewsPauseState {
+  enabled: boolean;
+  before: number; // minutos antes del dato
+  after: number; // minutos después
+  pausedUntil: string | null; // si el bot está en pausa ahora, hasta cuándo
+  pausedEvent: string | null;
+}
+
+/** Ajustes de la pausa (de fábrica si todavía no los tocó). Devuelve null si falta el SQL: entonces rige la pausa de fábrica y no se puede cambiar. */
+export async function fetchNewsPause(userId: string): Promise<NewsPauseState | null> {
+  const { data, error } = await supabase.from("bot_news_pause").select("enabled,before_min,after_min,paused_until,paused_event").eq("user_id", userId).maybeSingle();
+  if (error) return null;
+  const r = data as { enabled?: boolean; before_min?: number; after_min?: number; paused_until?: string | null; paused_event?: string | null } | null;
+  return { enabled: r?.enabled !== false, before: r?.before_min ?? 30, after: r?.after_min ?? 30, pausedUntil: r?.paused_until ?? null, pausedEvent: r?.paused_event ?? null };
+}
+
+export async function saveNewsPause(userId: string, p: Pick<NewsPauseState, "enabled" | "before" | "after">) {
+  const clamp = (n: number) => Math.min(180, Math.max(0, Math.round(Number.isFinite(n) ? n : 30)));
+  const { error } = await supabase.from("bot_news_pause").upsert({ user_id: userId, enabled: p.enabled, before_min: clamp(p.before), after_min: clamp(p.after), updated_at: new Date().toISOString() }, { onConflict: "user_id" });
   if (error) throw new Error(error.message);
 }

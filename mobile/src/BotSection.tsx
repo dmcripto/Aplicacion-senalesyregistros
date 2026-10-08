@@ -4,6 +4,7 @@ import type { StyleProp, TextStyle } from "react-native";
 import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import { useBot } from "./botStore";
+import NewsPauseRow from "./NewsPauseRow";
 import { runBotBacktest, runBotLab } from "./tradesApi";
 import { colors } from "./theme";
 
@@ -21,7 +22,7 @@ function Line({ s }: { s: BotStatsRow }) {
 }
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
-export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
+export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleProp<TextStyle>; userId?: string }) {
   const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
@@ -125,6 +126,8 @@ export default function BotSection({ titleStyle }: { titleStyle?: StyleProp<Text
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}
         </Text>
       </View>
+
+      {userId && <NewsPauseRow userId={userId} />}
 
       {profileSupported && (
         <>
