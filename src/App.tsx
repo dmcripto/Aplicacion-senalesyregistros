@@ -10,7 +10,6 @@ import {
   fmtPct,
   fmtR,
   getLang,
-  locale,
   resultR,
   rrOf,
   sampleTrades,
@@ -25,9 +24,7 @@ import {
   IconCheck,
   IconClipboard,
   IconDownload,
-  IconTelegram,
   Reveal,
-  ShieldLogo,
   ToastStack,
   TriDown,
   TriUp,
@@ -55,7 +52,7 @@ import {
   markTradeOutcome,
   reopenTradeById, sendTestSignal } from "./tradesApi";
 import type { NewTrade } from "./lib";
-import { LangSwitch, legalUrl } from "./lang";
+import { legalUrl } from "./lang";
 import Auth from "./components/Auth";
 import ResetPassword from "./components/ResetPassword";
 import { MfaCard, MfaProvider, mfaErrorText, useMfa } from "./components/Mfa";
@@ -75,9 +72,11 @@ import LiveBotCard from "./components/LiveBotCard";
 import SignalFeedCard from "./components/SignalFeedCard";
 import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
-import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
+import Panel, { openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
 import ChartCard from "./components/ChartCard";
+import HomeTiles, { PageHead } from "./components/HomeTiles";
+import { NavBar, useView } from "./nav";
 import CoachCard from "./components/CoachCard";
 import WhatsAppCard from "./components/WhatsAppCard";
 import TodayCard from "./components/TodayCard";
@@ -440,7 +439,16 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const [guide, setGuide] = useState(false);
   // Con el diario vacío se esconden las secciones que no tendrían nada que mostrar; aparecen solas al haber operaciones.
   const empty = !loading && trades.length === 0;
-  const botReady = useBot().status === "ready"; // el botón del bot aparece solo si el servidor ya tiene el bot
+  const botState = useBot();
+  const botReady = botState.status === "ready"; // el botón del bot aparece solo si el servidor ya tiene el bot
+  const [view, setView] = useView();
+  const go = setView;
+  // Las secciones que se abren y se cierran quedan abiertas al entrar a su pantalla.
+  useEffect(() => {
+    if (view === "home") return;
+    const id = window.setTimeout(() => openAllPanels(true), 60);
+    return () => window.clearTimeout(id);
+  }, [view]);
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const [manualTrade, setManualTrade] = useState<Trade | null>(null);
   const [notesTrade, setNotesTrade] = useState<Trade | null>(null);
@@ -693,6 +701,26 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
     }
   }, [userId, notify, removeLocal]);
 
+  const actions = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => setSharing(true)}
+        disabled={!trades.length}
+        className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-colors hover:bg-bull/20 disabled:cursor-not-allowed disabled:opacity-35"
+      >
+        <span className="text-[15px] leading-none">↗</span>
+        {t("Compartir")}
+      </button>
+      <button
+        onClick={exportCsv}
+        disabled={!trades.length}
+        className="flex items-center gap-2 rounded-md border border-gold/45 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:cursor-not-allowed disabled:opacity-35"
+      >
+        <IconDownload className="h-3.5 w-3.5" /> {t("Exportar CSV")}
+      </button>
+    </div>
+  );
+
   return (
     <MoneyContext.Provider value={moneyCtx}>
     <div className="min-h-screen">
@@ -704,259 +732,155 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
       {tpHit && <Celebration symbol={tpHit.symbol} token={tpHit.token} onDone={clearTpHit} />}
       <Ticker trades={trades} />
 
-      {/* Cabecera */}
-      <header className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-4 sm:gap-y-4 sm:py-5 lg:px-8">
-        <div className="flex items-center gap-3.5">
-          <span className="brand-logo"><ShieldLogo className="h-11 w-11 sm:h-14 sm:w-14" /></span>
-          <div>
-            <h1 className="font-display text-[28px] font-extrabold leading-none tracking-[0.04em] text-snow sm:text-4xl">
-              <span className="brand-word">VELTRIX</span>
-            </h1>
-            <p className="mt-1 text-[9.5px] font-semibold uppercase tracking-[0.22em] text-fog sm:text-[10.5px] sm:tracking-[0.28em]">
-              {t("Diario de trading · En vivo")}
-            </p>
-          </div>
-        </div>
+      <NavBar view={view} setView={go} botReady={botReady} email={email} now={now} communityUrl={COMMUNITY_URL} onSignOut={() => supabase.auth.signOut()} />
 
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-3 rounded-md border border-line bg-panel/70 px-3.5 py-2 sm:flex">
-            <span className="live-dot h-2 w-2 rounded-full bg-bull" />
-            <div>
-              <p className="num text-[13px] font-bold leading-none text-snow">
-                {now.toLocaleTimeString(locale())}
-              </p>
-              <p className="num mt-0.5 text-[10px] capitalize text-dim">
-                {now.toLocaleDateString(locale(), { weekday: "short", day: "2-digit", month: "short" })}
-              </p>
-            </div>
-          </div>
-          <a
-            href={COMMUNITY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={t("Comunidad")}
-            aria-label={t("Comunidad")}
-            className="flex items-center gap-2 rounded-md border border-cyan/45 bg-cyan/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-cyan transition-all hover:-translate-y-px hover:bg-cyan/20 active:scale-[0.98] sm:px-4"
-          >
-            <IconTelegram className="h-4 w-4" /> <span className="hidden sm:inline">{t("Comunidad")}</span>
-          </a>
-          <button
-            onClick={() => setSharing(true)}
-            disabled={!trades.length}
-            title={t("Compartir")}
-            aria-label={t("Compartir")}
-            className="flex items-center gap-2 rounded-md border border-bull/45 bg-bull/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-bull transition-all hover:-translate-y-px hover:bg-bull/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0 sm:px-4"
-          >
-            <span className="text-[15px] leading-none">↗</span><span className="hidden sm:inline">{t("Compartir")}</span>
-          </button>
-          <button
-            onClick={exportCsv}
-            disabled={!trades.length}
-            title={t("Exportar CSV")}
-            aria-label={t("Exportar CSV")}
-            className="flex items-center gap-2 rounded-md border border-gold/45 px-3 py-2.5 sm:px-4 text-[12px] font-bold uppercase tracking-wider text-gold transition-all hover:-translate-y-px hover:bg-gold/10 hover:shadow-[0_6px_20px_rgba(46,196,241,.15)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0"
-          >
-            <IconDownload className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{t("Exportar CSV")}</span>
-          </button>
-          <LangSwitch />
-          {email && (
-            <span className="hidden max-w-[200px] truncate text-[11px] text-dim lg:inline" title={email}>
-              {email}
-            </span>
-          )}
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="rounded-md border border-line px-3 py-2.5 text-[12px] font-semibold text-dim transition-colors hover:border-line2 hover:text-snow sm:px-3.5"
-          >
-            {t("Salir")}
-          </button>
-        </div>
-      </header>
-
-      <div className="mx-auto h-px max-w-[1440px] bg-gradient-to-r from-gold/50 via-line to-transparent" />
-
-      {/* Contenido */}
-      <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-5 lg:px-8">
-        {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
-        <LimitBanner status={limitStatus} />
-        <SignalsToExecute trades={trades} prices={prices} loading={loading} now={now} notify={notify} />
-        <EconomyCard now={now} />
-        {!empty && (
+      {/* Contenido: cada pantalla es una página; la barra de arriba lleva de una a otra */}
+      <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-6 lg:px-8">
+        {view === "home" && (
           <>
-            <Reveal>
-              <TodayCard trades={trades} prices={prices} now={now} />
-            </Reveal>
-            <Reveal delay={90}>
-              <StatsBand trades={trades} />
-            </Reveal>
+            {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
+            <LimitBanner status={limitStatus} />
+            {/* Señales para ejecutar a un lado y, al otro, tu día y la agenda económica: si no hay señales, lo demás ocupa todo el ancho */}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] items-start gap-5">
+              <SignalsToExecute trades={trades} prices={prices} loading={loading} now={now} notify={notify} />
+              <div className="min-w-0 space-y-5">
+                {!empty && (
+                  <Reveal>
+                    <TodayCard trades={trades} prices={prices} now={now} />
+                  </Reveal>
+                )}
+                <EconomyCard now={now} />
+              </div>
+            </div>
+            {!empty && (
+              <>
+                <Reveal delay={90}>
+                  <StatsBand trades={trades} />
+                </Reveal>
+                <Reveal delay={70}>
+                  <EquityChart trades={trades} />
+                </Reveal>
+              </>
+            )}
+            <HomeTiles go={go} botReady={botReady} botOn={botState.settings.enabled} openCount={trades.filter((x) => x.outcome === "ABIERTA").length} />
           </>
         )}
 
-        {/* Atajos a cada sección y abrir/cerrar todo: quedan fijos arriba al bajar por la página */}
-        <nav
-          className="sticky top-0 z-30 -mx-4 flex items-center gap-2 overflow-x-auto border-b border-line/60 bg-ink/85 px-4 py-2 backdrop-blur-md [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:rounded-lg sm:border sm:px-3 [&::-webkit-scrollbar]:hidden"
-          aria-label={t("Secciones")}
-        >
-          {(
-            [
-              ["register", t("Registrar"), false],
-              ["journal", t("Diario"), false],
-              ["analysis", t("Análisis"), false],
-              ["chart", t("Gráfico"), false],
-              ["strategy", t("Estrategia"), false],
-              ["liqmap", t("Mapa"), false],
-              ["exchange", t("Exchanges"), true],
-              ["bot", t("Bot"), true],
-              ["telegram", t("Conexiones"), false],
-            ] as const
-          )
-            .filter(([id]) => (!empty || (id !== "journal" && id !== "analysis" && id !== "strategy")) && (id !== "bot" || botReady))
-            .map(([id, label, accent]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => jumpToPanel(id)}
-              className={cx(
-                "shrink-0 whitespace-nowrap rounded-md border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors",
-                accent ? "border-gold/50 bg-gold/10 text-gold hover:bg-gold/20" : "border-line text-fog hover:border-line2 hover:text-snow",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-          <span className="ml-auto flex shrink-0 gap-2 whitespace-nowrap pl-2">
-            <button
-              type="button"
-              onClick={() => openAllPanels(true)}
-              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
-            >
-              {t("Expandir todo")}
-            </button>
-            <button
-              type="button"
-              onClick={() => openAllPanels(false)}
-              className="rounded-md border border-line px-3 py-1.5 text-[11px] font-semibold text-dim transition-colors hover:border-line2 hover:text-fog"
-            >
-              {t("Contraer todo")}
-            </button>
-          </span>
-        </nav>
-
-        {/* Panel principal: curva | registrar; libro a todo el ancho; análisis | herramientas.
-            Cada sección se abre y se cierra; las columnas son independientes para no dejar huecos. */}
-        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
-          {!empty && (
-            <Reveal delay={70} className="min-w-0 max-lg:order-5">
-              <EquityChart trades={trades} />
-            </Reveal>
-          )}
-          <Reveal delay={110} className={cx("max-lg:order-2", empty && "lg:col-span-2")}>
-            <TradeForm onAdd={addTrades} notify={notify} />
-          </Reveal>
-
-          {(loading || !empty) && (
-          <Reveal delay={140} className="min-w-0 max-lg:order-1 lg:col-span-2">
+        {view === "journal" && (
+          <>
+            <PageHead view="journal" right={actions} />
+            <div className={cx("grid grid-cols-[minmax(0,1fr)] items-start gap-5", !empty && "lg:grid-cols-[minmax(0,1fr)_400px]")}>
+              {!empty && <EquityChart trades={trades} />}
+              <TradeForm onAdd={addTrades} notify={notify} />
+            </div>
             {loading ? (
-              <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">
-                {t("Cargando diario…")}
-              </div>
+              <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">{t("Cargando diario…")}</div>
             ) : (
-              <TradeTable
-                trades={trades}
-                flashId={flashId}
-                onMark={markOutcome}
-                onManual={setManualTrade}
-                onDelete={deleteTrade}
-                onReopen={reopenTrade}
-                onNotes={setNotesTrade}
-                onLoadSample={loadSample}
-                prices={prices}
-              />
+              !empty && (
+                <TradeTable
+                  trades={trades}
+                  flashId={flashId}
+                  onMark={markOutcome}
+                  onManual={setManualTrade}
+                  onDelete={deleteTrade}
+                  onReopen={reopenTrade}
+                  onNotes={setNotesTrade}
+                  onLoadSample={loadSample}
+                  prices={prices}
+                />
+              )
             )}
-          </Reveal>
-          )}
-
-          {!empty && (
-          <div className="min-w-0 space-y-5 max-lg:contents">
-            <Reveal delay={160} className="max-lg:order-6">
-              <Analysis trades={trades} />
-            </Reveal>
-            <Reveal delay={165} className="max-lg:order-6">
-              <StrategyCard trades={trades} notify={notify} />
-            </Reveal>
-            {FEATURES.coach && (
-              <Reveal delay={170} className="max-lg:order-6">
-                <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />
-              </Reveal>
-            )}
-            {trades.length > 0 && (
-              <Reveal delay={180} className="max-lg:order-7">
+            {!empty && (
+              <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
                 <MonthlySummary trades={trades} />
-              </Reveal>
+                {trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
+              </div>
             )}
-          </div>
-          )}
-          <div className={cx("space-y-5 max-lg:contents", empty && "lg:col-span-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-5 lg:space-y-0")}>
-            <Reveal delay={130} className="max-lg:order-3">
+          </>
+        )}
+
+        {view === "analysis" && (
+          <>
+            <PageHead view="analysis" />
+            {empty ? (
+              <p className="rounded-lg border border-dashed border-line px-6 py-10 text-center text-[13px] text-dim">{t("Cuando tengas operaciones cerradas, acá vas a ver qué te funciona y qué no.")}</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
+                  <Analysis trades={trades} />
+                  <StrategyCard trades={trades} notify={notify} />
+                </div>
+                {FEATURES.coach && <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />}
+              </>
+            )}
+          </>
+        )}
+
+        {view === "tools" && (
+          <>
+            <PageHead view="tools" />
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
               <RiskCalculator notify={notify} />
-            </Reveal>
-            <Reveal delay={150} className="max-lg:order-4">
               <DailyLimitsCard limits={limits} status={limitStatus} onSave={persistLimits} />
-            </Reveal>
-            {trades.some((x) => x.tags?.length) && (
-              <Reveal delay={200} className="max-lg:order-8">
-                <TagStats trades={trades} />
-              </Reveal>
-            )}
-          </div>
-        </div>
-
-        {/* Gráfico de análisis: velas con 2 indicadores y las señales abiertas dibujadas encima */}
-        <ChartCard trades={trades} userId={userId} notify={notify} />
-
-        {/* El mapa ocupa todo el ancho: es un gráfico ancho y así no deja huecos al costado */}
-        <Reveal delay={175}>
-          <LiquidationMap />
-        </Reveal>
-
-        {/* Conexiones y ajustes: dos columnas parejas, debajo del diario */}
-        <section className="space-y-4 pt-1">
-          <div className="flex items-end gap-4">
-            <div>
-              <h2 className="font-display text-2xl font-bold tracking-wide text-snow">{t("CONEXIONES Y AJUSTES")}</h2>
-              <p className="text-[11px] uppercase tracking-[0.16em] text-dim">{t("Tus señales, tu exchange, tu capital y tus límites")}</p>
             </div>
-            <div className="mb-2 hidden h-px flex-1 bg-gradient-to-r from-line to-transparent sm:block" />
-          </div>
-          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
-            <Reveal delay={150} className="min-w-0">
-              <WebhookCard userId={userId} notify={notify} />
-            </Reveal>
-            <div className="min-w-0 space-y-5">
-              <Reveal delay={154}>
+          </>
+        )}
+
+        {view === "chart" && (
+          <>
+            <PageHead view="chart" />
+            <ChartCard trades={trades} userId={userId} notify={notify} />
+          </>
+        )}
+
+        {view === "liq" && (
+          <>
+            <PageHead view="liq" />
+            <LiquidationMap />
+          </>
+        )}
+
+        {view === "bot" && (
+          <>
+            <PageHead view="bot" />
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
+              <BotCard userId={userId} notify={notify} />
+              <div className="min-w-0 space-y-5">
+                <LiveBotCard userId={userId} notify={notify} />
+                <SignalFeedCard userId={userId} notify={notify} />
+              </div>
+            </div>
+          </>
+        )}
+
+        {view === "connections" && (
+          <>
+            <PageHead view="connections" />
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
+              <div className="min-w-0 space-y-5">
+                <WebhookCard userId={userId} notify={notify} />
+                <WhatsAppCard notify={notify} />
+              </div>
+              <div className="min-w-0 space-y-5">
                 <TelegramCard userId={userId} notify={notify} />
-              </Reveal>
-              <WhatsAppCard notify={notify} />
-              <SignalFeedCard userId={userId} notify={notify} />
-              <Reveal delay={158}>
                 <ExchangeCard money={money} notify={notify} onSaveMoney={persistMoney} />
-              </Reveal>
-              <Reveal delay={162}>
-                <BotCard userId={userId} notify={notify} />
-              </Reveal>
-              <LiveBotCard userId={userId} notify={notify} />
-              <Reveal delay={165}>
-                <MoneyCard money={money} trades={trades} onSave={persistMoney} />
-              </Reveal>
-              <Reveal delay={170}>
-                <InviteCard notify={notify} />
-              </Reveal>
-              <Reveal delay={174}>
-                <MfaCard notify={notify} />
-              </Reveal>
+              </div>
             </div>
-          </div>
-        </section>
+          </>
+        )}
+
+        {view === "account" && (
+          <>
+            <PageHead view="account" />
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
+              <div className="min-w-0 space-y-5">
+                <MoneyCard money={money} trades={trades} onSave={persistMoney} />
+                <InviteCard notify={notify} />
+              </div>
+              <MfaCard notify={notify} />
+            </div>
+          </>
+        )}
       </main>
 
       {/* Pie */}
