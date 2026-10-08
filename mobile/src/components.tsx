@@ -730,7 +730,7 @@ const st = StyleSheet.create({
   note: { color: colors.fog, fontSize: 12, lineHeight: 17, marginTop: 8 },
   small: { color: colors.dim, fontSize: 10.5, lineHeight: 15, marginTop: 6 },
   head: { color: colors.gold, fontSize: 10, fontWeight: "800", letterSpacing: 1.6, marginTop: 12, marginBottom: 4 },
-  headline: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 10 },
+  headline: { borderWidth: 1, borderRadius: 10, padding: 12, marginTop: 10, marginBottom: 10 },
   headlineText: { color: colors.snow, fontSize: 12.5, lineHeight: 18 },
   rule: { backgroundColor: "rgba(16,23,32,0.85)", borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 12, marginTop: 8 },
   ruleTop: { flexDirection: "row", justifyContent: "space-between", gap: 8, alignItems: "flex-start" },
