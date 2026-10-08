@@ -77,6 +77,17 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
     }
   }, [trades, q, dirF, estado, mes, sort]);
 
+  const PAGE = 15;
+  const [shown, setShown] = useState(PAGE);
+  const rows = filtered.slice(0, shown);
+  const more = filtered.length > rows.length && (
+    <div className="border-t border-line/60 px-5 py-3 text-center">
+      <button type="button" onClick={() => setShown((n) => n + PAGE)} className="rounded-md border border-line2 px-4 py-2 text-[12px] font-semibold text-gold transition-colors hover:border-gold/50 hover:text-snow">
+        {t("Mostrar más")} ({filtered.length - rows.length})
+      </button>
+    </div>
+  );
+
   const hasFilters = q.trim() !== "" || dirF !== "all" || estado !== "all" || mes !== "all";
 
   if (trades.length === 0) {
@@ -175,7 +186,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
     <Panel
       id="journal"
       title={t("LIBRO DE OPERACIONES")}
-      subtitle={`${filtered.length} ${t("de")} ${trades.length} ${t("en pantalla")}`}
+      subtitle={`${rows.length} ${t("de")} ${trades.length} ${t("en pantalla")}`}
       summary={`${trades.length} ${t("operaciones")}`}
       right={
         <select value={sort} onChange={(e) => setSort(e.target.value as SortMode)} className="field num w-auto cursor-pointer py-1.5 text-[12px]">
@@ -247,7 +258,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
         <>
           {/* Celular: una tarjeta por operación */}
           <ul className="divide-y divide-line/60 lg:hidden">
-            {filtered.map((tr) => {
+            {rows.map((tr) => {
               const abierta = tr.outcome === "ABIERTA";
               return (
                 <li key={tr.id} className={cx("space-y-3 px-4 py-4", flashId === tr.id && "row-flash")}>
@@ -290,6 +301,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
               );
             })}
           </ul>
+          <div className="lg:hidden">{more}</div>
         <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[860px] text-left text-[12.5px]">
             <thead>
@@ -306,7 +318,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
               </tr>
             </thead>
             <tbody>
-              {filtered.map((tr) => {
+              {rows.map((tr) => {
                 const rr = rrOf(tr);
                 const abierta = tr.outcome === "ABIERTA";
                 return (
@@ -362,6 +374,7 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
             </tbody>
           </table>
         </div>
+        <div className="hidden lg:block">{more}</div>
         </>
       )}
     </Panel>

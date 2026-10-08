@@ -820,7 +820,9 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                   <MonthlySummary trades={trades} />
                 </div>
               )}
-              <TradeForm onAdd={addTrades} notify={notify} />
+              <div className="min-w-0 lg:sticky lg:top-24">
+                <TradeForm onAdd={addTrades} notify={notify} />
+              </div>
             </div>
             {loading ? (
               <div className="rounded-lg border border-line bg-panel px-6 py-16 text-center text-sm text-fog">{t("Cargando diario…")}</div>

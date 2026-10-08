@@ -1048,6 +1048,7 @@ export const EN: Record<string, string> = {
   "Sesión de": "Signed in as",
   "Próximamente en Google Play": "Coming soon on Google Play",
   "PRÓXIMAMENTE EN": "COMING SOON ON",
+  "Mostrar más": "Show more",
   "REGLAS DE ORO": "GOLDEN RULES",
   "Lo que más cuida tu capital": "What protects your capital most",
   "Arriesgá poco por operación": "Risk little per trade",
