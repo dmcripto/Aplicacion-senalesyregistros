@@ -87,3 +87,24 @@ describe("comando /grafico", () => {
     expect(chEma([1, 2, 3], 2)).toHaveLength(3);
   });
 });
+
+import { mentionNames, welcomeGreeting, welcomeHello } from "../supabase/functions/_shared/welcome";
+
+describe("bienvenida", () => {
+  const ana = { id: 1, first_name: "Ana <b>" };
+  const luis = { id: 2, first_name: "Luis" };
+  it("menciona a cada persona con enlace y escapa los nombres", () => {
+    expect(mentionNames([ana], "es")).toBe('<a href="tg://user?id=1">Ana &lt;b&gt;</a>');
+    expect(mentionNames([ana, luis], "es")).toContain(" y ");
+    expect(mentionNames([ana, luis], "en")).toContain(" and ");
+  });
+  it("usa el texto propio con {nombre} y {grupo}, escapando lo demás", () => {
+    const h = welcomeGreeting([luis], "DMCRIPTO", "Hola {nombre}, bienvenido a {grupo} <script>", "es");
+    expect(h).toBe('Hola <a href="tg://user?id=2">Luis</a>, bienvenido a DMCRIPTO &lt;script&gt;');
+  });
+  it("sin texto propio sale el saludo por defecto en el idioma de la cuenta", () => {
+    expect(welcomeGreeting([luis], "DMCRIPTO", null, "es")).toContain("/grafico");
+    expect(welcomeGreeting([luis], "DMCRIPTO", "  ", "en")).toContain("/chart");
+    expect(welcomeHello([luis], "es")).toContain("¡Bienvenido/a");
+  });
+});
