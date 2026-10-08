@@ -48,7 +48,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: "journal", label: "Diario" },
   { key: "add", label: "Registrar" },
   { key: "risk", label: "Riesgo" },
-  { key: "map", label: "Mapa" },
+  { key: "map", label: "Mercado" },
   { key: "settings", label: "Ajustes" },
 ];
 
@@ -188,7 +188,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {tab === "journal" && <JournalScreen trades={trades} loading={loading} refreshing={refreshing} refresh={refresh} />}
         {tab === "add" && <AddScreen userId={userId} limitStatus={limitStatus} onAdded={() => { refresh(); goTab("signals"); }} />}
         {tab === "risk" && <RiskScreen prefill={calcTrade} onPrefillUsed={() => setCalcTrade(null)} />}
-        {tab === "map" && <MapScreen />}
+        {tab === "map" && <MapScreen userId={userId} trades={trades} />}
         {tab === "settings" && <SettingsScreen userId={userId} email={email} trades={trades} limits={limits} limitStatus={limitStatus} onSaveLimits={persistLimits} onSaveMoney={persistMoney} />}
       </Animated.View>
       <View style={styles.tabBar}>

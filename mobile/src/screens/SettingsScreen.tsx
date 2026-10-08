@@ -308,7 +308,7 @@ export default function SettingsScreen({
       <SignalFeedSection titleStyle={styles.sectionTitle} />
 
       <View {...mark("bot")} />
-      <BotSection titleStyle={styles.sectionTitle} />
+      <BotSection titleStyle={styles.sectionTitle} userId={userId} />
 
       <LiveSection titleStyle={styles.sectionTitle} />
 
