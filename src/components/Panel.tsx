@@ -93,7 +93,7 @@ export default function Panel({ id, title, subtitle, summary, defaultOpen = true
             <span className="min-w-0 flex-1">
               <span className="block font-display text-xl font-bold tracking-wide text-snow sm:text-2xl">{title}</span>
               {line ? (
-                <span className={cx("block truncate text-[10px] tracking-[0.12em] text-dim sm:text-[11px] sm:tracking-[0.16em]", open && "uppercase", !open && !!summary && "num text-fog")}>{line}</span>
+                <span className={cx("block text-[10px] tracking-[0.12em] text-dim sm:text-[11px] sm:tracking-[0.16em]", open ? "uppercase sm:truncate" : "truncate", !open && !!summary && "num text-fog")}>{line}</span>
               ) : null}
             </span>
             <span className="shrink-0 text-lg text-gold" aria-hidden>
