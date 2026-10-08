@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cx, getLang, t } from "../lib";
+import { cx, econTitleEs, getLang, t } from "../lib";
 import { fetchEconomy } from "../tradesApi";
 import type { EconomyEvent } from "../tradesApi";
 
@@ -68,7 +68,7 @@ export default function EconomyCard({ now }: { now: Date }) {
                 {dayLabel(at)} <b className="text-snow">{timeFmt.format(at)}</b>
               </span>
               <span className="min-w-0 flex-1 text-[12.5px] leading-snug text-snow">
-                <span aria-hidden>{FLAG[e.country] ?? "🌐"}</span> <span className="text-dim">{e.country}</span> {en ? e.title : e.title_es}
+                <span aria-hidden>{FLAG[e.country] ?? "🌐"}</span> <span className="text-dim">{e.country}</span> {en ? e.title : econTitleEs(e.title)}
                 {figures && <span className="num block text-[11px] text-dim">{figures}</span>}
               </span>
             </li>
