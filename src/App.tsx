@@ -1,5 +1,5 @@
 import { trackGlow } from "./glowTracking";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   COMMUNITY_URL,
   computeStats,
@@ -57,39 +57,48 @@ import Auth from "./components/Auth";
 import ResetPassword from "./components/ResetPassword";
 import { MfaCard, MfaProvider, mfaErrorText, useMfa } from "./components/Mfa";
 import EquityChart from "./components/EquityChart";
-import TradeForm from "./components/TradeForm";
-import TradeTable from "./components/TradeTable";
-import MonthlySummary from "./components/MonthlySummary";
-import AlertBuilder from "./components/AlertBuilder";
-import RiskCalculator from "./components/RiskCalculator";
-import TagStats from "./components/TagStats";
-import Analysis from "./components/Analysis";
-import StrategyCard from "./components/StrategyCard";
-import MoneyCard from "./components/MoneyCard";
-import ExchangeCard from "./components/ExchangeCard";
-import BotCard from "./components/BotCard";
-import LiveBotCard from "./components/LiveBotCard";
-import SignalFeedCard from "./components/SignalFeedCard";
-import InviteCard from "./components/InviteCard";
-import TelegramCard from "./components/TelegramCard";
+const TradeForm = lazy(() => import("./components/TradeForm"));
+const TradeTable = lazy(() => import("./components/TradeTable"));
+const MonthlySummary = lazy(() => import("./components/MonthlySummary"));
+const AlertBuilder = lazy(() => import("./components/AlertBuilder"));
+const RiskCalculator = lazy(() => import("./components/RiskCalculator"));
+const TagStats = lazy(() => import("./components/TagStats"));
+const Analysis = lazy(() => import("./components/Analysis"));
+const StrategyCard = lazy(() => import("./components/StrategyCard"));
+const MoneyCard = lazy(() => import("./components/MoneyCard"));
+const ExchangeCard = lazy(() => import("./components/ExchangeCard"));
+const BotCard = lazy(() => import("./components/BotCard"));
+const LiveBotCard = lazy(() => import("./components/LiveBotCard"));
+const SignalFeedCard = lazy(() => import("./components/SignalFeedCard"));
+const InviteCard = lazy(() => import("./components/InviteCard"));
+const TelegramCard = lazy(() => import("./components/TelegramCard"));
 import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
-import LiquidationMap from "./components/LiquidationMap";
-import ChartCard from "./components/ChartCard";
+const LiquidationMap = lazy(() => import("./components/LiquidationMap"));
+const ChartCard = lazy(() => import("./components/ChartCard"));
 import HomeTiles, { PageHead } from "./components/HomeTiles";
 import { HomeHero, HomeStatus, RecentTrades } from "./components/HomeExtras";
 import { NavBar, useView } from "./nav";
 import type { View } from "./nav";
-import CoachCard from "./components/CoachCard";
-import WhatsAppCard from "./components/WhatsAppCard";
+const CoachCard = lazy(() => import("./components/CoachCard"));
+const WhatsAppCard = lazy(() => import("./components/WhatsAppCard"));
 import TodayCard from "./components/TodayCard";
 import EconomyCard from "./components/EconomyCard";
 import SignalsToExecute from "./components/SignalsToExecute";
 import Celebration from "./components/Celebration";
 import { MoneyContext, makeMoneyCtx, useMoney } from "./money";
-import ShareCard from "./components/ShareCard";
+const ShareCard = lazy(() => import("./components/ShareCard"));
 import DailyLimitsCard, { LimitBanner } from "./components/DailyLimits";
 import { t, fmtPrice } from "./lib";
 import { useQuotes } from "./components/HomeExtras";
+
+/** Lo que se ve un instante mientras se baja el código de una pantalla que todavía no se abrió. */
+function ViewLoading() {
+  return (
+    <div className="grid min-h-[40vh] place-items-center" role="status" aria-label={t("Cargando…")}>
+      <IconCheck className="h-6 w-6 animate-pulse text-gold" />
+    </div>
+  );
+}
 
 // ─── Cinta de operaciones cerradas ──────────────────────────────────────────
 
@@ -763,6 +772,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 
       {/* Contenido: cada pantalla es una página; la barra de arriba lleva de una a otra */}
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-6 lg:px-8">
+        <Suspense fallback={<ViewLoading />}>
         {view === "home" && (
           <>
             <HomeHero email={email} trades={trades} now={now} go={go} />
@@ -913,6 +923,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             </div>
           </>
         )}
+      </Suspense>
       </main>
 
       {/* Pie */}
@@ -995,7 +1006,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         </div>
       </footer>
 
-      {sharing && <ShareCard trades={trades} onClose={() => setSharing(false)} notify={notify} />}
+      {sharing && <Suspense fallback={null}><ShareCard trades={trades} onClose={() => setSharing(false)} notify={notify} /></Suspense>}
       {notesTrade && (
         <NotesModal trade={notesTrade} onSave={saveNotes} onCancel={() => setNotesTrade(null)} />
       )}
