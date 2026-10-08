@@ -4,6 +4,8 @@
 
 import { esc } from "./telegram.ts";
 import { svgToPng } from "./card.ts";
+import { buildMap } from "./liquidations.ts";
+import type { Hotspot } from "./liquidations.ts";
 
 export interface Ohlc {
   t: number;
@@ -21,6 +23,7 @@ export interface ChartRequest {
   symbol: string; // BTCUSDT
   interval: ChartInterval;
   ema: boolean;
+  liq: boolean; // niveles del mapa de liquidaciones
 }
 
 const CH_QUOTES = ["USDT", "USDC", "BUSD", "USD"];
@@ -47,10 +50,15 @@ export function parseChartArgs(args: string[]): ChartRequest | null {
   let symbol: string | null = null;
   let interval: ChartInterval | null = null;
   let ema = false;
+  let liq = false;
   for (const a of args) {
     const low = a.toLowerCase();
     if (low === "ema") {
       ema = true;
+      continue;
+    }
+    if (low === "liq" || low === "liquidaciones") {
+      liq = true;
       continue;
     }
     if (!symbol && !interval) {
@@ -66,7 +74,7 @@ export function parseChartArgs(args: string[]): ChartRequest | null {
     }
     interval ??= normalizeInterval(a);
   }
-  return symbol ? { symbol, interval: interval ?? "1h", ema } : null;
+  return symbol ? { symbol, interval: interval ?? "1h", ema, liq } : null;
 }
 
 const CH_BARS = 110;
@@ -104,6 +112,11 @@ export function chEma(values: number[], period: number): number[] {
   return out;
 }
 
+/** 12 300 000 → «$12.3M». */
+function chUsd(v: number): string {
+  return v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${Math.round(v / 1e3)}K`;
+}
+
 const CH_C = { bg: "#131722", grid: "#2a2e39", text: "#b2b5be", bull: "#26a69a", bear: "#ef5350", cyan: "#2ec4f1" };
 const CH_W = 1200;
 const CH_H = 720;
@@ -135,7 +148,7 @@ function chTimeLabel(ms: number, interval: ChartInterval, lang: "es" | "en"): st
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-export function chartSvg(req: ChartRequest, bars: Ohlc[], source: string, lang: "es" | "en"): string {
+export function chartSvg(req: ChartRequest, bars: Ohlc[], source: string, lang: "es" | "en", spots: Hotspot[] = []): string {
   const hi = Math.max(...bars.map((b) => b.h));
   const lo = Math.min(...bars.map((b) => b.l));
   const pad = (hi - lo || hi * 0.01) * 0.06;
@@ -182,6 +195,18 @@ export function chartSvg(req: ChartRequest, bars: Ohlc[], source: string, lang: 
     }
   }
 
+  // Mapa de liquidaciones: los niveles más cargados que caen dentro del rango visible (más gruesa = más dinero).
+  let liqSvg = "";
+  const shown = spots.filter((h) => h.price > min && h.price < max);
+  const maxUsd = Math.max(1, ...shown.map((h) => h.usd));
+  for (const h of shown) {
+    const col = h.side === "long" ? "#ff9f43" : "#7c8cff";
+    const yy = y(h.price).toFixed(1);
+    const w = h.usd > maxUsd * 0.66 ? 3 : h.usd > maxUsd * 0.33 ? 2 : 1.2;
+    const label = `${h.side === "long" ? (lang === "en" ? "Long liq." : "Liq. largos") : lang === "en" ? "Short liq." : "Liq. cortos"} ${chUsd(h.usd)}`;
+    liqSvg += `<line x1="${PLOT_L}" x2="${PLOT_R}" y1="${yy}" y2="${yy}" stroke="${col}" stroke-width="${w}" opacity="0.85"/>
+    <text x="${PLOT_L + 8}" y="${(h.price > 0 ? y(h.price) - 6 : 0).toFixed(1)}" font-size="14" font-weight="700" fill="${col}">${esc(label)}</text>`;
+  }
   const last = bars[n - 1];
   const first = bars[0];
   const chg = ((last.c - first.o) / first.o) * 100;
@@ -196,6 +221,7 @@ export function chartSvg(req: ChartRequest, bars: Ohlc[], source: string, lang: 
   ${grid}
   ${candles}
   ${lines}
+  ${liqSvg}
   <line x1="${PLOT_L}" x2="${PLOT_R}" y1="${ly.toFixed(1)}" y2="${ly.toFixed(1)}" stroke="${lastCol}" stroke-width="1" stroke-dasharray="4 4"/>
   <rect x="${PLOT_R + 2}" y="${(ly - 13).toFixed(1)}" width="${CH_W - PLOT_R - 4}" height="26" rx="3" fill="${lastCol}"/>
   <text x="${PLOT_R + 10}" y="${(ly + 5).toFixed(1)}" font-size="15" font-weight="700" fill="#ffffff">${esc(fmtChartPrice(last.c))}</text>
@@ -214,7 +240,15 @@ export interface ChartResult {
 export async function chartImage(req: ChartRequest, lang: "es" | "en"): Promise<ChartResult | "notfound" | null> {
   const data = await fetchOhlc(req.symbol, req.interval);
   if (!data) return "notfound";
-  const png = await svgToPng(chartSvg(req, data.bars, data.source, lang));
+  let spots: Hotspot[] = [];
+  if (req.liq) {
+    try {
+      spots = (await buildMap(req.symbol.replace(/(USDT|USDC|BUSD|USD)$/, ""))).hotspots;
+    } catch {
+      /* sin mapa para esta moneda: el gráfico sale igual, solo con velas */
+    }
+  }
+  const png = await svgToPng(chartSvg(req, data.bars, data.source, lang, spots));
   if (!png) return null;
   const last = data.bars[data.bars.length - 1];
   return { png, caption: `<b>${esc(req.symbol)}</b> · ${req.interval} · ${esc(fmtChartPrice(last.c))}\n<a href="https://veltrix-trading.vercel.app">VELTRIX</a>` };
