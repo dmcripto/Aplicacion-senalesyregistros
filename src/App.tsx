@@ -853,7 +853,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             ) : (
               <>
                 <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
-                  <div className="min-w-0 space-y-5">
+                  <div className="min-w-0 space-y-5 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto lg:pr-1">
                     <Analysis trades={trades} />
                     <MonthlySummary trades={trades} />
                     {trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
