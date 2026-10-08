@@ -119,7 +119,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
     <Panel
       id="register"
       title={t("REGISTRAR OPERACIÓN")}
-      subtitle={t("Pegá una señal de cualquier fuente o cargala a mano")}
+      subtitle={t("Pegá una señal o cargala a mano")}
       summary={t("Pegá una señal o cargala a mano")}
     >
 
