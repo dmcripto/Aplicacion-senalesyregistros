@@ -2,44 +2,57 @@ import { useEffect, useRef, useState } from "react";
 import { cx, t } from "./lib";
 import { LangSwitch } from "./lang";
 import { IconTelegram, ShieldLogo } from "./ui";
+import { Icon, IconTile } from "./icons";
+import type { IconName, Tone } from "./icons";
 
 /** Pantallas de la web. Cada una es una «página»: la barra de arriba lleva de una a otra y el navegador recuerda cuál (atrás/adelante funcionan). */
 export type View = "home" | "journal" | "analysis" | "tools" | "chart" | "liq" | "bot" | "connections" | "account";
 
 export const VIEWS: View[] = ["home", "journal", "analysis", "tools", "chart", "liq", "bot", "connections", "account"];
 
+/** Cada entrada del menú. Algunas llevan a una sección dentro de una pantalla (por ejemplo, las tres del Bot). */
+export type NavKey = View | "botreal" | "botfeed";
+
 export interface NavItem {
   view: View;
-  icon: string;
+  /** Sección (panel) a la que saltar dentro de la pantalla. */
+  panel?: string;
+  icon: IconName;
+  tone: Tone;
   title: string;
   desc: string;
 }
 
 /** Todas las pantallas con su nombre y una línea que explica para qué sirven (se usa en los menús y en las tarjetas de Inicio). */
-export const NAV_ITEMS: Record<View, NavItem> = {
-  home: { view: "home", icon: "🏠", title: "Inicio", desc: "Lo más importante de tu día, de un vistazo." },
-  journal: { view: "journal", icon: "📓", title: "Registrar y diario", desc: "Cargá tus operaciones y mirá tu historial y tu curva." },
-  analysis: { view: "analysis", icon: "🧠", title: "Análisis y estrategia", desc: "Qué te funciona y qué no, con reglas armadas desde tus operaciones." },
-  tools: { view: "tools", icon: "🧮", title: "Calculadora y límites", desc: "Tamaño de la posición y topes de pérdida por día." },
-  chart: { view: "chart", icon: "📈", title: "Gráfico", desc: "Velas con indicadores, dibujos y alertas propias." },
-  liq: { view: "liq", icon: "💧", title: "Mapa de liquidaciones", desc: "Dónde se acumulan liquidaciones (estimado)." },
-  bot: { view: "bot", icon: "🤖", title: "Bot", desc: "Automático, con dinero real y señales de VELTRIX." },
-  connections: { view: "connections", icon: "🔗", title: "Conexiones", desc: "Tu fuente de señales, Telegram, WhatsApp y exchanges." },
-  account: { view: "account", icon: "👤", title: "Cuenta", desc: "Capital, invitados y seguridad." },
+export const NAV_ITEMS: Record<NavKey, NavItem> = {
+  home: { view: "home", icon: "home", tone: "cyan", title: "Inicio", desc: "Lo más importante de tu día, de un vistazo." },
+  journal: { view: "journal", icon: "journal", tone: "cyan", title: "Registrar y diario", desc: "Cargá tus operaciones y mirá tu historial y tu curva." },
+  analysis: { view: "analysis", icon: "bulb", tone: "violet", title: "Análisis y estrategia", desc: "Qué te funciona y qué no, con reglas armadas desde tus operaciones." },
+  tools: { view: "tools", icon: "calc", tone: "amber", title: "Calculadora y límites", desc: "Tamaño de la posición y topes de pérdida por día." },
+  chart: { view: "chart", icon: "candles", tone: "green", title: "Gráfico", desc: "Velas con indicadores, dibujos y alertas propias." },
+  liq: { view: "liq", icon: "drop", tone: "cyan", title: "Mapa de liquidaciones", desc: "Dónde se acumulan liquidaciones (estimado)." },
+  bot: { view: "bot", panel: "bot", icon: "bot", tone: "green", title: "Bot automático", desc: "Opera en simulado y anota todo en tu diario." },
+  botreal: { view: "bot", panel: "live", icon: "coin", tone: "amber", title: "Bot con dinero real", desc: "Prueba mínima en Bitunix, con topes de seguridad." },
+  botfeed: { view: "bot", panel: "feed", icon: "radio", tone: "violet", title: "Señales de VELTRIX", desc: "Las que publica el equipo, en tu diario y por aviso." },
+  connections: { view: "connections", icon: "link", tone: "cyan", title: "Conexiones", desc: "Tu fuente de señales, Telegram, WhatsApp y exchanges." },
+  account: { view: "account", icon: "user", tone: "violet", title: "Cuenta", desc: "Capital, invitados y seguridad." },
 };
+
+/** Título y descripción de la pantalla del Bot (la barra tiene tres entradas, pero es una sola pantalla). */
+export const VIEW_HEAD: Record<View, NavKey> = { home: "home", journal: "journal", analysis: "analysis", tools: "tools", chart: "chart", liq: "liq", bot: "bot", connections: "connections", account: "account" };
 
 interface Group {
   key: string;
   label: string;
   /** Si tiene más de una pantalla, se muestra como menú desplegable. */
-  items: View[];
+  items: NavKey[];
 }
 
 const groups = (botReady: boolean): Group[] => [
   { key: "home", label: "Inicio", items: ["home"] },
   { key: "diary", label: "Diario", items: ["journal", "analysis", "tools"] },
   { key: "market", label: "Mercado", items: ["chart", "liq"] },
-  ...(botReady ? [{ key: "bot", label: "Bot", items: ["bot"] as View[] }] : []),
+  ...(botReady ? [{ key: "bot", label: "Bot", items: ["bot", "botreal", "botfeed"] as NavKey[] }] : []),
   { key: "conn", label: "Conexiones", items: ["connections"] },
   { key: "acct", label: "Cuenta", items: ["account"] },
 ];
@@ -84,7 +97,7 @@ export function NavBar({
   onSignOut,
 }: {
   view: View;
-  setView: (v: View) => void;
+  setView: (v: View, panel?: string) => void;
   botReady: boolean;
   email?: string;
   now: Date;
@@ -95,7 +108,7 @@ export function NavBar({
   const [mobile, setMobile] = useState(false);
   const barRef = useRef<HTMLElement>(null);
   const list = groups(botReady);
-  const groupOf = (v: View) => list.find((g) => g.items.includes(v))?.key;
+  const groupOf = (v: View) => list.find((g) => g.items.some((k) => NAV_ITEMS[k].view === v))?.key;
 
   useEffect(() => {
     const away = (e: PointerEvent) => {
@@ -110,10 +123,10 @@ export function NavBar({
     };
   }, []);
 
-  const go = (v: View) => {
+  const go = (k: NavKey) => {
     setOpenKey(null);
     setMobile(false);
-    setView(v);
+    setView(NAV_ITEMS[k].view, NAV_ITEMS[k].panel);
   };
 
   return (
@@ -148,18 +161,18 @@ export function NavBar({
                 {multi && open && (
                   <div role="menu" className="absolute left-0 top-full z-50 w-[min(460px,90vw)] pt-2">
                     <div className="rounded-xl border border-line2 bg-panel p-2 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.85)]">
-                      {g.items.map((v) => (
+                      {g.items.map((k) => (
                         <button
-                          key={v}
+                          key={k}
                           type="button"
                           role="menuitem"
-                          onClick={() => go(v)}
-                          className={cx("flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-line/50", view === v && "bg-gold/10")}
+                          onClick={() => go(k)}
+                          className="group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-line/50"
                         >
-                          <span className="mt-0.5 text-lg leading-none" aria-hidden>{NAV_ITEMS[v].icon}</span>
-                          <span>
-                            <span className="block text-[13px] font-bold text-snow">{t(NAV_ITEMS[v].title)}</span>
-                            <span className="block text-[12px] leading-snug text-dim">{t(NAV_ITEMS[v].desc)}</span>
+                          <IconTile name={NAV_ITEMS[k].icon} tone={NAV_ITEMS[k].tone} />
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-bold text-snow">{t(NAV_ITEMS[k].title)}</span>
+                            <span className="block text-[12px] leading-snug text-dim">{t(NAV_ITEMS[k].desc)}</span>
                           </span>
                         </button>
                       ))}
@@ -212,17 +225,17 @@ export function NavBar({
           {list.map((g) => (
             <div key={g.key} className="pt-3">
               {g.items.length > 1 && <p className="px-2 pb-1 text-[10.5px] font-bold uppercase tracking-[0.2em] text-dim">{t(g.label)}</p>}
-              {g.items.map((v) => (
+              {g.items.map((k) => (
                 <button
-                  key={v}
+                  key={k}
                   type="button"
-                  onClick={() => go(v)}
-                  className={cx("flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left", view === v ? "bg-gold/10 text-gold" : "text-snow hover:bg-line/40")}
+                  onClick={() => go(k)}
+                  className={cx("flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left", view === NAV_ITEMS[k].view && !NAV_ITEMS[k].panel ? "bg-gold/10" : "hover:bg-line/40")}
                 >
-                  <span className="text-lg leading-none" aria-hidden>{NAV_ITEMS[v].icon}</span>
+                  <IconTile name={NAV_ITEMS[k].icon} tone={NAV_ITEMS[k].tone} size="sm" />
                   <span>
-                    <span className="block text-[14px] font-bold">{t(NAV_ITEMS[v].title)}</span>
-                    <span className="block text-[11.5px] leading-snug text-dim">{t(NAV_ITEMS[v].desc)}</span>
+                    <span className="block text-[14px] font-bold text-snow">{t(NAV_ITEMS[k].title)}</span>
+                    <span className="block text-[11.5px] leading-snug text-dim">{t(NAV_ITEMS[k].desc)}</span>
                   </span>
                 </button>
               ))}

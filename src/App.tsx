@@ -72,11 +72,13 @@ import LiveBotCard from "./components/LiveBotCard";
 import SignalFeedCard from "./components/SignalFeedCard";
 import InviteCard from "./components/InviteCard";
 import TelegramCard from "./components/TelegramCard";
-import Panel, { openAllPanels } from "./components/Panel";
+import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 import LiquidationMap from "./components/LiquidationMap";
 import ChartCard from "./components/ChartCard";
 import HomeTiles, { PageHead } from "./components/HomeTiles";
+import { HomeHero, HomeStatus, RecentTrades } from "./components/HomeExtras";
 import { NavBar, useView } from "./nav";
+import type { View } from "./nav";
 import CoachCard from "./components/CoachCard";
 import WhatsAppCard from "./components/WhatsAppCard";
 import TodayCard from "./components/TodayCard";
@@ -442,7 +444,11 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const botState = useBot();
   const botReady = botState.status === "ready"; // el botón del bot aparece solo si el servidor ya tiene el bot
   const [view, setView] = useView();
-  const go = setView;
+  // Ir a una pantalla y, si hace falta, abrir y mostrar una sección de esa pantalla.
+  const go = (v: View, panel?: string) => {
+    setView(v);
+    if (panel) window.setTimeout(() => jumpToPanel(panel), 350);
+  };
   // Las secciones que se abren y se cierran quedan abiertas al entrar a su pantalla.
   useEffect(() => {
     if (view === "home") return;
@@ -738,6 +744,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
       <main className="mx-auto max-w-[1440px] space-y-5 px-4 pb-14 pt-6 lg:px-8">
         {view === "home" && (
           <>
+            <HomeHero email={email} trades={trades} now={now} go={go} />
             {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
             <LimitBanner status={limitStatus} />
             {/* Señales para ejecutar a un lado y, al otro, tu día y la agenda económica: si no hay señales, lo demás ocupa todo el ancho */}
@@ -757,11 +764,15 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                 <Reveal delay={90}>
                   <StatsBand trades={trades} />
                 </Reveal>
-                <Reveal delay={70}>
-                  <EquityChart trades={trades} />
-                </Reveal>
+                <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+                  <Reveal delay={70} className="min-w-0">
+                    <EquityChart trades={trades} />
+                  </Reveal>
+                  <RecentTrades trades={trades} go={go} />
+                </div>
               </>
             )}
+            <HomeStatus botReady={botReady} botOn={botState.settings.enabled} userId={userId} go={go} />
             <HomeTiles go={go} botReady={botReady} botOn={botState.settings.enabled} openCount={trades.filter((x) => x.outcome === "ABIERTA").length} />
           </>
         )}
