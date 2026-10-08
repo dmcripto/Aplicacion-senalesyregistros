@@ -241,6 +241,7 @@ export const EN: Record<string, string> = {
   "Volumen con ballenas": "Volume with whales",
   "Máx. / Mín. del día anterior": "Previous day high / low",
   "Huecos FVG (zonas sin cubrir)": "FVG gaps (unfilled zones)",
+  "Sesiones: Asia, Londres y Nueva York": "Sessions: Asia, London and New York",
   "«{label}» — falta el símbolo.": "«{label}» — symbol is missing.",
   "«{label}» — dirección «{dir}» no reconocida (usá COMPRA/VENTA, BUY/SELL o LONG/SHORT).": "«{label}» — direction «{dir}» not recognized (use BUY/SELL or LONG/SHORT).",
   "«{label}» — entrada, TP y SL deben ser números válidos.": "«{label}» — entry, TP and SL must be valid numbers.",

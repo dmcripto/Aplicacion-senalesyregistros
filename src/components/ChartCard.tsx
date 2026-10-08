@@ -77,7 +77,7 @@ async function fetchCandles(raw: string, tf: Tf, signal: AbortSignal): Promise<C
 }
 
 const indName = (k: Slot["kind"]) =>
-  ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)") })[k];
+  ({ none: t("Ninguno"), ema: t("EMA (media exponencial)"), sma: t("SMA (media simple)"), bb: t("Bandas de Bollinger"), rsi: t("RSI"), macd: t("MACD"), adx: t("ADX con DI+ / DI− (fuerza de tendencia)"), vol: t("Volumen con ballenas"), pdhl: t("Máx. / Mín. del día anterior"), fvg: t("Huecos FVG (zonas sin cubrir)"), sess: t("Sesiones: Asia, Londres y Nueva York") })[k];
 
 const BULL = "#16d98a";
 const BEAR = "#ff4d67";
@@ -202,8 +202,8 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
                         lineType: l.step ? lc.LineType.WithSteps : lc.LineType.Simple,
                         priceLineVisible: false,
                         crosshairMarkerVisible: !l.thin,
-                        lastValueVisible: !l.thin && r.pane === "sub" && li === (r.lines.length > 1 ? 1 : 0),
-                        title: r.pane === "sub" ? l.name : "",
+                        lastValueVisible: !!l.tag || (!l.thin && r.pane === "sub" && li === (r.lines.length > 1 ? 1 : 0)),
+                        title: l.tag ?? (r.pane === "sub" ? l.name : ""),
                       },
                       pane,
                     );

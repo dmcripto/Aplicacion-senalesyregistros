@@ -11,13 +11,13 @@ export interface ChartCandle {
   volume: number;
 }
 
-export type IndicatorKind = "ema" | "sma" | "bb" | "rsi" | "macd" | "adx" | "vol" | "pdhl" | "fvg";
-export const INDICATOR_KINDS: IndicatorKind[] = ["ema", "sma", "bb", "rsi", "macd", "adx", "vol", "pdhl", "fvg"];
+export type IndicatorKind = "ema" | "sma" | "bb" | "rsi" | "macd" | "adx" | "vol" | "pdhl" | "fvg" | "sess";
+export const INDICATOR_KINDS: IndicatorKind[] = ["ema", "sma", "bb", "rsi", "macd", "adx", "vol", "pdhl", "fvg", "sess"];
 /** Indicadores que no tienen un período para elegir. */
-export const INDICATOR_NO_PERIOD: IndicatorKind[] = ["macd", "pdhl", "fvg"];
+export const INDICATOR_NO_PERIOD: IndicatorKind[] = ["macd", "pdhl", "fvg", "sess"];
 
 /** Período inicial de cada indicador (el MACD usa 12/26/9 fijo). */
-export const INDICATOR_DEFAULT_PERIOD: Record<IndicatorKind, number> = { ema: 20, sma: 50, bb: 20, rsi: 14, macd: 0, adx: 14, vol: 20, pdhl: 0, fvg: 0 };
+export const INDICATOR_DEFAULT_PERIOD: Record<IndicatorKind, number> = { ema: 20, sma: 50, bb: 20, rsi: 14, macd: 0, adx: 14, vol: 20, pdhl: 0, fvg: 0, sess: 0 };
 
 export interface IndicatorLine {
   name: string;
@@ -30,6 +30,8 @@ export interface IndicatorLine {
   step?: boolean;
   /** Trazo más fino y punteado (zonas, niveles). */
   thin?: boolean;
+  /** Texto corto que se muestra junto al último valor de la línea (por ejemplo «Londres ↑»). */
+  tag?: string;
 }
 export interface IndicatorResult {
   /** `price` se dibuja sobre las velas; `sub` en un panel aparte debajo. */
@@ -226,6 +228,50 @@ export function fairValueGaps(c: ChartCandle[], minAtr = 0.3, max = 6): FvgZone[
 /** Una vela es «ballena» si su volumen supera este múltiplo de la media. */
 export const WHALE_MULT = 2.5;
 
+/** Sesiones de mercado en hora UTC (las mismas que usa por defecto el indicador de referencia): desde, hasta (exclusivo), nombre y color. */
+export const SESSIONS = [
+  { name: "Asia", from: 0, to: 8, color: "#a855f7" },
+  { name: "Londres", from: 7, to: 16, color: "#fb923c" },
+  { name: "NY", from: 13, to: 22, color: "#3b82f6" },
+] as const;
+
+/**
+ * Máximo y mínimo de cada sesión ya terminada, que se mantienen como nivel hasta que termina la siguiente.
+ * Con velas de 1 día o más no hay sesiones que medir (devuelve vacío).
+ */
+export function sessionLevels(c: ChartCandle[], s: { from: number; to: number }): { high: Series; low: Series } {
+  const high: Series = new Array(c.length).fill(null);
+  const low: Series = new Array(c.length).fill(null);
+  let runH = -Infinity;
+  let runL = Infinity;
+  let was = false;
+  let lastH: number | null = null;
+  let lastL: number | null = null;
+  const inSess = (t: number) => {
+    const h = (t % 86_400) / 3600;
+    return h >= s.from && h < s.to;
+  };
+  c.forEach((x, i) => {
+    const now = inSess(x.time);
+    if (now && !was) {
+      runH = -Infinity;
+      runL = Infinity;
+    }
+    if (now) {
+      runH = Math.max(runH, x.high);
+      runL = Math.min(runL, x.low);
+    }
+    if (!now && was && runH > -Infinity) {
+      lastH = runH;
+      lastL = runL;
+    }
+    was = now;
+    high[i] = lastH;
+    low[i] = lastL;
+  });
+  return { high, low };
+}
+
 export const INDICATOR_COLORS = { a: "#f5c518", b: "#c084fc", band: "#7dd3fc" };
 
 /** Calcula un indicador sobre las velas. `slot` (0 o 1) solo decide los colores, para distinguir los dos que se usan a la vez. */
@@ -294,10 +340,19 @@ export function computeIndicator(kind: IndicatorKind, period: number, candles: C
         pane: "price",
         guides: [],
         lines: [
-          { name: "Máx. día anterior", values: candles.map((x) => prev(x)?.h ?? null), kind: "line", color: "#e2e8f0", step: true, thin: true },
-          { name: "Mín. día anterior", values: candles.map((x) => prev(x)?.l ?? null), kind: "line", color: "#e2e8f0", step: true, thin: true },
+          { name: "Máx. día anterior", values: candles.map((x) => prev(x)?.h ?? null), kind: "line", color: "#e2e8f0", step: true, thin: true, tag: "Ayer ↑" },
+          { name: "Mín. día anterior", values: candles.map((x) => prev(x)?.l ?? null), kind: "line", color: "#e2e8f0", step: true, thin: true, tag: "Ayer ↓" },
         ],
       };
+    }
+    case "sess": {
+      const lines: IndicatorLine[] = [];
+      for (const ss of SESSIONS) {
+        const lv = sessionLevels(candles, ss);
+        lines.push({ name: `${ss.name} máx.`, values: lv.high, kind: "line", color: ss.color, step: true, thin: true, tag: `${ss.name} ↑` });
+        lines.push({ name: `${ss.name} mín.`, values: lv.low, kind: "line", color: ss.color, step: true, thin: true, tag: `${ss.name} ↓` });
+      }
+      return { pane: "price", guides: [], lines };
     }
     case "fvg": {
       const lines: IndicatorLine[] = [];
