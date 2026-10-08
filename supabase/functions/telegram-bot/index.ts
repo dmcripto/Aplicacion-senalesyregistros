@@ -16,6 +16,7 @@ import { communitySignalMessage, publishToCommunities } from "../_shared/communi
 import { botToken, esc, sendMessage, sendPhoto, tgApi } from "../_shared/telegram.ts";
 import { ANNOUNCEMENTS, announcementIds } from "../_shared/announcements.ts";
 import type { Lang } from "../_shared/telegram.ts";
+import { welcomeGreeting, welcomeHello } from "../_shared/welcome.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -352,6 +353,77 @@ async function newsCommand(msg: any, arg: string | undefined) {
   return reply(off ? T[lang].newsOff : T[lang].newsOn);
 }
 
+const isAdminOf = async (token: string, chatId: number, userId: number | undefined) => {
+  const r = await tgApi(token, "getChatMember", { chat_id: chatId, user_id: userId });
+  return r?.result?.status === "creator" || r?.result?.status === "administrator";
+};
+
+/** Manda el saludo al tema de bienvenidos (borrando el anterior para no llenarlo) y lo deja anotado. */
+async function sendWelcome(row: any, chatId: number, chatTitle: string | null, members: Array<{ id: number; first_name?: string; username?: string }>) {
+  const token = botToken();
+  if (!token || !members.length) return;
+  const lang = await langOf(row.user_id, "es");
+  const thread = row.welcome_thread_id ? { message_thread_id: Number(row.welcome_thread_id) } : {};
+  for (const id of String(row.welcome_last_ids ?? "").split(",").filter(Boolean)) await tgApi(token, "deleteMessage", { chat_id: chatId, message_id: Number(id) });
+  const ids: number[] = [];
+  const src = row.welcome_src_msg ? Number(row.welcome_src_msg) : null;
+  const first = await say(chatId, src ? welcomeHello(members, lang) : welcomeGreeting(members, chatTitle, row.welcome_text, lang), thread);
+  if (first?.result?.message_id) ids.push(first.result.message_id);
+  if (src) {
+    const c = await tgApi(token, "copyMessage", { chat_id: chatId, from_chat_id: chatId, message_id: src, ...thread });
+    if (c?.result?.message_id) ids.push(c.result.message_id);
+  }
+  await admin.from("telegram_communities").update({ welcome_last_ids: ids.join(",") }).eq("id", row.id);
+}
+
+/** Alguien entró al grupo: si la bienvenida está activada, se lo saluda en el tema elegido. */
+async function welcomeJoin(msg: any) {
+  const members = (msg.new_chat_members as any[]).filter((m) => !m.is_bot);
+  if (!members.length) return;
+  const { data: row, error } = await admin.from("telegram_communities").select("*").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+  if (error || !row || !(row as any).welcome_enabled) return;
+  await sendWelcome(row, msg.chat.id, msg.chat.title ?? null, members);
+}
+
+/**
+ * /bienvenida (dentro del tema de bienvenidos, solo administradores, grupo ya conectado con /comunidad):
+ *  • respondiendo a un mensaje → el bot copia ESE mensaje (con formato) a cada persona nueva;
+ *  • /bienvenida texto con {nombre} → usa ese texto;  • solo /bienvenida → saludo por defecto;
+ *  • /bienvenida probar → lo muestra ahora con tu nombre;  • /bienvenida off → lo apaga.
+ */
+async function welcomeCommand(msg: any, text: string) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token) return;
+  const fallback = guessLang(msg.from?.language_code);
+  const thread: number | null = msg.is_topic_message && msg.message_thread_id ? Number(msg.message_thread_id) : null;
+  const reply = (html: string) => say(chatId, html, thread ? { message_thread_id: thread } : {});
+  if (!(await isAdminOf(token, chatId, msg.from?.id))) return reply(T[fallback].adminOnly);
+  const { data: row } = await admin.from("telegram_communities").select("*").eq("chat_id", chatId).limit(1).maybeSingle();
+  if (!row) return reply(T[fallback].newsNoCommunity);
+  const lang = await langOf((row as any).user_id, fallback);
+  const es = lang === "es";
+  const arg = text.replace(/^\/\S+\s*/, "").trim();
+  const word = arg.toLowerCase();
+  if (["off", "no", "apagar", "desactivar"].includes(word)) {
+    await admin.from("telegram_communities").update({ welcome_enabled: false }).eq("id", (row as any).id);
+    return reply(es ? "👋 Bienvenida apagada." : "👋 Welcome message turned off.");
+  }
+  if (["probar", "test"].includes(word)) {
+    if (!(row as any).welcome_enabled) return reply(es ? "Primero activala con /bienvenida." : "Turn it on first with /welcome.");
+    return sendWelcome({ ...(row as any), welcome_thread_id: thread ?? (row as any).welcome_thread_id }, chatId, msg.chat.title ?? null, [{ id: msg.from.id, first_name: msg.from.first_name }]);
+  }
+  const replied = msg.reply_to_message && !msg.reply_to_message.forum_topic_created ? msg.reply_to_message : null;
+  const patch = { welcome_enabled: true, welcome_thread_id: thread, welcome_src_msg: replied ? replied.message_id : null, welcome_text: !replied && arg ? arg : null, welcome_last_ids: null };
+  const { error } = await admin.from("telegram_communities").update(patch).eq("id", (row as any).id);
+  if (error) return reply(es ? "Todavía falta correr el SQL de la bienvenida en Supabase." : "The welcome SQL has not been run in Supabase yet.");
+  return reply(
+    es
+      ? `👋 Listo: voy a saludar en este tema a quien entre al grupo${replied ? " copiando el mensaje al que respondiste" : arg ? " con tu texto" : " con el saludo por defecto"}.\n\nPara cambiarlo: respondé a un mensaje con /bienvenida, o escribí /bienvenida seguido del texto (con {nombre}).\nPara verlo ahora: /bienvenida probar · Para apagarlo: /bienvenida off\n\nSi usás otro bot de bienvenida (como Rose), apagá el suyo para que no saluden dos veces.`
+      : `👋 Done: I'll greet new members in this topic${replied ? " by copying the message you replied to" : arg ? " with your text" : " with the default greeting"}.\n\nTo change it: reply to a message with /welcome, or type /welcome followed by the text (use {name}).\nTo preview: /welcome test · To turn off: /welcome off\n\nIf you use another welcome bot (like Rose), turn its welcome off so people aren't greeted twice.`,
+  );
+}
+
 const chartLast = new Map<number, number>();
 
 /**
@@ -384,11 +456,13 @@ async function chartCommand(msg: any, args: string[], lang: Lang) {
 
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
+    if (Array.isArray(msg.new_chat_members) && msg.new_chat_members.length) return welcomeJoin(msg);
     const text = String(msg.text ?? "").trim();
     const [first, ...rest] = text.split(/\s+/);
     const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
     if (cmd === "/noticias" || cmd === "/news") return newsCommand(msg, rest[0]);
+    if (cmd === "/bienvenida" || cmd === "/welcome") return welcomeCommand(msg, text);
     if (cmd === "/anunciar" || cmd === "/announce") return announceHere(msg, rest);
     if (cmd === "/grafico" || cmd === "/gráfico" || cmd === "/chart" || cmd === "/gr") {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
