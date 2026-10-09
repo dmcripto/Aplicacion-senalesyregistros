@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { DEFAULT_LIVE, LIVE_LIMITS, ago, clampLive, liveStatusLabel, t } from "@dmcripto/core";
+import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, liveExchangeName, liveKeyGuide, liveStatusLabel, t } from "@dmcripto/core";
 import type { LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
-import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, testLiveOrder } from "./tradesApi";
+import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "./tradesApi";
 import type { LiveView } from "./tradesApi";
 import { mfaErrorText, useMfa } from "./MfaSection";
 import { colors } from "./theme";
@@ -19,7 +19,7 @@ function Num({ name, value, onChange }: { name: string; value: string; onChange:
   );
 }
 
-/** Bot con dinero real en Bitunix (prueba mínima). Solo aparece en cuentas con la llave beta y con el servidor listo. */
+/** Bot con dinero real (prueba mínima) en Bitunix o MEXC, a elección. Solo aparece en cuentas con la llave beta y con el servidor listo. */
 export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
   const bot = useBot();
   const mfa = useMfa();
@@ -31,6 +31,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiSecret, setApiSecret] = useState("");
   const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", daily: "0.5" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
+  const [pick, setPick] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user.id ?? null));
@@ -54,6 +55,11 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
 
   if (bot.status !== "ready" || unavailable || !view || !userId) return null;
   const live: LiveSettings = view.live;
+  // El exchange que se está mirando: el activo del bot, o el que la persona tocó para conectarlo.
+  const shown = pick ?? view.exchange;
+  const exName = liveExchangeName(shown);
+  const hasShownKey = !!view.keys[shown];
+  const hint = view.keys[shown] ?? view.keyHint;
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -66,27 +72,41 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     }
   };
 
+  const choose = (id: string) =>
+    run("exchange", async () => {
+      setPick(id);
+      // Si ya tiene clave guardada ahí, se pasa a ese exchange (queda apagado y hay que repetir la prueba); si no, se muestra para conectarla.
+      if (id !== view.exchange && view.keys[id]) {
+        const r = await switchLiveExchange(id);
+        if (!r.ok) return Alert.alert(t("Error"), r.error ?? t("No se pudo cambiar de exchange."));
+        setPick(null);
+        Alert.alert(t("Listo"), t("Ahora el bot real usa {x}. Quedó apagado: repetí la prueba.", { x: liveExchangeName(id) }));
+        await reload();
+      }
+    });
+
   const connect = () =>
     run("connect", async () => {
-      if (!(await mfa.ask(t("Vas a guardar una clave de Bitunix con permiso de operar.")))) return;
-      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim());
+      if (!(await mfa.ask(t("Vas a guardar una clave de {x} con permiso de operar.", { x: exName })))) return;
+      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown);
       if (!r.ok) return Alert.alert(t("Error"), r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")));
       setApiKey("");
       setApiSecret("");
+      setPick(null);
       Alert.alert(t("Listo"), t("Clave guardada. Saldo disponible en futuros: {n} USDT.", { n: (r.available ?? 0).toFixed(2) }));
       await reload();
     });
 
   const disconnect = () =>
-    Alert.alert(t("Borrar clave"), t("Vas a borrar la clave de Bitunix del bot."), [
+    Alert.alert(t("Borrar clave"), t("Vas a borrar la clave de {x} del bot.", { x: exName }), [
       { text: t("Cancelar"), style: "cancel" },
       {
         text: t("Borrar clave"),
         style: "destructive",
         onPress: () =>
           run("disconnect", async () => {
-            if (!(await mfa.ask(t("Vas a borrar la clave de Bitunix del bot.")))) return;
-            const r = await disconnectTradeKey();
+            if (!(await mfa.ask(t("Vas a borrar la clave de {x} del bot.", { x: exName })))) return;
+            const r = await disconnectTradeKey(shown);
             if (!r.ok) return Alert.alert(t("Error"), r.error ?? t("No se pudo desconectar."));
             await reload();
           }),
@@ -107,7 +127,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         text: t("Hacer la orden real de prueba"),
         onPress: () =>
           run("test", async () => {
-            if (!(await mfa.ask(t("Vas a enviar una orden real mínima a Bitunix y cerrarla enseguida.")))) return;
+            if (!(await mfa.ask(t("Vas a enviar una orden real mínima a {x} y cerrarla enseguida.", { x: exName })))) return;
             const r = await testLiveOrder(true);
             if (!r.ok && r.code === "mfa_required") return Alert.alert(t("Error"), mfaErrorText(new Error("mfa_required"), ""));
             setReport({ title: r.verified ? t("Prueba real superada") : t("La prueba real no salió completa"), steps: [...(r.steps ?? []), ...(r.error ? [`⚠️ ${r.error}`] : [])], ok: !!r.verified });
@@ -135,7 +155,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     );
 
   const stop = () =>
-    Alert.alert(t("Apagar todo y cerrar posiciones"), t("Apaga el bot real, cancela las órdenes pendientes y cierra las posiciones abiertas. Siempre revisá Bitunix por las dudas."), [
+    Alert.alert(t("Apagar todo y cerrar posiciones"), t("Apaga el bot real, cancela las órdenes pendientes y cierra las posiciones abiertas. Siempre revisá {x} por las dudas.", { x: exName }), [
       { text: t("Cancelar"), style: "cancel" },
       {
         text: t("Confirmar: apagar y cerrar todo ahora"),
@@ -143,7 +163,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         onPress: () =>
           run("stop", async () => {
             const r = await liveStop();
-            setReport({ title: r.ok ? t("Todo apagado") : t("Apagado con avisos: revisá Bitunix"), steps: r.steps ?? [], ok: !!r.ok });
+            setReport({ title: r.ok ? t("Todo apagado") : t("Apagado con avisos: revisá {x}", { x: exName }), steps: r.steps ?? [], ok: !!r.ok });
             await reload();
           }),
       },
@@ -153,28 +173,42 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
 
   return (
     <>
-      <Text style={titleStyle ?? s.title}>{t("BOT CON DINERO REAL (PRUEBA)")}</Text>
+      <Text style={titleStyle ?? s.title}>{t("BOT CON DINERO REAL")}</Text>
       <View style={s.card}>
         <View style={s.warn}>
           <Text style={{ color: colors.bear, fontWeight: "800", fontSize: 12.5 }}>{"⚠️ "}{t("Esto opera con plata de verdad")}</Text>
           <Text style={s.hint}>{t("La estrategia todavía no demostró ganar: con montos tan chicos las comisiones pueden pesar más que cualquier ganancia. Usalo solo para comprobar que todo funciona, con plata que puedas perder. Nunca se usan retiros.")}</Text>
         </View>
 
-        {!view.hasKey ? (
+        <Text style={s.label}>{t("Exchange del bot real")}</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          {LIVE_EXCHANGES.map((id) => (
+            <TouchableOpacity key={id} disabled={busy != null} onPress={() => choose(id)} style={[s.chip, shown === id && s.chipOn, busy != null && { opacity: 0.5 }]}>
+              <Text style={[s.chipText, shown === id && { color: colors.ink }]}>{liveExchangeName(id)}{view.keys[id] ? " ✓" : ""}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={s.hint}>{t("Elegí el exchange donde vos podés crear la clave de API. Cada uno tiene su propia clave y su propia prueba.")}</Text>
+
+        {!hasShownKey ? (
           <>
-            <Text style={s.hint}>{t("1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.")}</Text>
+            <Text style={s.hint}>{liveKeyGuide(shown)}</Text>
             <Text style={s.label}>{t("Clave (API key)")}</Text>
             <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} style={s.input} />
             <Text style={s.label}>{t("Clave secreta (secret)")}</Text>
             <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
             <TouchableOpacity style={[s.outline, (busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8) && { opacity: 0.4 }]} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8} onPress={connect}>
-              {busy === "connect" ? <ActivityIndicator color={colors.gold} /> : <Text style={s.outlineText}>{t("Guardar clave de Bitunix")}</Text>}
+              {busy === "connect" ? <ActivityIndicator color={colors.gold} /> : <Text style={s.outlineText}>{t("Guardar clave de {x}", { x: exName })}</Text>}
             </TouchableOpacity>
           </>
+        ) : shown !== view.exchange ? (
+          <TouchableOpacity style={[s.outline, busy != null && { opacity: 0.4 }]} disabled={busy != null} onPress={() => choose(shown)}>
+            <Text style={s.outlineText}>{t("Usar {x} para el bot real", { x: exName })}</Text>
+          </TouchableOpacity>
         ) : (
           <>
             <Text style={s.hint}>
-              {"✅ "}{t("Clave guardada")} ····{view.keyHint} · <Text style={{ color: live.verified ? colors.bull : colors.gold, fontWeight: "800" }}>{live.verified ? t("Prueba real superada") : t("Falta la prueba real")}</Text>
+              {"✅ "}{t("Clave guardada")} ····{hint} · <Text style={{ color: live.verified ? colors.bull : colors.gold, fontWeight: "800" }}>{live.verified ? t("Prueba real superada") : t("Falta la prueba real")}</Text>
             </Text>
             <TouchableOpacity onPress={disconnect} disabled={busy != null}>
               <Text style={[s.hint, { textDecorationLine: "underline" }]}>{t("Borrar clave")}</Text>
@@ -264,6 +298,9 @@ const s = StyleSheet.create({
   btn: { backgroundColor: colors.gold, borderRadius: 8, paddingVertical: 12, alignItems: "center" },
   btnText: { color: colors.ink, fontWeight: "800", fontSize: 12 },
   outline: { borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 8, paddingVertical: 12, paddingHorizontal: 8, alignItems: "center" },
+  chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 16 },
+  chipOn: { backgroundColor: colors.gold, borderColor: colors.gold },
+  chipText: { color: colors.fog, fontWeight: "800", fontSize: 12.5 },
   outlineText: { color: colors.gold, fontWeight: "800", fontSize: 12, textAlign: "center" },
   danger: { borderWidth: 1, borderColor: colors.bear, backgroundColor: colors.bear + "22", borderRadius: 8, paddingVertical: 14, alignItems: "center", marginTop: 6 },
   dangerText: { color: colors.bear, fontWeight: "800", fontSize: 12 },

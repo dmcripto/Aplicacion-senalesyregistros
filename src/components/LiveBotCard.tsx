@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_LIVE, LIVE_LIMITS, ago, clampLive, cx, liveStatusLabel, t } from "../lib";
+import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, liveExchangeName, liveKeyGuide, liveStatusLabel, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
-import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, testLiveOrder } from "../tradesApi";
+import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "../tradesApi";
 import type { LiveView } from "../tradesApi";
 import { mfaErrorText, useMfa } from "./Mfa";
 import Panel from "./Panel";
@@ -20,7 +20,7 @@ function NumField({ name, value, onChange, min, max, step }: { name: string; val
   );
 }
 
-/** Bot con dinero real en Bitunix (prueba mínima). Solo se ve en cuentas con la llave beta y cuando el servidor ya lo tiene. */
+/** Bot con dinero real (prueba mínima) en Bitunix o MEXC, a elección. Solo se ve en cuentas con la llave beta y cuando el servidor ya lo tiene. */
 export default function LiveBotCard({ userId, notify }: { userId: string; notify: Notify }) {
   const bot = useBot();
   const mfa = useMfa();
@@ -32,6 +32,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
   const [limits, setLimits] = useState<LiveSettings>(DEFAULT_LIVE);
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [stopArmed, setStopArmed] = useState(false);
+  const [pick, setPick] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -56,6 +57,11 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
 
   if (bot.status !== "ready" || unavailable || !view) return null;
   const { live } = view;
+  // El exchange que se está mirando: el activo del bot, o el que la persona tocó para conectarlo.
+  const shown = pick ?? view.exchange;
+  const exName = liveExchangeName(shown);
+  const hasShownKey = !!view.keys[shown];
+  const hint = view.keys[shown] ?? view.keyHint;
 
   const run = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -68,21 +74,35 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
     }
   };
 
+  const choose = (id: string) =>
+    run("exchange", async () => {
+      setPick(id);
+      // Si ya tiene clave guardada ahí, se pasa a ese exchange (queda apagado y hay que repetir la prueba); si no, se muestra para conectarla.
+      if (id !== view.exchange && view.keys[id]) {
+        const r = await switchLiveExchange(id);
+        if (!r.ok) return notify(r.error ?? t("No se pudo cambiar de exchange."), "err");
+        setPick(null);
+        notify(t("Ahora el bot real usa {x}. Quedó apagado: repetí la prueba.", { x: liveExchangeName(id) }), "info");
+        await reload();
+      }
+    });
+
   const connect = () =>
     run("connect", async () => {
-      if (!(await mfa.ask(t("Vas a guardar una clave de Bitunix con permiso de operar.")))) return;
-      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim());
+      if (!(await mfa.ask(t("Vas a guardar una clave de {x} con permiso de operar.", { x: exName })))) return;
+      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown);
       if (!r.ok) return notify(r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")), "err");
       setApiKey("");
       setApiSecret("");
+      setPick(null);
       notify(t("Clave guardada. Saldo disponible en futuros: {n} USDT.", { n: (r.available ?? 0).toFixed(2) }));
       await reload();
     });
 
   const disconnect = () =>
     run("disconnect", async () => {
-      if (!(await mfa.ask(t("Vas a borrar la clave de Bitunix del bot.")))) return;
-      const r = await disconnectTradeKey();
+      if (!(await mfa.ask(t("Vas a borrar la clave de {x} del bot.", { x: exName })))) return;
+      const r = await disconnectTradeKey(shown);
       if (!r.ok) return notify(r.error ?? t("No se pudo desconectar."), "err");
       notify(t("Clave borrada. El bot real quedó apagado."), "info");
       await reload();
@@ -97,7 +117,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
 
   const realTest = () =>
     run("test", async () => {
-      if (!(await mfa.ask(t("Vas a enviar una orden real mínima a Bitunix y cerrarla enseguida.")))) return;
+      if (!(await mfa.ask(t("Vas a enviar una orden real mínima a {x} y cerrarla enseguida.", { x: exName })))) return;
       const r = await testLiveOrder(true);
       if (!r.ok && r.code === "mfa_required") return notify(mfaErrorText(new Error("mfa_required"), ""), "err");
       setReport({ title: r.verified ? t("Prueba real superada") : t("La prueba real no salió completa"), steps: [...(r.steps ?? []), ...(r.error ? [`⚠️ ${r.error}`] : [])], ok: !!r.verified });
@@ -126,14 +146,14 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
     run("stop", async () => {
       setStopArmed(false);
       const r = await liveStop();
-      setReport({ title: r.ok ? t("Todo apagado") : t("Apagado con avisos: revisá Bitunix"), steps: r.steps ?? [], ok: !!r.ok });
+      setReport({ title: r.ok ? t("Todo apagado") : t("Apagado con avisos: revisá {x}", { x: exName }), steps: r.steps ?? [], ok: !!r.ok });
       await reload();
     });
 
   const mode = live.enabled ? (live.dryRun ? t("En seco") : t("Enviando órdenes reales")) : t("Apagado");
 
   return (
-    <Panel id="live" title={t("BOT CON DINERO REAL (PRUEBA)")} subtitle={t("Bitunix · monto mínimo · con topes de seguridad")} summary={mode} defaultOpen={false}>
+    <Panel id="live" title={t("BOT CON DINERO REAL")} subtitle={t("{x} · monto mínimo · con topes de seguridad", { x: liveExchangeName(view.exchange) })} summary={mode} defaultOpen={false}>
       <div className="space-y-4 p-5">
         <div className="rounded-md border border-bear/40 bg-bear/5 p-3.5 text-[12px] leading-relaxed text-fog">
           <p className="font-bold text-bear">⚠️ {t("Esto opera con plata de verdad")}</p>
@@ -142,11 +162,22 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
           </p>
         </div>
 
-        {!view.hasKey ? (
+        <div>
+          <p className={label}>{t("Exchange del bot real")}</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {LIVE_EXCHANGES.map((id) => (
+              <button key={id} type="button" onClick={() => choose(id)} disabled={busy != null} className={cx("rounded-md border px-3 py-1.5 text-[12px] font-bold transition-colors disabled:opacity-40", shown === id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-gold/50")}>
+                {liveExchangeName(id)}
+                {view.keys[id] && <span className={cx("ml-1.5 text-[10px]", shown === id ? "text-ink/70" : "text-bull")}>✓</span>}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{t("Elegí el exchange donde vos podés crear la clave de API. Cada uno tiene su propia clave y su propia prueba.")}</p>
+        </div>
+
+        {!hasShownKey ? (
           <div className="space-y-3">
-            <p className="text-[12.5px] leading-relaxed text-fog">
-              {t("1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.")}
-            </p>
+            <p className="text-[12.5px] leading-relaxed text-fog">{liveKeyGuide(shown)}</p>
             <label className="block">
               <span className={label}>{t("Clave (API key)")}</span>
               <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" spellCheck={false} className={field} />
@@ -156,14 +187,18 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
               <input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} type="password" autoComplete="off" spellCheck={false} className={field} />
             </label>
             <button onClick={connect} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/20 disabled:opacity-40">
-              {busy === "connect" ? t("Verificando…") : t("Guardar clave de Bitunix")}
+              {busy === "connect" ? t("Verificando…") : t("Guardar clave de {x}", { x: exName })}
             </button>
           </div>
+        ) : shown !== view.exchange ? (
+          <button onClick={() => choose(shown)} disabled={busy != null} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold hover:bg-gold/20 disabled:opacity-40">
+            {t("Usar {x} para el bot real", { x: exName })}
+          </button>
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-ink/50 px-3 py-2.5">
               <p className="text-[12.5px] text-snow">
-                ✅ {t("Clave guardada")} <span className="num text-dim">····{view.keyHint}</span> · <span className={cx("font-bold", live.verified ? "text-bull" : "text-gold")}>{live.verified ? t("Prueba real superada") : t("Falta la prueba real")}</span>
+                ✅ {t("Clave guardada")} <span className="num text-dim">····{hint}</span> · <span className={cx("font-bold", live.verified ? "text-bull" : "text-gold")}>{live.verified ? t("Prueba real superada") : t("Falta la prueba real")}</span>
               </p>
               <button onClick={disconnect} disabled={busy != null} className="rounded border border-line px-2.5 py-1 text-[11px] font-semibold text-dim hover:border-bear/50 hover:text-bear disabled:opacity-40">
                 {t("Borrar clave")}
@@ -234,7 +269,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
                   ⛔ {t("Apagar todo y cerrar posiciones")}
                 </button>
               )}
-              <p className="mt-1 text-[11px] text-dim">{t("Apaga el bot real, cancela las órdenes pendientes y cierra las posiciones abiertas. Siempre revisá Bitunix por las dudas.")}</p>
+              <p className="mt-1 text-[11px] text-dim">{t("Apaga el bot real, cancela las órdenes pendientes y cierra las posiciones abiertas. Siempre revisá {x} por las dudas.", { x: exName })}</p>
             </div>
           </>
         )}
