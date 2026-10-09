@@ -141,6 +141,9 @@ export default function Auth({ initialNotice }: { initialNotice?: string | null 
             <a href="#como" onClick={(e) => { e.preventDefault(); document.getElementById("como")?.scrollIntoView({ behavior: "smooth" }); }} className="rounded-md border border-cyan/50 px-6 py-3 text-[13px] font-bold uppercase tracking-wider text-cyan transition-colors hover:bg-cyan/10">
               {t("Ver cómo funciona")}
             </a>
+            <a href="/app" className="rounded-md border border-bull/50 px-6 py-3 text-[13px] font-bold uppercase tracking-wider text-bull transition-colors hover:bg-bull/10">
+              {t("📱 App para Android")}
+            </a>
           </div>
           <ul className="mt-5 flex flex-wrap justify-center gap-2.5 lg:justify-start">
             {HIGHLIGHTS.map(([icon, tone, label]) => (

@@ -77,7 +77,7 @@ import Panel, { jumpToPanel, openAllPanels } from "./components/Panel";
 const LiquidationMap = lazy(() => import("./components/LiquidationMap"));
 const ChartCard = lazy(() => import("./components/ChartCard"));
 import HomeTiles, { PageHead } from "./components/HomeTiles";
-import { HomeHero, HomeStatus, RecentTrades } from "./components/HomeExtras";
+import { HomeApp, HomeHero, HomeStatus, RecentTrades } from "./components/HomeExtras";
 import { NavBar, useView } from "./nav";
 import type { View } from "./nav";
 const CoachCard = lazy(() => import("./components/CoachCard"));
@@ -806,6 +806,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
               </>
             )}
             <HomeStatus botReady={botReady} botOn={botState.settings.enabled} userId={userId} go={go} />
+            <HomeApp />
             <HomeTiles go={go} botReady={botReady} botOn={botState.settings.enabled} openCount={trades.filter((x) => x.outcome === "ABIERTA").length} />
           </>
         )}
@@ -953,6 +954,10 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                 {t("Sesión de")} <span className="num text-fog">{email}</span>
               </>
             )}
+            {" · "}
+            <a href="/app" className="font-semibold text-cyan underline underline-offset-2 hover:text-snow">
+              {t("App Android")}
+            </a>
             {trades.length > 0 && (
               <>
                 {" · "}
