@@ -175,3 +175,18 @@ export function RecentTrades({ trades, go }: { trades: Trade[]; go: (v: View) =>
     </section>
   );
 }
+
+/** Descarga de la app para Android (lleva a la página con los pasos de instalación). */
+export function HomeApp() {
+  return (
+    <section aria-label={t("App para Android")} className="glass flex flex-wrap items-center justify-between gap-4 rounded-xl p-5">
+      <div className="min-w-0">
+        <h2 className="font-display text-xl font-bold tracking-wide text-snow">{t("📱 Descargá la app para Android")}</h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-fog">{t("Señales, diario y bot en tu celular, con avisos de cada target. Se instala encima de la anterior sin perder nada.")}</p>
+      </div>
+      <a href="/app" className="shrink-0 rounded-md bg-gold px-5 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110">
+        {t("Descargar")}
+      </a>
+    </section>
+  );
+}
