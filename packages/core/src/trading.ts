@@ -1621,9 +1621,8 @@ export interface LiveSettings {
 export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
-// MEXC no está: sus futuros no aceptan órdenes por API (responde «Access Denied» al enviar la orden); solo sirve para importar el diario.
-export const LIVE_EXCHANGES = ["bitunix", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
-export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number] | "mexc";
+export const LIVE_EXCHANGES = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
+export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
 export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
 /** Los que piden además una contraseña de la API (passphrase). */
 export const liveNeedsPass = (id: string | null | undefined) => id === "okx" || id === "bitget" || id === "kucoin";
@@ -1634,7 +1633,7 @@ export function liveKeyGuide(id: string | null | undefined): string {
   const end = tr("Pasá a futuros solo lo que quieras arriesgar. Pegala acá: se guarda cifrada y es la única que usa el bot.");
   switch (id) {
     case "mexc":
-      return tr("1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+      return tr("1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot. AVISO: MEXC suele bloquear el envío de órdenes de futuros por API («Access Denied»). Si te pasa, pedile al soporte de MEXC que habilite la API de futuros en tu cuenta, o usá otro exchange.");
     case "binance":
       return `${tr("1. En Binance (Perfil → Gestión de API → Crear API → generada por el sistema) tildá «Habilitar lectura» y «Habilitar Futuros». NO tildes retiros ni transferencias, y dejá la IP sin restricción.")} ${end}`;
     case "bybit":

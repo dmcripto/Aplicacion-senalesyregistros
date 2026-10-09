@@ -70,7 +70,8 @@ export async function mexcCall(fetchFn: FetchFn, method: "GET" | "POST", path: s
         /* no era JSON */
       }
       const code = j?.code === undefined ? null : Number(j.code);
-      last = { ok: res.status < 400 && j?.success !== false && (code === null || code === 0) && j !== null, status: res.status, code, msg: String(j?.message ?? j?.msg ?? (j ? "" : text.slice(0, 120))), data: j?.data };
+      const blocked = j === null && /access denied/i.test(text);
+      last = { ok: res.status < 400 && j?.success !== false && (code === null || code === 0) && j !== null, status: res.status, code, msg: blocked ? "MEXC bloqueó el pedido (Access Denied). MEXC no deja enviar órdenes de futuros por API en muchas cuentas: pedile a su soporte que habilite la API de futuros, o usá otro exchange." : String(j?.message ?? j?.msg ?? (j ? "" : text.slice(0, 120))), data: j?.data };
       // Solo se prueba la otra dirección si esta ni siquiera conoce la ruta (404): nunca después de un pedido que pudo llegar.
       if (res.status !== 404) return last;
     } catch {
