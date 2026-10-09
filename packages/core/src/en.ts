@@ -679,6 +679,8 @@ export const EN: Record<string, string> = {
   "1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.": "1. In MEXC (Profile → API Management → Create new key) tick, under Futures: “View account details”, “View order details” and “Place orders”. Do NOT tick anything under Spot (withdraw, transfer) or P2P, and do not bind any IP (MEXC expires that key after 90 days: then you create another one). Move to futures only what you are willing to risk. 2. Paste it here: it is stored encrypted and it is the only one the bot uses.",
   "BOT CON DINERO REAL": "REAL-MONEY BOT",
   "Cargando…": "Loading…",
+  "No se pudo cargar": "Could not load",
+  "No se pudo cargar el panel del bot real.": "Could not load the real-money bot panel.",
   "Señales en vivo": "Live signals",
   "Gráfico con indicadores": "Chart with indicators",
   "Alertas propias": "Your own alerts",

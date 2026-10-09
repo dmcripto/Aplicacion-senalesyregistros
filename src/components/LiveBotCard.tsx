@@ -26,6 +26,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
   const mfa = useMfa();
   const [view, setView] = useState<LiveView | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
@@ -41,8 +42,10 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
       setView(v);
       setLimits(v.live);
       setUnavailable(false);
-    } catch {
+      setLoadError("");
+    } catch (e) {
       setUnavailable(true);
+      setLoadError(e instanceof Error ? e.message : "");
     }
   }, [userId]);
 
@@ -56,7 +59,21 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
     return () => window.clearTimeout(id);
   }, [stopArmed]);
 
-  if (bot.status !== "ready" || unavailable || !view) return null;
+  if (bot.status !== "ready") return null;
+  // Las cuentas sin la llave beta no ven nada; si falla por otro motivo, se muestra qué pasó (antes el panel desaparecía en silencio).
+  if (unavailable && !/todav[ií]a no est[aá] disponible/i.test(loadError)) {
+    return (
+      <Panel id="live" title={t("BOT CON DINERO REAL")} subtitle={t("No se pudo cargar")} summary={t("No se pudo cargar")} defaultOpen>
+        <div className="space-y-3 p-5">
+          <p className="text-[12.5px] leading-relaxed text-fog">{t("No se pudo cargar el panel del bot real.")} {loadError && <span className="num text-dim">({loadError})</span>}</p>
+          <button onClick={() => void reload()} className="rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold hover:bg-gold/20">
+            {t("Reintentar")}
+          </button>
+        </div>
+      </Panel>
+    );
+  }
+  if (unavailable || !view) return null;
   const { live } = view;
   // El exchange que se está mirando: el activo del bot, o el que la persona tocó para conectarlo.
   const shown = pick ?? view.exchange;
