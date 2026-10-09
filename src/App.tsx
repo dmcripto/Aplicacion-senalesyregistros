@@ -70,6 +70,7 @@ const ExchangeCard = lazy(() => import("./components/ExchangeCard"));
 const BotCard = lazy(() => import("./components/BotCard"));
 const LiveBotCard = lazy(() => import("./components/LiveBotCard"));
 const BotVideo = lazy(() => import("./components/BotVideo"));
+const DownloadApp = lazy(() => import("./components/DownloadApp"));
 const SignalFeedCard = lazy(() => import("./components/SignalFeedCard"));
 const InviteCard = lazy(() => import("./components/InviteCard"));
 const TelegramCard = lazy(() => import("./components/TelegramCard"));
@@ -922,6 +923,15 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                 <ExchangeCard money={money} notify={notify} onSaveMoney={persistMoney} />
               </div>
             </div>
+          </>
+        )}
+
+        {view === "download" && (
+          <>
+            <PageHead view="download" />
+            <Suspense fallback={null}>
+              <DownloadApp />
+            </Suspense>
           </>
         )}
 
