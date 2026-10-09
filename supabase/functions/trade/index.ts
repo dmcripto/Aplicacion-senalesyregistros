@@ -272,7 +272,11 @@ async function testOrder(userId: string, confirm: boolean) {
   }
   await logOrder({ ...base, dry_run: false, status: "sent", note: steps.join(" | "), request: body, response: placed.data });
   const verified = placed.ok && !!mine && closed;
-  if (verified) await admin.from("bot_live").update({ verified: true, errors: 0, last_error: null }).eq("user_id", userId);
+  if (verified) {
+    await admin.from("bot_live").update({ verified: true, errors: 0, last_error: null }).eq("user_id", userId);
+    // La prueba queda guardada junto a la clave de ese exchange: al volver a él no hay que repetirla.
+    await admin.from("trade_keys").update({ verified: true }).eq("user_id", userId).eq("exchange", ex.id);
+  }
   return { ok: verified, verified, steps, error: verified ? undefined : "La prueba no salió completa: el modo automático sigue sin habilitarse." };
 }
 
@@ -360,7 +364,7 @@ Deno.serve(async (req) => {
         if (apiKey.length < 8 || apiKey.length > 200 || apiSecretOnly.length < 8 || apiSecretOnly.length > 400) return json({ ok: false, error: "Revisá la clave y la clave secreta: parecen incompletas." }, 400);
         const bal = await ex.balance(fetch, apiKey, apiSecret);
         if (!bal.ok) return json({ ok: false, error: `${ex.name} no aceptó la clave (${bal.msg || (bal.code ?? "sin respuesta")}). Revisá que tenga permiso de futuros y de operar, y que esté bien copiada.` }, 400);
-        const { error } = await admin.from("trade_keys").upsert({ user_id: user.id, exchange: ex.id, key_hint: apiKey.slice(-4), api_key: apiKey, secret_enc: await encryptSecret(apiSecret, master) }, { onConflict: "user_id,exchange" });
+        const { error } = await admin.from("trade_keys").upsert({ user_id: user.id, exchange: ex.id, key_hint: apiKey.slice(-4), api_key: apiKey, secret_enc: await encryptSecret(apiSecret, master), verified: false }, { onConflict: "user_id,exchange" });
         if (error) return json({ ok: false, error: "No se pudo guardar la clave." }, 500);
         // Una clave nueva siempre empieza apagada, en seco y sin verificar.
         const { error: lerr } = await admin.from("bot_live").upsert({ user_id: user.id, exchange: ex.id, enabled: false, dry_run: true, verified: false, errors: 0, last_error: null }, { onConflict: "user_id" });
@@ -368,13 +372,13 @@ Deno.serve(async (req) => {
         return json({ ok: true, available: bal.available, keyHint: apiKey.slice(-4), exchange: ex.id });
       }
       case "use_exchange": {
-        // Cambiar a un exchange que ya tiene clave guardada: queda apagado, en seco y sin verificar (la prueba mínima se hace de nuevo).
+        // Cambiar a un exchange que ya tiene clave guardada: queda apagado y en seco; la prueba mínima ya hecha en ese exchange se conserva.
         if (!isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);
-        const { data: k } = await admin.from("trade_keys").select("key_hint").eq("user_id", user.id).eq("exchange", body.exchange).maybeSingle();
+        const { data: k } = await admin.from("trade_keys").select("key_hint, verified").eq("user_id", user.id).eq("exchange", body.exchange).maybeSingle();
         if (!k) return json({ ok: false, error: "Primero conectá la clave de ese exchange." }, 400);
-        const { error } = await admin.from("bot_live").upsert({ user_id: user.id, exchange: body.exchange, enabled: false, dry_run: true, verified: false, errors: 0, last_error: null }, { onConflict: "user_id" });
+        const { error } = await admin.from("bot_live").upsert({ user_id: user.id, exchange: body.exchange, enabled: false, dry_run: true, verified: !!(k as { verified?: boolean }).verified, errors: 0, last_error: null }, { onConflict: "user_id" });
         if (error) return json({ ok: false, error: "No se pudo cambiar de exchange." }, 500);
-        return json({ ok: true, exchange: body.exchange });
+        return json({ ok: true, exchange: body.exchange, verified: !!(k as { verified?: boolean }).verified });
       }
       case "disconnect_key": {
         if (body.exchange !== undefined && !isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);

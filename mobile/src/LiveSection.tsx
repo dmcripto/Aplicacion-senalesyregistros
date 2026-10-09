@@ -76,12 +76,12 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const choose = (id: string) =>
     run("exchange", async () => {
       setPick(id);
-      // Si ya tiene clave guardada ahí, se pasa a ese exchange (queda apagado y hay que repetir la prueba); si no, se muestra para conectarla.
+      // Si ya tiene clave guardada ahí, se pasa a ese exchange (queda apagado; la prueba ya hecha en ese exchange se conserva); si no, se muestra para conectarla.
       if (id !== view.exchange && view.keys[id]) {
         const r = await switchLiveExchange(id);
         if (!r.ok) return Alert.alert(t("Error"), r.error ?? t("No se pudo cambiar de exchange."));
         setPick(null);
-        Alert.alert(t("Listo"), t("Ahora el bot real usa {x}. Quedó apagado: repetí la prueba.", { x: liveExchangeName(id) }));
+        Alert.alert(t("Listo"), r.verified ? t("Ahora el bot real usa {x}. Quedó apagado; su prueba real ya estaba hecha.", { x: liveExchangeName(id) }) : t("Ahora el bot real usa {x}. Quedó apagado: falta su prueba real.", { x: liveExchangeName(id) }));
         await reload();
       }
     });
