@@ -75,11 +75,27 @@ export function createMfa(auth: AuthLike) {
   }
 
   /** Confirma un código de 6 números. Si es correcto, la sesión queda autorizada por unos minutos. */
-  async function verify(factorId: string, code: string): Promise<void> {
+  async function verifyOne(factorId: string, code: string): Promise<Error | null> {
     const c = await auth.mfa.challenge({ factorId });
-    if (c.error) fail(c.error, t("No se pudo verificar."));
+    if (c.error) return new Error(c.error.message || t("No se pudo verificar."));
     const v = await auth.mfa.verify({ factorId, challengeId: c.data.id, code: cleanMfaCode(code) });
-    if (v.error) throw new Error(/invalid|expired/i.test(v.error.message ?? "") ? t("Código incorrecto o vencido. Probá con el siguiente que muestra la app.") : v.error.message || t("No se pudo verificar."));
+    if (v.error) return new Error(/invalid|expired/i.test(v.error.message ?? "") ? t("Código incorrecto o vencido. Probá con el siguiente que muestra la app.") : v.error.message || t("No se pudo verificar."));
+    return null;
+  }
+
+  /**
+   * Si la cuenta quedó con más de un factor verificado (por ejemplo, el 2FA se activó dos veces), el código de la app puede
+   * pertenecer a cualquiera de ellos: se prueba primero el pedido y después los otros. Todos son de la misma persona.
+   */
+  async function verify(factorId: string, code: string): Promise<void> {
+    const first = await verifyOne(factorId, code);
+    if (!first) return;
+    const { data } = await auth.mfa.listFactors();
+    const others = ((data?.totp ?? []) as Array<{ id: string; status: string }>).filter((f) => f.status === "verified" && f.id !== factorId);
+    for (const f of others) {
+      if (!(await verifyOne(f.id, code))) return;
+    }
+    throw first;
   }
 
   /** Primer paso de la activación: crea el factor y devuelve el QR. (Limpia intentos anteriores sin terminar.) */
