@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
 import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
@@ -90,6 +90,9 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
   return (
     <>
     <Text style={titleStyle}>{t("BOT AUTOMÁTICO")}</Text>
+    <TouchableOpacity style={[st.outline, { marginBottom: 10 }]} onPress={() => Linking.openURL("https://veltrix-trading.vercel.app/bot-automatico.mp4").catch(() => {})}>
+      <Text style={st.outlineText}>{"🎬 "}{t("Ver el video: cómo funciona el bot (1 min 50 s)")}</Text>
+    </TouchableOpacity>
     <View style={st.card}>
       {stale != null && (
         <View style={[st.notice, { borderColor: colors.bear + "88", backgroundColor: colors.bear + "14" }]}>

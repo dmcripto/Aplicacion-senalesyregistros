@@ -32,7 +32,6 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
   const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
   const [labBusy, setLabBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -259,18 +258,6 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           )}
           {s.rules.length > 0 && <p className="mt-1.5 text-[10.5px] leading-relaxed text-dim">{t("Para saber si te ayudan, corré «Probar con los últimos 4 meses»: compara el bot con y sin tus reglas.")}</p>}
         </div>
-
-        <details className="rounded-md border border-line bg-ink/40 text-[11.5px]" onToggle={(e) => setShowVideo((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">{t("Ver cómo funciona (video)")}</summary>
-          <div className="space-y-2 border-t border-line px-3 py-3">
-            {showVideo && (
-              <video className="w-full rounded-md border border-line bg-black" controls preload="metadata" poster="/bot-automatico.jpg" playsInline>
-                <source src="/bot-automatico.mp4" type="video/mp4" />
-              </video>
-            )}
-            <p className="leading-relaxed text-dim">{t("1 min 50 s · por defecto el bot opera en modo simulado, sin dinero real; el modo real es opcional y arriesga plata de verdad. Contenido educativo, no asesoramiento financiero.")}</p>
-          </div>
-        </details>
 
         <details className="rounded-md border border-line bg-ink/40 text-[11.5px]">
           <summary className="cursor-pointer select-none px-3 py-2.5 font-bold uppercase tracking-[0.12em] text-gold">{t("Cómo decide")}</summary>

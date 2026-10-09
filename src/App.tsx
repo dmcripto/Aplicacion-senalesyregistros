@@ -69,6 +69,7 @@ const MoneyCard = lazy(() => import("./components/MoneyCard"));
 const ExchangeCard = lazy(() => import("./components/ExchangeCard"));
 const BotCard = lazy(() => import("./components/BotCard"));
 const LiveBotCard = lazy(() => import("./components/LiveBotCard"));
+const BotVideo = lazy(() => import("./components/BotVideo"));
 const SignalFeedCard = lazy(() => import("./components/SignalFeedCard"));
 const InviteCard = lazy(() => import("./components/InviteCard"));
 const TelegramCard = lazy(() => import("./components/TelegramCard"));
@@ -894,6 +895,9 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {view === "bot" && (
           <>
             <PageHead view="bot" />
+            <Suspense fallback={null}>
+              <BotVideo />
+            </Suspense>
             <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
               <BotCard userId={userId} notify={notify} />
               <div className="min-w-0 space-y-5">
