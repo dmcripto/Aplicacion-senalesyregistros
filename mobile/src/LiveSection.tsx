@@ -180,6 +180,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         <View style={s.warn}>
           <Text style={{ color: colors.bear, fontWeight: "800", fontSize: 12.5 }}>{"⚠️ "}{t("Esto opera con plata de verdad")}</Text>
           <Text style={s.hint}>{t("La estrategia todavía no demostró ganar: con montos tan chicos las comisiones pueden pesar más que cualquier ganancia. Usalo solo para comprobar que todo funciona, con plata que puedas perder. Nunca se usan retiros.")}</Text>
+                  <Text style={[s.hint, { color: colors.snow, fontWeight: "700" }]}>{t("Esto no constituye un consejo de inversión ni asesoramiento financiero. Cada persona decide y opera bajo su propia responsabilidad, y puede perder todo lo que arriesga.")}</Text>
         </View>
 
         <Text style={s.label}>{t("Exchange del bot real")}</Text>

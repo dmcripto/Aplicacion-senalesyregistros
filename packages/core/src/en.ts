@@ -1077,6 +1077,7 @@ export const EN: Record<string, string> = {
   "La imagen muestra solo resultados en R: no incluye montos de dinero ni datos de tu cuenta.": "The image shows results in R only: it includes no money amounts or account data.",
   "operación cerrada": "closed trade",
   "operaciones cerradas": "closed trades",
+  "Esto no constituye un consejo de inversión ni asesoramiento financiero. Cada persona decide y opera bajo su propia responsabilidad, y puede perder todo lo que arriesga.": "This is not investment advice or financial advisory. Everyone decides and trades at their own responsibility, and may lose everything they risk.",
   "Alcance": "Scope",
   "Solo mis activos": "Only my assets",
   "Top {n} por volumen": "Top {n} by volume",

@@ -31,6 +31,7 @@ export default function DownloadApp() {
         </ol>
         <p className="mt-4 text-[11.5px] leading-relaxed text-dim">{t("Es el análisis automático de Android: no es una aprobación de Google Play ni una garantía absoluta. Por eso la app se instala por fuera de la tienda y Chrome puede avisar.")}</p>
       </section>
+      <p className="text-[11.5px] leading-relaxed text-dim lg:col-span-2">{t("Esto no constituye un consejo de inversión ni asesoramiento financiero. Cada persona decide y opera bajo su propia responsabilidad, y puede perder todo lo que arriesga.")}</p>
     </div>
   );
 }
