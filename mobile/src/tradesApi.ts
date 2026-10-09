@@ -497,6 +497,9 @@ export const unlinkWhatsApp = () => callFunction<WaReply>("whatsapp", { action: 
 // ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
 
 export interface LiveView {
+  /** Exchange activo del bot real y las claves guardadas (últimos 4 caracteres) de cada uno. */
+  exchange: string;
+  keys: Record<string, string>;
   hasKey: boolean;
   keyHint: string | null;
   live: LiveSettings;
@@ -504,7 +507,7 @@ export interface LiveView {
 }
 
 type LiveReply = { ok: boolean; error?: string; code?: string; steps?: string[]; preview?: boolean; verified?: boolean; available?: number };
-const callTrade = (body: Record<string, unknown>) => callFunction<LiveReply & { hasKey?: boolean; keyHint?: string | null; live?: Record<string, unknown> | null }>("trade", body);
+const callTrade = (body: Record<string, unknown>) => callFunction<LiveReply & { hasKey?: boolean; keyHint?: string | null; exchange?: string; keys?: Record<string, string>; live?: Record<string, unknown> | null }>("trade", body);
 
 const liveFromRow = (r: Record<string, unknown> | null | undefined): LiveSettings =>
   r
@@ -538,7 +541,7 @@ export async function fetchLive(userId: string): Promise<LiveView> {
     note: (o.note as string | null) ?? null,
     createdAt: String(o.created_at),
   }));
-  return { hasKey: !!st.hasKey, keyHint: st.keyHint ?? null, live: liveFromRow(st.live), orders };
+  return { exchange: st.exchange ?? "bitunix", keys: st.keys ?? {}, hasKey: !!st.hasKey, keyHint: st.keyHint ?? null, live: liveFromRow(st.live), orders };
 }
 
 /** Guarda los ajustes (la base rechaza lo que pase los topes, y no deja enviar de verdad sin la orden de prueba). */
@@ -555,8 +558,9 @@ export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "en
   if (error) throw new Error(error.message);
 }
 
-export const connectTradeKey = (apiKey: string, apiSecret: string) => callTrade({ action: "connect_key", apiKey, apiSecret });
-export const disconnectTradeKey = () => callTrade({ action: "disconnect_key" });
+export const connectTradeKey = (apiKey: string, apiSecret: string, exchange = "bitunix") => callTrade({ action: "connect_key", exchange, apiKey, apiSecret });
+export const disconnectTradeKey = (exchange?: string) => callTrade({ action: "disconnect_key", ...(exchange ? { exchange } : {}) });
+export const switchLiveExchange = (exchange: string) => callTrade({ action: "use_exchange", exchange });
 export const testLiveOrder = (confirm: boolean) => callTrade({ action: "test_order", confirm });
 export const liveStop = () => callTrade({ action: "panic" });
 

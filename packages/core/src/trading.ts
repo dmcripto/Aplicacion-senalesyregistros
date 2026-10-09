@@ -1602,7 +1602,7 @@ export interface SignalFeedState {
   followers: number | null; // solo para quien las publica: cuántas personas las reciben
 }
 
-// ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
+// ─── Bot con dinero real (prueba mínima, en Bitunix o MEXC a elección) ──────
 
 /** Ajustes del bot con dinero real. Los topes máximos también están en la base de datos: la app no puede pasarlos. */
 export interface LiveSettings {
@@ -1619,6 +1619,19 @@ export interface LiveSettings {
 }
 
 export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
+
+/** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
+export const LIVE_EXCHANGES = ["bitunix", "mexc"] as const;
+export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
+export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC" };
+export const liveExchangeName = (id: string | null | undefined) => LIVE_EXCHANGE_NAMES[(LIVE_EXCHANGES as readonly string[]).includes(id ?? "") ? (id as LiveExchangeId) : "bitunix"];
+
+/** Cómo crear la clave que usa el bot real en cada exchange. */
+export function liveKeyGuide(id: string | null | undefined): string {
+  return id === "mexc"
+    ? tr("1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.")
+    : tr("1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+}
 
 export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
 

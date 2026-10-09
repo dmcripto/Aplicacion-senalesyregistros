@@ -16,6 +16,8 @@ export interface BxPair {
   maxLeverage: number;
   /** Decimales del precio (para redondear stop y objetivo); null si el exchange no lo informó. */
   priceDecimals?: number | null;
+  /** Si el exchange solo acepta tamaños múltiplos de un paso (por ejemplo contratos), ese paso en moneda base. */
+  qtyStep?: number;
 }
 
 export interface BxCfg {
@@ -55,7 +57,7 @@ export function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg
   const levCap = Math.max(1, Math.min(cfg.max_leverage, pair.maxLeverage > 0 ? pair.maxLeverage : cfg.max_leverage));
   const maxNotional = cfg.max_margin_usdt * levCap;
   const wanted = Math.min(cfg.risk_usdt / dist, maxNotional / price);
-  const qty = floorTo(wanted, pair.qtyDecimals);
+  const qty = pair.qtyStep && pair.qtyStep > 0 ? floorTo(Math.floor(wanted / pair.qtyStep + 1e-9) * pair.qtyStep, pair.qtyDecimals) : floorTo(wanted, pair.qtyDecimals);
   if (!(qty > 0) || qty < pair.minQty) return { ok: false, reason: `Con tus topes el tamaño (${wanted.toPrecision(2)}) queda por debajo del mínimo del exchange (${pair.minQty}).` };
   const notional = qty * price;
   const leverage = Math.min(levCap, Math.max(1, Math.ceil(notional / cfg.max_margin_usdt)));
