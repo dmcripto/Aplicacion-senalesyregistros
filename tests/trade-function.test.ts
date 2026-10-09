@@ -107,14 +107,14 @@ describe("función trade: acceso y clave", () => {
     expect(db.tables.trade_keys).toHaveLength(0);
   });
 
-  it("con 2FA activo y sin código reciente no deja conectar ni desconectar", async () => {
+  it("con 2FA activo y sin código reciente no deja conectar, pero sí borrar la clave", async () => {
     db.rpcs.mfa_step_ok = () => ({ data: false });
     const a = await call({ action: "connect_key", apiKey: "KEYKEYKEY1234", apiSecret: "SECRETSECRET" });
     expect(a.status).toBe(403);
     expect(a.body.code).toBe("mfa_required");
     db.tables.trade_keys = [{ user_id: "u1", exchange: "bitunix" }];
-    expect((await call({ action: "disconnect_key" })).status).toBe(403);
-    expect(db.tables.trade_keys).toHaveLength(1);
+    expect((await call({ action: "disconnect_key" })).status).toBe(200);
+    expect(db.tables.trade_keys).toHaveLength(0);
   });
 
   it("desconectar borra la clave y apaga todo", async () => {
