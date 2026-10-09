@@ -93,7 +93,7 @@ describe("bot real con MEXC: clave y exchange", () => {
     expect(db.tables.trade_keys).toHaveLength(0);
   });
 
-  it("cambiar a un exchange con clave guardada deja el bot apagado, en seco y sin verificar; sin clave no deja", async () => {
+  it("cambiar a un exchange con clave guardada deja el bot apagado y en seco, sin verificar si no tenía prueba; sin clave no deja", async () => {
     await setupKey();
     db.tables.bot_live[0] = { ...db.tables.bot_live[0], exchange: "mexc", enabled: true, verified: true, dry_run: false };
     expect((await call({ action: "use_exchange", exchange: "bitunix" })).status).toBe(400);
@@ -101,6 +101,15 @@ describe("bot real con MEXC: clave y exchange", () => {
     const r = await call({ action: "use_exchange", exchange: "bitunix" });
     expect(r.status).toBe(200);
     expect(db.tables.bot_live[0]).toMatchObject({ exchange: "bitunix", enabled: false, dry_run: true, verified: false });
+  });
+
+  it("volver a un exchange cuya prueba real ya salió bien conserva la verificación (queda apagado)", async () => {
+    await setupKey();
+    db.tables.bot_live[0] = { ...db.tables.bot_live[0], exchange: "mexc", enabled: true, verified: false, dry_run: true };
+    db.tables.trade_keys.push({ user_id: "u1", exchange: "bitunix", key_hint: "9999", api_key: "x", secret_enc: "y", verified: true });
+    const r = await call({ action: "use_exchange", exchange: "bitunix" });
+    expect(r.body.verified).toBe(true);
+    expect(db.tables.bot_live[0]).toMatchObject({ exchange: "bitunix", enabled: false, dry_run: true, verified: true });
   });
 
   it("borrar la clave de otro exchange no apaga el bot del exchange activo", async () => {
