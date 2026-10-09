@@ -178,6 +178,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
           <p className="mt-1">
             {t("La estrategia todavía no demostró ganar: con montos tan chicos las comisiones pueden pesar más que cualquier ganancia. Usalo solo para comprobar que todo funciona, con plata que puedas perder. Nunca se usan retiros.")}
           </p>
+          <p className="mt-1.5 font-semibold text-snow">{t("Esto no constituye un consejo de inversión ni asesoramiento financiero. Cada persona decide y opera bajo su propia responsabilidad, y puede perder todo lo que arriesga.")}</p>
         </div>
 
         <div>
