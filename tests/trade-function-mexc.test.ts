@@ -75,7 +75,7 @@ describe("bot real con MEXC: clave y exchange", () => {
     expect(db.tables.bot_live[0]).toMatchObject({ exchange: "mexc", enabled: false, dry_run: true, verified: false });
     const st = await call({ action: "status" });
     expect(st.body).toMatchObject({ ok: true, exchange: "mexc", hasKey: true, keyHint: "1234", keys: { mexc: "1234" } });
-    expect(st.body.exchanges).toEqual(["bitunix", "mexc"]);
+    expect(st.body.exchanges).toEqual(["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"]);
     expect(JSON.stringify(st.body)).not.toContain("SECRETSECRET");
   });
 

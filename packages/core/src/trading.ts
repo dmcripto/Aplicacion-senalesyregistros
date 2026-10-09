@@ -1602,7 +1602,7 @@ export interface SignalFeedState {
   followers: number | null; // solo para quien las publica: cuántas personas las reciben
 }
 
-// ─── Bot con dinero real (prueba mínima, en Bitunix o MEXC a elección) ──────
+// ─── Bot con dinero real (prueba mínima, con el exchange que cada persona elija) ──────
 
 /** Ajustes del bot con dinero real. Los topes máximos también están en la base de datos: la app no puede pasarlos. */
 export interface LiveSettings {
@@ -1621,16 +1621,36 @@ export interface LiveSettings {
 export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
-export const LIVE_EXCHANGES = ["bitunix", "mexc"] as const;
+export const LIVE_EXCHANGES = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
 export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
-export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC" };
+export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
+/** Los que piden además una contraseña de la API (passphrase). */
+export const liveNeedsPass = (id: string | null | undefined) => id === "okx" || id === "bitget" || id === "kucoin";
 export const liveExchangeName = (id: string | null | undefined) => LIVE_EXCHANGE_NAMES[(LIVE_EXCHANGES as readonly string[]).includes(id ?? "") ? (id as LiveExchangeId) : "bitunix"];
 
 /** Cómo crear la clave que usa el bot real en cada exchange. */
 export function liveKeyGuide(id: string | null | undefined): string {
-  return id === "mexc"
-    ? tr("1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.")
-    : tr("1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+  const end = tr("Pasá a futuros solo lo que quieras arriesgar. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+  switch (id) {
+    case "mexc":
+      return tr("1. En MEXC (Perfil → Gestión de API → Crear nueva clave) marcá, dentro de Futuros: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Colocar órdenes». NO marques nada de Spot (retirar, transferir) ni de P2P, y no vincules ninguna IP (MEXC vence esa clave a los 90 días: entonces creás otra). Pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+    case "binance":
+      return `${tr("1. En Binance (Perfil → Gestión de API → Crear API → generada por el sistema) tildá «Habilitar lectura» y «Habilitar Futuros». NO tildes retiros ni transferencias, y dejá la IP sin restricción.")} ${end}`;
+    case "bybit":
+      return `${tr("1. En Bybit (Perfil → API → Crear nueva clave → generada por el sistema) elegí «Lectura y escritura» y tildá solo Contratos: órdenes y posiciones. NO actives billetera ni retiros, y dejá la IP sin restricción.")} ${end}`;
+    case "okx":
+      return `${tr("1. En OKX (Perfil → API → Crear clave) elegí permisos «Lectura» y «Operar». NO actives «Retirar», y dejá la IP sin restricción. Anotá la contraseña de la API (passphrase) que elijas: hay que pegarla acá también.")} ${end}`;
+    case "bitget":
+      return `${tr("1. En Bitget (Perfil → API → Crear API Key) elegí permisos de Futuros: lectura y operar órdenes. NO actives retirar ni transferir, y dejá la IP sin restricción. Anotá la contraseña de la API (passphrase) que elijas: hay que pegarla acá también.")} ${end}`;
+    case "bingx":
+      return `${tr("1. En BingX (Perfil → Gestión de API → Crear clave) tildá lectura y «Operar en futuros perpetuos». NO actives retiros ni transferencias, y dejá la IP sin restricción.")} ${end}`;
+    case "gate":
+      return `${tr("1. En Gate (Perfil → Gestión de API → Crear clave API v4) dale a «Futuros perpetuos» permiso de lectura y escritura. NO actives retiros ni billetera, y dejá la IP sin restricción.")} ${end}`;
+    case "kucoin":
+      return `${tr("1. En KuCoin (Perfil → Gestión de API → Crear API) elegí permisos «General» y «Futuros». NO actives transferencias ni retiros, y dejá la IP sin restricción. Anotá la contraseña de la API (passphrase) que elijas: hay que pegarla acá también.")} ${end}`;
+    default:
+      return tr("1. En Bitunix creá una clave de API comercial con permiso de operar en futuros (nunca de retiros) y pasá a futuros solo lo que quieras arriesgar. 2. Pegala acá: se guarda cifrada y es la única que usa el bot.");
+  }
 }
 
 export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };

@@ -1,8 +1,8 @@
-// VELTRIX · bot con dinero real (prueba mínima) en Bitunix o MEXC, a elección de cada persona.
+// VELTRIX · bot con dinero real (prueba mínima) en cualquiera de los 8 exchanges, a elección de cada persona.
 //
 //   POST /functions/v1/trade   (con la sesión de la persona en Authorization)
 //     { action: "status" }
-//     { action: "connect_key", exchange?, apiKey, apiSecret }     ← exchange: bitunix (por defecto) o mexc; pide el código de 2FA si la persona lo activó
+//     { action: "connect_key", exchange?, apiKey, apiSecret }     ← exchange: bitunix (por defecto), mexc, binance, bybit, okx, bitget, bingx o gate; apiPassphrase en okx y bitget; pide el código de 2FA si la persona lo activó
 //     { action: "disconnect_key", exchange? }                      ← ídem
 //     { action: "test_order", confirm?: boolean }       ← sin confirm: solo muestra lo que enviaría; con confirm: orden mínima real + cierre
 //     { action: "panic" }                               ← apaga el bot real, cancela órdenes y cierra posiciones (no pide 2FA)
@@ -16,7 +16,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { decryptSecret, encryptSecret } from "../_shared/exchanges.ts";
 import { planOrder } from "../_shared/bitunixTrade.ts";
 import type { BxCfg, BxSignal } from "../_shared/bitunixTrade.ts";
-import { isLiveExchange, liveEx, LIVE_EXCHANGES } from "../_shared/liveExchange.ts";
+import { isLiveExchange, liveEx, LIVE_EXCHANGES, LIVE_NEEDS_PASS } from "../_shared/liveExchange.ts";
+import { LV_PASS_SEP } from "../_shared/liveMore.ts";
 import type { LiveExchangeId } from "../_shared/liveExchange.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 
@@ -352,8 +353,11 @@ Deno.serve(async (req) => {
         if (!master || master.length < 16) return json({ ok: false, code: "not_configured", error: "Falta EXCHANGE_ENC_KEY en el servidor." }, 500);
         if (!(await stepOk(user.id, token))) return needMfa();
         const apiKey = String(body.apiKey ?? "").trim();
-        const apiSecret = String(body.apiSecret ?? "").trim();
-        if (apiKey.length < 8 || apiKey.length > 200 || apiSecret.length < 8 || apiSecret.length > 400) return json({ ok: false, error: "Revisá la clave y la clave secreta: parecen incompletas." }, 400);
+        const apiSecretOnly = String(body.apiSecret ?? "").trim();
+        const apiPass = String(body.apiPassphrase ?? "").trim();
+        if (LIVE_NEEDS_PASS.includes(ex.id) && (apiPass.length < 1 || apiPass.length > 200 || apiPass.includes(LV_PASS_SEP))) return json({ ok: false, error: `${ex.name} pide también la contraseña de la API (la que elegiste al crear la clave).` }, 400);
+        const apiSecret = LIVE_NEEDS_PASS.includes(ex.id) ? apiSecretOnly + LV_PASS_SEP + apiPass : apiSecretOnly;
+        if (apiKey.length < 8 || apiKey.length > 200 || apiSecretOnly.length < 8 || apiSecretOnly.length > 400) return json({ ok: false, error: "Revisá la clave y la clave secreta: parecen incompletas." }, 400);
         const bal = await ex.balance(fetch, apiKey, apiSecret);
         if (!bal.ok) return json({ ok: false, error: `${ex.name} no aceptó la clave (${bal.msg || (bal.code ?? "sin respuesta")}). Revisá que tenga permiso de futuros y de operar, y que esté bien copiada.` }, 400);
         const { error } = await admin.from("trade_keys").upsert({ user_id: user.id, exchange: ex.id, key_hint: apiKey.slice(-4), api_key: apiKey, secret_enc: await encryptSecret(apiSecret, master) }, { onConflict: "user_id,exchange" });
