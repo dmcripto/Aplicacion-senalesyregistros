@@ -103,7 +103,6 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
 
   const disconnect = () =>
     run("disconnect", async () => {
-      if (!(await mfa.ask(t("Vas a borrar la clave de {x} del bot.", { x: exName })))) return;
       const r = await disconnectTradeKey(shown);
       if (!r.ok) return notify(r.error ?? t("No se pudo desconectar."), "err");
       notify(t("Clave borrada. El bot real quedó apagado."), "info");

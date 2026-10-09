@@ -108,7 +108,6 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         style: "destructive",
         onPress: () =>
           run("disconnect", async () => {
-            if (!(await mfa.ask(t("Vas a borrar la clave de {x} del bot.", { x: exName })))) return;
             const r = await disconnectTradeKey(shown);
             if (!r.ok) return Alert.alert(t("Error"), r.error ?? t("No se pudo desconectar."));
             await reload();

@@ -3,7 +3,7 @@
 //   POST /functions/v1/trade   (con la sesión de la persona en Authorization)
 //     { action: "status" }
 //     { action: "connect_key", exchange?, apiKey, apiSecret }     ← exchange: bitunix (por defecto), mexc, binance, bybit, okx, bitget, bingx o gate; apiPassphrase en okx y bitget; pide el código de 2FA si la persona lo activó
-//     { action: "disconnect_key", exchange? }                      ← ídem
+//     { action: "disconnect_key", exchange? }                      ← no pide código (borrar una clave no puede costar plata)
 //     { action: "test_order", confirm?: boolean }       ← sin confirm: solo muestra lo que enviaría; con confirm: orden mínima real + cierre
 //     { action: "panic" }                               ← apaga el bot real, cancela órdenes y cierra posiciones (no pide 2FA)
 //
@@ -382,7 +382,7 @@ Deno.serve(async (req) => {
       }
       case "disconnect_key": {
         if (body.exchange !== undefined && !isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);
-        if (!(await stepOk(user.id, token))) return needMfa();
+        // Borrar una clave no pide código: solo quita permisos, no puede costar plata.
         const live = await loadLive(user.id);
         const target = liveEx(body.exchange ?? live?.exchange).id;
         // Solo se apaga el bot si la clave que se borra es la del exchange activo.
