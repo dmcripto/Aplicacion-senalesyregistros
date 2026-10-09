@@ -6,9 +6,9 @@ import { Icon, IconTile } from "./icons";
 import type { IconName, Tone } from "./icons";
 
 /** Pantallas de la web. Cada una es una «página»: la barra de arriba lleva de una a otra y el navegador recuerda cuál (atrás/adelante funcionan). */
-export type View = "home" | "journal" | "analysis" | "tools" | "chart" | "liq" | "bot" | "connections" | "account";
+export type View = "home" | "journal" | "analysis" | "tools" | "chart" | "liq" | "bot" | "connections" | "download" | "account";
 
-export const VIEWS: View[] = ["home", "journal", "analysis", "tools", "chart", "liq", "bot", "connections", "account"];
+export const VIEWS: View[] = ["home", "journal", "analysis", "tools", "chart", "liq", "bot", "connections", "download", "account"];
 
 /** Cada entrada del menú. Algunas llevan a una sección dentro de una pantalla (por ejemplo, las tres del Bot). */
 export type NavKey = View | "botreal" | "botfeed";
@@ -35,11 +35,12 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
   botreal: { view: "bot", panel: "live", icon: "coin", tone: "amber", title: "Bot con dinero real", desc: "Prueba mínima en Bitunix, con topes de seguridad." },
   botfeed: { view: "bot", panel: "feed", icon: "radio", tone: "violet", title: "Señales de VELTRIX", desc: "Las que publica el equipo, en tu diario y por aviso." },
   connections: { view: "connections", icon: "link", tone: "cyan", title: "Conexiones", desc: "Tu fuente de señales, Telegram, WhatsApp y exchanges." },
+  download: { view: "download", icon: "download", tone: "green", title: "Descargar la app", desc: "App para Android: señales, diario y bot en tu celular." },
   account: { view: "account", icon: "user", tone: "violet", title: "Cuenta", desc: "Capital, invitados y seguridad." },
 };
 
 /** Título y descripción de la pantalla del Bot (la barra tiene tres entradas, pero es una sola pantalla). */
-export const VIEW_HEAD: Record<View, NavKey> = { home: "home", journal: "journal", analysis: "analysis", tools: "tools", chart: "chart", liq: "liq", bot: "bot", connections: "connections", account: "account" };
+export const VIEW_HEAD: Record<View, NavKey> = { home: "home", journal: "journal", analysis: "analysis", tools: "tools", chart: "chart", liq: "liq", bot: "bot", connections: "connections", download: "download", account: "account" };
 
 interface Group {
   key: string;
@@ -54,6 +55,7 @@ const groups = (botReady: boolean): Group[] => [
   { key: "market", label: "Mercado", items: ["chart", "liq"] },
   ...(botReady ? [{ key: "bot", label: "Bot", items: ["bot", "botreal", "botfeed"] as NavKey[] }] : []),
   { key: "conn", label: "Conexiones", items: ["connections"] },
+  { key: "download", label: "Descargar", items: ["download"] },
   { key: "acct", label: "Cuenta", items: ["account"] },
 ];
 

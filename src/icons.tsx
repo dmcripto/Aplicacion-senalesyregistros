@@ -21,6 +21,7 @@ const PATHS = {
   bolt: "M13 3L5 14h6l-1 7 8-11h-6l1-7z",
   check: "M5 13l4 4L19 7",
   send: "M21 3L10 14M21 3l-7 18-4-7-7-4 18-7z",
+  download: "M12 3v12M7 11l5 5 5-5M5 21h14",
 } as const;
 
 export type IconName = keyof typeof PATHS;
