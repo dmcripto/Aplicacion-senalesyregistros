@@ -166,14 +166,14 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
 
         <div>
           <p className={label}>{t("Exchange del bot real")}</p>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <select className="field mt-1 w-full" value={shown} onChange={(e) => choose(e.target.value)} disabled={busy != null}>
             {LIVE_EXCHANGES.map((id) => (
-              <button key={id} type="button" onClick={() => choose(id)} disabled={busy != null} className={cx("rounded-md border px-3 py-1.5 text-[12px] font-bold transition-colors disabled:opacity-40", shown === id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-gold/50")}>
+              <option key={id} value={id}>
                 {liveExchangeName(id)}
-                {view.keys[id] && <span className={cx("ml-1.5 text-[10px]", shown === id ? "text-ink/70" : "text-bull")}>✓</span>}
-              </button>
+                {id === view.exchange && view.keys[id] ? ` · ${t("en uso por el bot")}` : view.keys[id] ? ` · ${t("clave guardada")}` : ` · ${t("sin clave")}`}
+              </option>
             ))}
-          </div>
+          </select>
           <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{t("Elegí el exchange donde vos podés crear la clave de API. Cada uno tiene su propia clave y su propia prueba.")}</p>
         </div>
 

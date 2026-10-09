@@ -30,6 +30,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [apiPass, setApiPass] = useState("");
+  const [openList, setOpenList] = useState(false);
   const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", daily: "0.5" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
@@ -183,13 +184,19 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         </View>
 
         <Text style={s.label}>{t("Exchange del bot real")}</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {LIVE_EXCHANGES.map((id) => (
-            <TouchableOpacity key={id} disabled={busy != null} onPress={() => choose(id)} style={[s.chip, shown === id && s.chipOn, busy != null && { opacity: 0.5 }]}>
-              <Text style={[s.chipText, shown === id && { color: colors.ink }]}>{liveExchangeName(id)}{view.keys[id] ? " ✓" : ""}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <TouchableOpacity disabled={busy != null} onPress={() => setOpenList((o) => !o)} style={[s.chip, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }, busy != null && { opacity: 0.5 }]}>
+          <Text style={s.chipText}>{liveExchangeName(shown)}{shown === view.exchange && view.keys[shown] ? ` · ${t("en uso por el bot")}` : view.keys[shown] ? ` · ${t("clave guardada")}` : ` · ${t("sin clave")}`}</Text>
+          <Text style={{ color: colors.gold }}>{openList ? "▴" : "▾"}</Text>
+        </TouchableOpacity>
+        {openList && (
+          <View style={{ borderWidth: 1, borderColor: colors.line, borderRadius: 8, overflow: "hidden" }}>
+            {LIVE_EXCHANGES.map((id) => (
+              <TouchableOpacity key={id} disabled={busy != null} onPress={() => { setOpenList(false); choose(id); }} style={{ paddingVertical: 11, paddingHorizontal: 14, backgroundColor: shown === id ? colors.gold : "transparent" }}>
+                <Text style={[s.chipText, shown === id && { color: colors.ink }]}>{liveExchangeName(id)}{id === view.exchange && view.keys[id] ? ` · ${t("en uso por el bot")}` : view.keys[id] ? ` · ${t("clave guardada")}` : ` · ${t("sin clave")}`}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <Text style={s.hint}>{t("Elegí el exchange donde vos podés crear la clave de API. Cada uno tiene su propia clave y su propia prueba.")}</Text>
 
         {!hasShownKey ? (
