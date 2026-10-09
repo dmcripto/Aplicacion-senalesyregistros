@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, liveExchangeName, liveKeyGuide, liveStatusLabel, t } from "../lib";
+import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
 import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "../tradesApi";
@@ -20,7 +20,7 @@ function NumField({ name, value, onChange, min, max, step }: { name: string; val
   );
 }
 
-/** Bot con dinero real (prueba mínima) en Bitunix o MEXC, a elección. Solo se ve en cuentas con la llave beta y cuando el servidor ya lo tiene. */
+/** Bot con dinero real (prueba mínima) con el exchange que cada persona elija. Solo se ve en cuentas con la llave beta y cuando el servidor ya lo tiene. */
 export default function LiveBotCard({ userId, notify }: { userId: string; notify: Notify }) {
   const bot = useBot();
   const mfa = useMfa();
@@ -29,6 +29,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
   const [busy, setBusy] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [apiPass, setApiPass] = useState("");
   const [limits, setLimits] = useState<LiveSettings>(DEFAULT_LIVE);
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [stopArmed, setStopArmed] = useState(false);
@@ -90,10 +91,11 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
   const connect = () =>
     run("connect", async () => {
       if (!(await mfa.ask(t("Vas a guardar una clave de {x} con permiso de operar.", { x: exName })))) return;
-      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown);
+      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown, apiPass.trim());
       if (!r.ok) return notify(r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")), "err");
       setApiKey("");
       setApiSecret("");
+      setApiPass("");
       setPick(null);
       notify(t("Clave guardada. Saldo disponible en futuros: {n} USDT.", { n: (r.available ?? 0).toFixed(2) }));
       await reload();
@@ -186,7 +188,13 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
               <span className={label}>{t("Clave secreta (secret)")}</span>
               <input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} type="password" autoComplete="off" spellCheck={false} className={field} />
             </label>
-            <button onClick={connect} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/20 disabled:opacity-40">
+            {liveNeedsPass(shown) && (
+              <label className="block">
+                <span className={label}>{t("Contraseña de la API (passphrase)")}</span>
+                <input value={apiPass} onChange={(e) => setApiPass(e.target.value)} type="password" autoComplete="off" spellCheck={false} className={field} />
+              </label>
+            )}
+            <button onClick={connect} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/20 disabled:opacity-40">
               {busy === "connect" ? t("Verificando…") : t("Guardar clave de {x}", { x: exName })}
             </button>
           </div>

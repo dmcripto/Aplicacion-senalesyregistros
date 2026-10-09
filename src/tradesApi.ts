@@ -550,7 +550,7 @@ export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "en
   if (error) throw new Error(error.message);
 }
 
-export const connectTradeKey = (apiKey: string, apiSecret: string, exchange = "bitunix") => callTrade({ action: "connect_key", exchange, apiKey, apiSecret });
+export const connectTradeKey = (apiKey: string, apiSecret: string, exchange = "bitunix", apiPassphrase?: string) => callTrade({ action: "connect_key", exchange, apiKey, apiSecret, ...(apiPassphrase ? { apiPassphrase } : {}) });
 export const disconnectTradeKey = (exchange?: string) => callTrade({ action: "disconnect_key", ...(exchange ? { exchange } : {}) });
 export const switchLiveExchange = (exchange: string) => callTrade({ action: "use_exchange", exchange });
 export const testLiveOrder = (confirm: boolean) => callTrade({ action: "test_order", confirm });

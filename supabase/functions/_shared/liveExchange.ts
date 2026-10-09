@@ -6,12 +6,15 @@ import { bxBalance, bxCancelAll, bxFlashClose, bxPair, bxPlace, bxPositions, bxS
 import type { BxPair, BxSignal } from "./bitunixTrade.ts";
 import { mexcOrderBody, mxBalance, mxCancelAll, mxClose, mxPair, mxPlace, mxPositions } from "./mexcTrade.ts";
 import type { MxPosition } from "./mexcTrade.ts";
+import { LV_ADAPTERS } from "./liveMore.ts";
 
 type FetchFn = typeof fetch;
 
-export type LiveExchangeId = "bitunix" | "mexc";
-export const LIVE_EXCHANGES: LiveExchangeId[] = ["bitunix", "mexc"];
-export const LIVE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC" };
+export type LiveExchangeId = "bitunix" | "mexc" | "binance" | "bybit" | "okx" | "bitget" | "bingx" | "gate" | "kucoin";
+export const LIVE_EXCHANGES: LiveExchangeId[] = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"];
+export const LIVE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
+/** Los que además de la clave y la secreta piden una contraseña de la API. */
+export const LIVE_NEEDS_PASS: LiveExchangeId[] = ["okx", "bitget", "kucoin"];
 export const isLiveExchange = (x: unknown): x is LiveExchangeId => typeof x === "string" && (LIVE_EXCHANGES as string[]).includes(x);
 
 export interface LivePos {
@@ -70,5 +73,6 @@ const mexc: LiveEx = {
   cancelAll: mxCancelAll,
 };
 
-const REGISTRY: Record<LiveExchangeId, LiveEx> = { bitunix, mexc };
+const more = (id: keyof typeof LV_ADAPTERS): LiveEx => ({ id, name: LIVE_NAMES[id], ...(LV_ADAPTERS[id] as unknown as Omit<LiveEx, "id" | "name">) });
+const REGISTRY: Record<LiveExchangeId, LiveEx> = { bitunix, mexc, binance: more("binance"), bybit: more("bybit"), okx: more("okx"), bitget: more("bitget"), bingx: more("bingx"), gate: more("gate"), kucoin: more("kucoin") };
 export const liveEx = (id: unknown): LiveEx => REGISTRY[isLiveExchange(id) ? id : "bitunix"];

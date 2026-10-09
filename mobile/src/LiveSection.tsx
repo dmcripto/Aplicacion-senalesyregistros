@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, liveExchangeName, liveKeyGuide, liveStatusLabel, t } from "@dmcripto/core";
+import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, t } from "@dmcripto/core";
 import type { LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
@@ -19,7 +19,7 @@ function Num({ name, value, onChange }: { name: string; value: string; onChange:
   );
 }
 
-/** Bot con dinero real (prueba mínima) en Bitunix o MEXC, a elección. Solo aparece en cuentas con la llave beta y con el servidor listo. */
+/** Bot con dinero real (prueba mínima) con el exchange que cada persona elija. Solo aparece en cuentas con la llave beta y con el servidor listo. */
 export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<TextStyle> }) {
   const bot = useBot();
   const mfa = useMfa();
@@ -29,6 +29,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [busy, setBusy] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [apiPass, setApiPass] = useState("");
   const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", daily: "0.5" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
@@ -88,10 +89,11 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const connect = () =>
     run("connect", async () => {
       if (!(await mfa.ask(t("Vas a guardar una clave de {x} con permiso de operar.", { x: exName })))) return;
-      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown);
+      const r = await connectTradeKey(apiKey.trim(), apiSecret.trim(), shown, apiPass.trim());
       if (!r.ok) return Alert.alert(t("Error"), r.code === "mfa_required" ? mfaErrorText(new Error("mfa_required"), "") : (r.error ?? t("No se pudo conectar.")));
       setApiKey("");
       setApiSecret("");
+      setApiPass("");
       setPick(null);
       Alert.alert(t("Listo"), t("Clave guardada. Saldo disponible en futuros: {n} USDT.", { n: (r.available ?? 0).toFixed(2) }));
       await reload();
@@ -197,7 +199,13 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
             <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} style={s.input} />
             <Text style={s.label}>{t("Clave secreta (secret)")}</Text>
             <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
-            <TouchableOpacity style={[s.outline, (busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8) && { opacity: 0.4 }]} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8} onPress={connect}>
+            {liveNeedsPass(shown) && (
+              <>
+                <Text style={s.label}>{t("Contraseña de la API (passphrase)")}</Text>
+                <TextInput value={apiPass} onChangeText={setApiPass} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
+              </>
+            )}
+            <TouchableOpacity style={[s.outline, (busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())) && { opacity: 0.4 }]} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())} onPress={connect}>
               {busy === "connect" ? <ActivityIndicator color={colors.gold} /> : <Text style={s.outlineText}>{t("Guardar clave de {x}", { x: exName })}</Text>}
             </TouchableOpacity>
           </>
