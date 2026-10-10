@@ -1,8 +1,8 @@
 // ─── VELTRIX · Dibujos sobre el gráfico (líneas, rayos, reglas, notas, rectángulos, Fibonacci) ───
 // Cada dibujo se guarda con puntos en (hora, precio), así sigue en su lugar aunque el gráfico se corra o cambie de temporalidad.
 
-export type DrawKind = "hline" | "vline" | "trend" | "ray" | "rect" | "fib" | "ruler" | "text";
-export const DRAW_KINDS: DrawKind[] = ["hline", "vline", "trend", "ray", "rect", "fib", "ruler", "text"];
+export type DrawKind = "hline" | "vline" | "trend" | "ray" | "rect" | "fib" | "ruler" | "text" | "long" | "short";
+export const DRAW_KINDS: DrawKind[] = ["hline", "vline", "trend", "ray", "rect", "fib", "ruler", "text", "long", "short"];
 /** Dibujos que se hacen con un solo toque (los demás necesitan dos puntos). */
 export const ONE_POINT_KINDS: DrawKind[] = ["hline", "vline", "text"];
 export const DRAW_COLORS = ["#2962ff", "#f5b301", "#16d98a", "#ff4d67", "#c084fc", "#d1d4dc"] as const;
@@ -20,6 +20,30 @@ export interface Drawing {
   b?: DrawPoint; // las líneas horizontal y vertical y la nota tienen un solo punto
   color?: string; // #rrggbb; si falta, azul
   text?: string; // solo en las notas
+  rr?: number; // solo en las posiciones: cuántas veces el riesgo se busca de ganancia (el TP)
+}
+
+export const POSITION_RRS = [1, 1.5, 2, 3, 4, 5] as const;
+export const DEFAULT_POSITION_RR = 2;
+
+/**
+ * Herramienta «posición» (como en TradingView): el primer punto es la entrada y el segundo marca el stop; el TP se calcula con
+ * el R:R elegido. En una compra el stop queda abajo y el TP arriba; en una venta, al revés (aunque se haya tocado del otro lado).
+ */
+export function positionLevels(d: Pick<Drawing, "kind" | "a" | "b" | "rr">) {
+  const entry = d.a.p;
+  const dist = Math.abs((d.b?.p ?? entry) - entry);
+  const long = d.kind === "long";
+  const rr = d.rr && d.rr > 0 ? d.rr : DEFAULT_POSITION_RR;
+  return {
+    direction: (long ? "LONG" : "SHORT") as "LONG" | "SHORT",
+    entry,
+    sl: long ? entry - dist : entry + dist,
+    tp: long ? entry + dist * rr : entry - dist * rr,
+    rr,
+    stopPct: entry ? (dist / entry) * 100 : 0,
+    tpPct: entry ? ((dist * rr) / entry) * 100 : 0,
+  };
 }
 
 /** Lo que mide la regla entre dos puntos: diferencia de precio, porcentaje y tiempo. */
@@ -74,6 +98,8 @@ export function cleanDrawings(raw: unknown): Drawing[] {
     const item: Drawing = one ? { id, kind, a: { t: a.t, p: a.p } } : { id, kind, a: { t: a.t, p: a.p }, b: { t: b!.t, p: b!.p } };
     if (typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)) item.color = color;
     if (kind === "text") item.text = text!.trim().slice(0, MAX_TEXT);
+    const rr = (d as Drawing).rr;
+    if ((kind === "long" || kind === "short") && typeof rr === "number" && Number.isFinite(rr) && rr >= 0.5 && rr <= 20) item.rr = rr;
     out.push(item);
   }
   return out.slice(-MAX_DRAWINGS);

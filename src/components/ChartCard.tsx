@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtUsdShort, locale, t } from "../lib";
-import type { ChartCandle, IndicatorKind, LiquidationMap, Trade } from "../lib";
+import type { ChartCandle, IndicatorKind, LiquidationMap, NewTrade, Trade } from "../lib";
+import { useMoney } from "../money";
 import { createAlert, fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
 import AlertsSection from "./AlertsSection";
@@ -92,7 +93,8 @@ const CYAN = "#2ec4f1";
 const LIQ_LONG = "#ff9f43"; // niveles donde se liquidarían los largos (naranja)
 const LIQ_SHORT = "#7c8cff"; // y donde se liquidarían los cortos (violeta azulado)
 
-function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
+function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId: string; notify: Notify; onAdd?: (list: NewTrade[]) => Promise<void> }) {
+  const { money } = useMoney();
   const initial = useMemo(() => {
     const p = loadPrefs();
     // Si hay una señal abierta con un activo cripto y nunca se eligió otro, arranca con ese activo.
@@ -527,6 +529,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           candles={candles}
           tfSec={TF_SEC[prefs.tf]}
           symbol={symbolKey}
+          positionMaker={onAdd ? { money, register: async (d) => onAdd([d]) } : undefined}
           alertMaker={
             alerts
               ? {
@@ -558,10 +561,10 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   );
 }
 
-export default function ChartCard({ trades, userId, notify }: { trades: Trade[]; userId: string; notify: Notify }) {
+export default function ChartCard({ trades, userId, notify, onAdd }: { trades: Trade[]; userId: string; notify: Notify; onAdd?: (list: NewTrade[]) => Promise<void> }) {
   return (
     <Panel id="chart" title={t("GRÁFICO")} subtitle={t("Velas con 2 indicadores, tus señales y alertas propias")} summary={t("EMA, RSI, MACD, Bollinger y alertas · tocá para abrir")} defaultOpen={false} plain>
-      <ChartBody trades={trades} userId={userId} notify={notify} />
+      <ChartBody trades={trades} userId={userId} notify={notify} onAdd={onAdd} />
     </Panel>
   );
 }

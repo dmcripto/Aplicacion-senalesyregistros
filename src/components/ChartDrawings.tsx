@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DRAW_COLORS, MAX_DRAWINGS, MAX_TEXT, ONE_POINT_KINDS, cleanDrawings, cx, fibPrices, fmtPrice, logicalToTime, measure, t, timeToLogical } from "../lib";
-import type { AlertDraft, AlertTf } from "../lib";
+import { DRAW_COLORS, MAX_DRAWINGS, MAX_TEXT, ONE_POINT_KINDS, POSITION_RRS, calcPosition, cleanDrawings, cx, fibPrices, fmtPrice, logicalToTime, measure, positionLevels, t, timeToLogical } from "../lib";
+import type { AlertDraft, AlertTf, MoneySettings, NewTrade } from "../lib";
 import type { ChartCandle, DrawKind, DrawPoint, Drawing } from "../lib";
 
 const KEY = "veltrix_draw_v1";
@@ -39,6 +39,8 @@ const TOOLS: Array<{ id: Tool; icon: string; title: string }> = [
   { id: "ray", icon: "⇗", title: "Rayo (la línea sigue hacia la derecha)" },
   { id: "rect", icon: "▭", title: "Rectángulo" },
   { id: "fib", icon: "Fib", title: "Retroceso de Fibonacci" },
+  { id: "long", icon: "▲", title: "Posición de compra (entrada, stop y objetivo)" },
+  { id: "short", icon: "▼", title: "Posición de venta (entrada, stop y objetivo)" },
   { id: "ruler", icon: "📏", title: "Medir (precio, porcentaje y velas)" },
   { id: "text", icon: "T", title: "Nota de texto" },
   { id: "alert", icon: "🔔", title: "Crear alerta de precio" },
@@ -53,7 +55,12 @@ export interface AlertMaker {
   create: (d: AlertDraft) => Promise<void>;
 }
 
-export default function ChartDrawings({ api, ready, candles, tfSec, symbol, alertMaker }: { api: ChartHandle | null; ready: number; candles: ChartCandle[] | null; tfSec: number; symbol: string; alertMaker?: AlertMaker }) {
+export interface PositionMaker {
+  money: MoneySettings | null;
+  register: (d: NewTrade) => Promise<void>;
+}
+
+export default function ChartDrawings({ api, ready, candles, tfSec, symbol, alertMaker, positionMaker }: { api: ChartHandle | null; ready: number; candles: ChartCandle[] | null; tfSec: number; symbol: string; alertMaker?: AlertMaker; positionMaker?: PositionMaker }) {
   const [list, setList] = useState<Drawing[]>(() => cleanDrawings(loadAll()[symbol]));
   const [tool, setTool] = useState<Tool>("cursor");
   const [pending, setPending] = useState<DrawPoint | null>(null);
@@ -62,6 +69,7 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol, aler
   const [alertHover, setAlertHover] = useState<number | null>(null); // precio bajo el mouse mientras se elige dónde poner la alerta
   const [alertAt, setAlertAt] = useState<number | null>(null); // precio elegido, a la espera de confirmar
   const [alertBusy, setAlertBusy] = useState(false);
+  const [posBusy, setPosBusy] = useState(false);
   const [color, setColor] = useState<string>(DRAW_COLORS[0]);
   const [magnet, setMagnet] = useState<boolean>(() => {
     try {
@@ -231,7 +239,8 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol, aler
     } else if (!pending) {
       setPending(pt);
     } else {
-      const d: Drawing = { id: uid(), kind: tool as DrawKind, a: pending, b: pt, color };
+      const isPos = tool === "long" || tool === "short";
+      const d: Drawing = { id: uid(), kind: tool as DrawKind, a: pending, b: isPos ? { t: pending.t, p: pt.p } : pt, color: isPos ? undefined : color };
       commit([...list, d]);
       setSelected(d.id);
       setPending(null);
@@ -239,6 +248,7 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol, aler
     }
   };
 
+  const selectedPos = list.find((d) => d.id === selected && (d.kind === "long" || d.kind === "short")) ?? null;
   void geom; // el cambio de huella dispara el repintado
   const drawing = tool !== "cursor";
   const W = api ? (svgRef.current?.clientWidth ?? 0) - api.chart.priceScale("right").width() : 0;
@@ -304,6 +314,40 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol, aler
           <line x1={xa} y1={ya} x2={xb} y2={yb} stroke={col} strokeWidth={sel ? 2.5 : 1.5} {...common} />
           <line x1={xa} y1={ya} x2={xb} y2={yb} stroke="transparent" strokeWidth={12} {...common} />
           {handles}
+        </g>
+      );
+    }
+    if (d.kind === "long" || d.kind === "short") {
+      const lv = positionLevels(d);
+      const yS = toY(lv.sl);
+      const yT = toY(lv.tp);
+      if (yS == null || yT == null) return null;
+      const w = Math.max(80, Math.min(260, W - xa - 8));
+      const x2 = xa + w;
+      const green = "#16d98a";
+      const red = "#ff4d67";
+      const tag = (y: number, text: string, fill: string, key: string) => (
+        <g key={key} style={{ pointerEvents: "none" }}>
+          <rect x={x2 - 156} y={y - 9} width={156} height={18} rx={2} fill={fill} />
+          <text x={x2 - 78} y={y + 4} textAnchor="middle" fontSize={10.5} fill="#131722" fontWeight={700}>
+            {text}
+          </text>
+        </g>
+      );
+      return (
+        <g key={d.id} opacity={preview ? 0.8 : 1}>
+          <rect x={xa} y={Math.min(ya, yT)} width={w} height={Math.abs(yT - ya)} fill="rgba(22,217,138,0.18)" stroke={green} strokeWidth={sel ? 1.5 : 1} {...common} />
+          <rect x={xa} y={Math.min(ya, yS)} width={w} height={Math.abs(yS - ya)} fill="rgba(255,77,103,0.18)" stroke={red} strokeWidth={sel ? 1.5 : 1} {...common} />
+          <line x1={xa} x2={x2} y1={ya} y2={ya} stroke="#d1d4dc" strokeWidth={1} style={{ pointerEvents: "none" }} />
+          {tag(yT, `TP ${fmtPrice(lv.tp)} · +${lv.tpPct.toFixed(2)}%`, green, "tp")}
+          {tag(yS, `SL ${fmtPrice(lv.sl)} · −${lv.stopPct.toFixed(2)}%`, red, "sl")}
+          <g style={{ pointerEvents: "none" }}>
+            <rect x={xa + w / 2 - 38} y={ya - 10} width={76} height={20} rx={3} fill="#1e222d" stroke="#d1d4dc" />
+            <text x={xa + w / 2} y={ya + 4} textAnchor="middle" fontSize={11} fill="#d1d4dc" fontWeight={600}>
+              {d.kind === "long" ? t("Compra") : t("Venta")} · {lv.rr}R
+            </text>
+          </g>
+          {sel && <circle cx={xa} cy={ya} r={4.5} fill="#131722" stroke="#d1d4dc" strokeWidth={2} style={{ pointerEvents: "none" }} />}
         </g>
       );
     }
@@ -499,6 +543,79 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol, aler
           {tool === "alert" ? t("Tocá el gráfico en el precio donde querés la alerta. Esc cancela.") : ONE_POINT_KINDS.includes(tool as DrawKind) ? t("Tocá el gráfico para ponerlo. Esc cancela.") : pending ? t("Tocá el segundo punto. Esc cancela.") : t("Tocá el primer punto.")}
         </div>
       )}
+      {selectedPos && positionMaker && (() => {
+        const lv = positionLevels(selectedPos);
+        const m = positionMaker.money;
+        const calc = m?.capital && m?.riskPct ? calcPosition({ capital: m.capital, riskPct: m.riskPct, entry: lv.entry, sl: lv.sl, tp: lv.tp }) : null;
+        const cur = m?.currency ?? "USD";
+        return (
+          <div className="absolute left-12 top-2 z-20 w-[250px] space-y-2 rounded border border-[#363a45] bg-[#1e222d]/95 p-2.5 text-[11.5px] text-[#d1d4dc] shadow-lg">
+            <div className="flex items-center justify-between font-semibold">
+              <span className={lv.direction === "LONG" ? "text-[#16d98a]" : "text-[#ff4d67]"}>{lv.direction === "LONG" ? t("Compra") : t("Venta")} {symbol}</span>
+              <button type="button" onClick={() => setSelected(null)} className="text-[#b2b5be] hover:text-white" aria-label={t("Cancelar")}>✕</button>
+            </div>
+            <div className="num grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              <span className="text-[#787b86]">{t("Entrada")}</span><span className="text-right">{fmtPrice(lv.entry)}</span>
+              <span className="text-[#787b86]">TP</span><span className="text-right text-[#16d98a]">{fmtPrice(lv.tp)}</span>
+              <span className="text-[#787b86]">SL</span><span className="text-right text-[#ff4d67]">{fmtPrice(lv.sl)}</span>
+            </div>
+            <label className="flex items-center justify-between gap-2">
+              <span className="text-[#787b86]">R:R</span>
+              <select value={lv.rr} onChange={(e) => commit(list.map((x) => (x.id === selectedPos.id ? { ...x, rr: Number(e.target.value) } : x)))} className="rounded border border-[#363a45] bg-[#131722] px-2 py-1">
+                {POSITION_RRS.map((r) => (
+                  <option key={r} value={r}>{`1 : ${r}`}</option>
+                ))}
+              </select>
+            </label>
+            {calc ? (
+              <div className="rounded bg-[#131722] p-1.5 text-[11px] leading-relaxed">
+                {t("Arriesgando {r} % de tu capital ({a} {c}), la posición es de {n} {c}.", { r: m!.riskPct as number, a: fmtPrice(calc.riskAmount), c: cur, n: fmtPrice(calc.notional) })}
+                {calc.profitAtTp != null && <> {t("Si llega al TP ganás {p} {c}.", { p: fmtPrice(calc.profitAtTp), c: cur })}</>}
+              </div>
+            ) : (
+              <div className="text-[10.5px] text-[#787b86]">{t("Cargá tu capital y tu riesgo (Ajustes) para ver el tamaño de la posición.")}</div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                disabled={posBusy}
+                onClick={async () => {
+                  setPosBusy(true);
+                  try {
+                    const px = (n: number) => Number(n.toFixed(n < 10 ? 5 : 2));
+                    await positionMaker.register({ symbol, direction: lv.direction, entry: px(lv.entry), tp: px(lv.tp), sl: px(lv.sl), date: new Date().toISOString(), sizeUsd: calc ? Math.round(calc.notional * 100) / 100 : undefined });
+                  } finally {
+                    setPosBusy(false);
+                  }
+                }}
+                className="rounded bg-[#2962ff] px-2 py-1 font-semibold text-white disabled:opacity-50"
+              >
+                {t("Registrar en el diario")}
+              </button>
+              {alertMaker && (
+                <button
+                  type="button"
+                  disabled={posBusy}
+                  onClick={async () => {
+                    setPosBusy(true);
+                    try {
+                      for (const level of [lv.tp, lv.sl]) {
+                        const lvl = Number(level.toFixed(level < 10 ? 5 : 2));
+                        await alertMaker.create({ symbol, kind: "price", tf: alertMaker.tf, dir: alertDir(lvl), level: lvl, period: null, once: true });
+                      }
+                    } finally {
+                      setPosBusy(false);
+                    }
+                  }}
+                  className="rounded border border-[#f5b301]/60 px-2 py-1 font-semibold text-[#f5b301] disabled:opacity-50"
+                >
+                  🔔 {t("Alertas en TP y SL")}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {alertAt != null && api && alertMaker && (
         <div
           className="absolute z-20 flex items-center gap-2 rounded border border-[#f5b301]/60 bg-[#1e222d] px-2.5 py-1.5 text-[11.5px] text-[#d1d4dc] shadow-lg"
