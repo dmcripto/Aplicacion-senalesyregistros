@@ -823,6 +823,14 @@ async function handleMessage(msg: any) {
       return announce(chatId, link, lang, rest);
     case "/webhook":
       return webhookCommand(chatId, link, lang);
+    case "/miinvitacion":
+    case "/myinvite":
+    case "/misinvitados":
+    case "/myinvites":
+    case "/fijar":
+    case "/pin":
+    case "/antispam":
+      return say(chatId, lang === "es" ? "ℹ️ Este comando solo funciona <b>dentro del grupo</b> (con el bot como administrador). Escribilo allá." : "ℹ️ This command only works <b>inside the group</b> (with the bot as an admin). Type it there.");
     case "/idioma":
     case "/language": {
       const want = (rest[0] ?? "").toLowerCase();
