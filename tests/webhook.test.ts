@@ -84,7 +84,9 @@ describe("webhook de TradingView", () => {
     await post("VELTRIX|BTCUSDT|COMPRA|65000|66500|64500");
     const priv = telegramCalls().find((c) => c.body.chat_id === 555)!;
     expect(priv.body.reply_markup.inline_keyboard[0][0].url).toMatch(/^https:\/\/wa\.me\/\?text=/);
-    expect(telegramCalls().find((c) => c.body.chat_id === -1001)!.body.reply_markup).toBeUndefined();
+    // La comunidad lleva los botones de votar (👍/👎), nunca el de WhatsApp.
+    const com = telegramCalls().find((c) => c.body.chat_id === -1001)!.body.reply_markup;
+    expect(com.inline_keyboard[0].every((b: any) => !b.url && /^v:[ud]:/.test(b.callback_data))).toBe(true);
   });
 
   it("avisa por WhatsApp a quien vinculó su número, y a nadie más", async () => {

@@ -4,6 +4,7 @@
 
 import { esc, sendMessage, sendPhoto } from "./telegram.ts";
 import type { Lang } from "./telegram.ts";
+import { voteKeyboard } from "./votes.ts";
 
 export interface CommunityTrade {
   symbol: string;
@@ -140,6 +141,8 @@ export async function publishToCommunities(
   build: (lang: Lang) => string,
   /** Imagen tarjeta opcional: si se arma bien se publica la imagen con su texto; si no, el texto de `build`. */
   photo?: (lang: Lang) => Promise<{ png: Uint8Array; caption: string } | null>,
+  /** Si se pasa, la publicación lleva los botones 👍/👎 para votar la señal. */
+  tradeId?: string,
 ): Promise<number> {
   try {
     if (!token) return 0;
@@ -160,9 +163,10 @@ export async function publishToCommunities(
     for (const row of rows as Array<{ id: string; chat_id: number; thread_id?: number | null }>) {
       // En un grupo con temas se publica en el tema donde se conectó.
       const thread = row.thread_id ? { message_thread_id: Number(row.thread_id) } : {};
-      let r = img ? await sendPhoto(token, Number(row.chat_id), img.png, img.caption, thread) : null;
+      const markup = tradeId ? voteKeyboard(tradeId, { up: 0, down: 0 }, lang) : null;
+      let r = img ? await sendPhoto(token, Number(row.chat_id), img.png, img.caption, markup ? { ...thread, reply_markup: JSON.stringify(markup) } : thread) : null;
       // Si la imagen no salió (error de Telegram distinto de "el bot ya no está"), se manda el texto.
-      if (!r?.ok && r?.error_code !== 403) r = await sendMessage(token, Number(row.chat_id), text, thread);
+      if (!r?.ok && r?.error_code !== 403) r = await sendMessage(token, Number(row.chat_id), text, markup ? { ...thread, reply_markup: markup } : thread);
       if (r?.ok) ok++;
       else if (r?.error_code === 403 || r?.error_code === 400) await supabase.from("telegram_communities").delete().eq("id", row.id);
     }

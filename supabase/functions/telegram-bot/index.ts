@@ -19,6 +19,12 @@ import { botToken, esc, sendMessage, sendPhoto, tgApi } from "../_shared/telegra
 import { ANNOUNCEMENTS, announcementIds } from "../_shared/announcements.ts";
 import type { Lang } from "../_shared/telegram.ts";
 import { welcomeGreeting, welcomeHello } from "../_shared/welcome.ts";
+import {
+  calcMessage, calcUsage, communityTrades, fetchLevels, levelsMessage, parseCalcArgs, parseSymbolList,
+  sendExposureNotice, streakMessage, streaks, weeklyMessage, weeklyRanking, WEEK_MS,
+} from "../_shared/communityTools.ts";
+import { castVote, parseVote, voteKeyboard } from "../_shared/votes.ts";
+import { normalizeSymbol } from "../_shared/chartImage.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -42,13 +48,13 @@ const money = (n: number, cur: string) => {
   const pre = sym[cur] ?? `${cur} `;
   return `${n >= 0 ? "+" : "−"}${pre}${body}`;
 };
-const fmtR = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1).replace(/\.0$/, "")}R`;
+const tgR = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(1).replace(/\.0$/, "")}R`;
 
 const T = {
   es: {
     help:
       "<b>VELTRIX</b> 👋\n\nPegá acá una señal (o reenviá el mensaje de un canal) y la registro en tu diario.\n\n" +
-      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» o «liq» para ver medias o liquidaciones)\n/resumen — tus resultados en R\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
+      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» o «liq» para ver medias o liquidaciones)\n/resumen — tus resultados en R\n/semana — tu semana · /racha — tus rachas\n/niveles BTC — precio, RSI y tendencia · /calc — tamaño de la posición\n/activos btc eth — solo señales de esos activos · /riesgo off — apagar el aviso de exposición\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
       "Ejemplo:\n<code>BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "Este chat todavía no está conectado a una cuenta de VELTRIX.\n\nEntrá a la app o la web → «Conectar Telegram» y tocá el botón: te trae de vuelta acá ya vinculado.",
@@ -94,7 +100,7 @@ const T = {
   en: {
     help:
       "<b>VELTRIX</b> 👋\n\nPaste a signal here (or forward a channel message) and I'll log it in your journal.\n\n" +
-      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” or “liq” for averages or liquidations)\n/summary — your results in R\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
+      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” or “liq” for averages or liquidations)\n/summary — your results in R\n/week — your week · /streak — your streaks\n/levels BTC — price, RSI and trend · /calc — position size\n/assets btc eth — only signals for those assets · /risk off — turn off the exposure warning\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
       "Example:\n<code>BTCUSDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "This chat isn't connected to a VELTRIX account yet.\n\nOpen the app or the web → “Connect Telegram” and tap the button: it brings you back here already linked.",
@@ -228,9 +234,24 @@ async function handleSignal(chatId: number, link: Link, lang: Lang, text: string
   });
 }
 
+/** 👍/👎 de una señal publicada en un grupo: lo puede votar cualquier miembro. Repetir el mismo voto lo quita. */
+async function handleVote(cb: any, vote: { kind: "u" | "d"; tradeId: string }) {
+  const token = botToken();
+  if (!token) return;
+  const chatId: number | undefined = cb.message?.chat?.id;
+  const messageId: number | undefined = cb.message?.message_id;
+  const { data: com } = chatId ? await admin.from("telegram_communities").select("user_id").eq("chat_id", chatId).limit(1).maybeSingle() : { data: null };
+  const lang = com ? await langOf((com as { user_id: string }).user_id, guessLang(cb.from?.language_code)) : guessLang(cb.from?.language_code);
+  const counts = com && cb.from?.id ? await castVote(admin, vote.tradeId, Number(cb.from.id), vote.kind) : null;
+  await tgApi(token, "answerCallbackQuery", { callback_query_id: cb.id, ...(counts ? { text: lang === "es" ? "¡Voto registrado!" : "Vote saved!" } : {}) });
+  if (counts && chatId && messageId) await tgApi(token, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup: voteKeyboard(vote.tradeId, counts, lang) });
+}
+
 async function handleCallback(cb: any) {
   const token = botToken();
   if (!token) return;
+  const vote = parseVote(String(cb.data ?? ""));
+  if (vote) return handleVote(cb, vote);
   await tgApi(token, "answerCallbackQuery", { callback_query_id: cb.id });
   const chatId: number | undefined = cb.message?.chat?.id;
   const messageId: number | undefined = cb.message?.message_id;
@@ -257,15 +278,16 @@ async function handleCallback(cb: any) {
       .from("trades").select("id").eq("user_id", link.user_id).eq("symbol", t.symbol).eq("direction", t.direction).eq("entry", t.entry).gte("created_at", iso(60_000)).limit(1);
     if (same?.length) { dup++; continue; }
     const row = { user_id: link.user_id, symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp, sl: t.sl, date: new Date().toISOString() };
-    let { error } = await admin.from("trades").insert(t.targets?.length ? { ...row, targets: t.targets } : row);
+    let { data: made, error } = await admin.from("trades").insert(t.targets?.length ? { ...row, targets: t.targets } : row).select("id");
     // Si todavía no se corrió el SQL de los targets, se guarda igual (solo con el TP final).
-    if (error && t.targets?.length) ({ error } = await admin.from("trades").insert(row));
+    if (error && t.targets?.length) ({ data: made, error } = await admin.from("trades").insert(row).select("id"));
     if (!error) {
       saved++;
-      await runInBackground(publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l), (l) => signalCardImage(t, l)));
+      await runInBackground(publishToCommunities(admin, token, link.user_id, (l) => communitySignalMessage(t, l), (l) => signalCardImage(t, l), (made as Array<{ id: string }> | null)?.[0]?.id));
     }
   }
-  return edit(T[lang].registered(saved, dup));
+  await edit(T[lang].registered(saved, dup));
+  if (saved) await runInBackground(sendExposureNotice(admin, link.user_id));
 }
 
 // ─── Comandos ───────────────────────────────────────────────────────────────
@@ -290,7 +312,7 @@ async function summary(chatId: number, link: Link, lang: Lang) {
     const net = sel.reduce((a, x) => a + x.r, 0);
     const wins = sel.filter((x) => x.r > 0).length;
     const extra = unit ? ` (${money(net * unit, prof?.currency ?? "USD")})` : "";
-    return `<b>${label}:</b> ${sel.length ? `${fmtR(net)}${extra} · ${sel.length} ${T[lang].ops} · ${Math.round((wins / sel.length) * 100)}% ${T[lang].win}` : "—"}`;
+    return `<b>${label}:</b> ${sel.length ? `${tgR(net)}${extra} · ${sel.length} ${T[lang].ops} · ${Math.round((wins / sel.length) * 100)}% ${T[lang].win}` : "—"}`;
   };
   return say(chatId, [T[lang].summaryTitle, "", block(T[lang].last24, 86_400_000), block(T[lang].last7, 7 * 86_400_000), block(T[lang].last30, 30 * 86_400_000)].join("\n"));
 }
@@ -471,6 +493,103 @@ async function priceCommand(msg: any, args: string[], lang: Lang) {
   await runInBackground(run());
 }
 
+// ─── Herramientas para la comunidad ─────────────────────────────────────────
+
+const toolLast = new Map<string, number>();
+/** true = hay que ignorar el pedido (muy seguido en el mismo chat). */
+const tooSoon = (chatId: number, cmd: string, ms = 4000) => {
+  const k = `${chatId}:${cmd}`;
+  const now = Date.now();
+  if (now - (toolLast.get(k) ?? 0) < ms) return true;
+  toolLast.set(k, now);
+  return false;
+};
+const threadOf = (msg: any): Record<string, number> => (msg.is_topic_message && msg.message_thread_id ? { message_thread_id: Number(msg.message_thread_id) } : {});
+
+/** /calc entrada stop [capital] [riesgo%] [tp]: tamaño de la posición. En privado usa el capital y el riesgo del perfil. */
+async function calcCommand(msg: any, args: string[], lang: Lang, userId: string | null) {
+  const chatId: number = msg.chat.id;
+  let defaults: { capital?: number | null; riskPct?: number | null } = {};
+  if (userId) {
+    const { data: prof } = await admin.from("profiles").select("capital,risk_pct").eq("id", userId).maybeSingle();
+    defaults = { capital: prof ? num(prof.capital) : null, riskPct: prof ? num(prof.risk_pct) : null };
+  }
+  const input = parseCalcArgs(args, defaults);
+  if (!input) return say(chatId, calcUsage(lang), threadOf(msg));
+  if (tooSoon(chatId, "calc", 2000)) return; // el respiro solo corre para cálculos hechos: así se puede corregir un dato enseguida
+  return say(chatId, calcMessage(input, lang), threadOf(msg));
+}
+
+/** /niveles BTC: precio, RSI 1h/4h, tendencia y las señales abiertas de la cuenta de ese activo. */
+async function levelsCommand(msg: any, args: string[], lang: Lang, userId: string) {
+  const chatId: number = msg.chat.id;
+  const extra = threadOf(msg);
+  const es = lang === "es";
+  const symbol = normalizeSymbol(args[0] ?? "");
+  if (!symbol) return say(chatId, es ? "Usá <code>/niveles BTC</code> (o ETH, SOL, XAU…)." : "Use <code>/levels BTC</code> (or ETH, SOL, XAU…).", extra);
+  if (tooSoon(chatId, "levels", 5000)) return;
+  const run = async () => {
+    const { data } = await admin.from("trades").select("symbol,direction,entry,tp,sl,notes,source").eq("user_id", userId).eq("outcome", "ABIERTA").limit(200);
+    const base = (x: string) => x.toUpperCase().replace(/\.P$|PERP$/, "").replace(/(USDC|USD)$/, "USDT");
+    const open = ((data ?? []) as Array<{ symbol: string; direction: string; entry: number; tp: number; sl: number; notes?: string | null; source?: string | null }>)
+      .filter((t) => base(t.symbol) === symbol && t.source !== "bot" && !/^Señal de prueba de VELTRIX|^Señal publicada solo para/.test(t.notes ?? ""))
+      .map((t) => ({ direction: t.direction, entry: num(t.entry), tp: num(t.tp), sl: num(t.sl) }));
+    const d = await fetchLevels(symbol, open);
+    if (!d) return say(chatId, es ? `No encontré <b>${esc(symbol)}</b> en Binance.` : `I couldn't find <b>${esc(symbol)}</b> on Binance.`, extra);
+    await say(chatId, levelsMessage(d, lang), extra);
+  };
+  await runInBackground(run());
+}
+
+/** /semana: en un grupo, el ranking de la semana de la cuenta conectada; en privado, el de la propia persona. */
+async function weekCommand(msg: any, lang: Lang, userId: string) {
+  const chatId: number = msg.chat.id;
+  if (tooSoon(chatId, "week", 5000)) return;
+  const now = Date.now();
+  const trades = await communityTrades(admin, userId, now - WEEK_MS);
+  return say(chatId, weeklyMessage(weeklyRanking(trades, now - WEEK_MS, now + 1), lang), threadOf(msg));
+}
+
+/** /racha: ganadoras o perdedoras seguidas, y la mejor racha. */
+async function streakCommand(chatId: number, link: Link, lang: Lang) {
+  const { data } = await admin.from("trades").select("direction,entry,tp,sl,date,outcome,exit,closed_at").eq("user_id", link.user_id).neq("outcome", "ABIERTA").order("closed_at", { ascending: false }).limit(500);
+  const rows = ((data ?? []) as Array<Record<string, any>>).map((t) => ({ ...t, entry: num(t.entry), tp: num(t.tp), sl: num(t.sl), exit: t.exit == null ? null : num(t.exit) }));
+  return say(chatId, streakMessage(streaks(rows as any), lang));
+}
+
+/** /activos btc eth xau: solo recibís las señales de VELTRIX de esos activos. /activos todos: vuelve a recibir todas. */
+async function assetsCommand(chatId: number, link: Link, lang: Lang, args: string[]) {
+  const es = lang === "es";
+  const word = (args[0] ?? "").toLowerCase();
+  if (!args.length) {
+    const { data, error } = await admin.from("profiles").select("signal_symbols").eq("id", link.user_id).maybeSingle();
+    if (error) return say(chatId, es ? "Todavía falta correr el SQL de esta función en Supabase." : "The SQL for this feature has not been run in Supabase yet.");
+    const cur = String((data as { signal_symbols?: string | null } | null)?.signal_symbols ?? "").split(",").filter(Boolean);
+    return say(chatId, es
+      ? `${cur.length ? `Recibís señales de: <b>${esc(cur.map((x) => x.replace(/USDT$/, "")).join(", "))}</b>.` : "Recibís las señales de <b>todos</b> los activos."}\n\nPara elegir: <code>/activos btc eth xau</code>\nPara recibir todas: <code>/activos todos</code>`
+      : `${cur.length ? `You get signals for: <b>${esc(cur.map((x) => x.replace(/USDT$/, "")).join(", "))}</b>.` : "You get signals for <b>all</b> assets."}\n\nTo choose: <code>/assets btc eth xau</code>\nTo get all: <code>/assets all</code>`);
+  }
+  const all = ["todos", "todas", "all", "off", "reset"].includes(word);
+  const list = all ? [] : parseSymbolList(args.join(" "));
+  if (!all && !list.length) return say(chatId, es ? "No entendí esos activos. Ejemplo: <code>/activos btc eth xau</code>" : "I didn't understand those assets. Example: <code>/assets btc eth xau</code>");
+  const { error } = await admin.from("profiles").update({ signal_symbols: list.length ? list.join(",") : null }).eq("id", link.user_id);
+  if (error) return say(chatId, es ? "Todavía falta correr el SQL de esta función en Supabase." : "The SQL for this feature has not been run in Supabase yet.");
+  return say(chatId, all
+    ? (es ? "✅ Listo: vas a recibir las señales de todos los activos." : "✅ Done: you'll get signals for all assets.")
+    : (es ? `✅ Listo: solo vas a recibir las señales de <b>${esc(list.map((x) => x.replace(/USDT$/, "")).join(", "))}</b>.` : `✅ Done: you'll only get signals for <b>${esc(list.map((x) => x.replace(/USDT$/, "")).join(", "))}</b>.`));
+}
+
+/** /riesgo on|off: aviso cuando hay demasiadas operaciones abiertas. */
+async function riskCommand(chatId: number, link: Link, lang: Lang, args: string[]) {
+  const es = lang === "es";
+  const want = (args[0] ?? "").toLowerCase();
+  const on = ["on", "si", "sí", "activar", "yes"].includes(want);
+  if (!on && !["off", "no", "desactivar"].includes(want)) return say(chatId, es ? "Usá /riesgo on o /riesgo off." : "Use /risk on or /risk off.");
+  const { error } = await admin.from("profiles").update({ risk_reminder: on }).eq("id", link.user_id);
+  if (error) return say(chatId, es ? "Todavía falta correr el SQL de esta función en Supabase." : "The SQL for this feature has not been run in Supabase yet.");
+  return say(chatId, on ? (es ? "🛡️ Listo: te aviso si juntás demasiadas operaciones abiertas." : "🛡️ Done: I'll warn you if you pile up too many open trades.") : (es ? "Listo, apagué el aviso de exposición." : "Done, I turned the exposure warning off."));
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
     if (Array.isArray(msg.new_chat_members) && msg.new_chat_members.length) return welcomeJoin(msg);
@@ -485,6 +604,18 @@ async function handleMessage(msg: any) {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
       if (!com) return; // solo en las comunidades conectadas a una cuenta de VELTRIX
       return chartCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)));
+    }
+    if (cmd === "/calc" || cmd === "/calcular") {
+      const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+      if (!com) return;
+      return calcCommand(msg, rest, await langOf((com as { user_id: string }).user_id, guessLang(msg.from?.language_code)), null);
+    }
+    if (cmd === "/niveles" || cmd === "/levels" || cmd === "/semana" || cmd === "/week") {
+      const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
+      if (!com) return;
+      const owner = (com as { user_id: string }).user_id;
+      const lang = await langOf(owner, guessLang(msg.from?.language_code));
+      return cmd === "/niveles" || cmd === "/levels" ? levelsCommand(msg, rest, lang, owner) : weekCommand(msg, lang, owner);
     }
     if (cmd === "/ayuda" || cmd === "/help") {
       const { data: com } = await admin.from("telegram_communities").select("user_id").eq("chat_id", msg.chat.id).limit(1).maybeSingle();
@@ -530,6 +661,24 @@ async function handleMessage(msg: any) {
     case "/resumen":
     case "/summary":
       return summary(chatId, link, lang);
+    case "/calc":
+    case "/calcular":
+      return calcCommand(msg, rest, lang, link.user_id);
+    case "/niveles":
+    case "/levels":
+      return levelsCommand(msg, rest, lang, link.user_id);
+    case "/semana":
+    case "/week":
+      return weekCommand(msg, lang, link.user_id);
+    case "/racha":
+    case "/streak":
+      return streakCommand(chatId, link, lang);
+    case "/activos":
+    case "/assets":
+      return assetsCommand(chatId, link, lang, rest);
+    case "/riesgo":
+    case "/risk":
+      return riskCommand(chatId, link, lang, rest);
     case "/desvincular":
     case "/unlink":
       await admin.from("telegram_links").delete().eq("user_id", link.user_id);

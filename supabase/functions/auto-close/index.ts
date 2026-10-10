@@ -13,6 +13,7 @@ import { communityResultMessage, partialCardHtml, publishToCommunities, resultCa
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { postEconomyNews, refreshEvents } from "../_shared/economy.ts";
 import { postSessionAlerts } from "../_shared/sessions.ts";
+import { postMarketAlerts, postMarketMorning, postWeeklyRanking } from "../_shared/communityTools.ts";
 import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
@@ -97,6 +98,20 @@ Deno.serve(async () => {
       });
     } catch (e) {
       console.error("economy:", e instanceof Error ? e.message : e);
+    }
+  }
+
+  // Comunidad: resumen de mercado de la mañana y avisos de funding / movimientos fuertes (cada 5 min, en «Noticias»)
+  // y ranking semanal (domingo a la noche, en el tema de las señales).
+  if (new Date().getUTCMinutes() % 5 === 0) {
+    try {
+      const token = botToken();
+      const send = async (chatId: number, html: string, thread: number | null) => (token ? await sendMessage(token, chatId, html, thread ? { message_thread_id: thread } : {}) : undefined);
+      await postMarketMorning({ supabase, send });
+      await postMarketAlerts({ supabase, send });
+      await postWeeklyRanking({ supabase, send });
+    } catch (e) {
+      console.error("community-tools:", e instanceof Error ? e.message : e);
     }
   }
 
