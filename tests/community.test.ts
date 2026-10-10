@@ -54,7 +54,7 @@ describe("conectar la comunidad", () => {
     expect(r.ok).toBe(true);
     expect(r.code).toMatch(/^[A-Z2-9]{8}$/);
     expect(r.command).toBe(`/comunidad@veltrix_bot ${r.code}`);
-    expect(r.addToGroupUrl).toBe("https://t.me/veltrix_bot?startgroup=true");
+    expect(r.addToGroupUrl).toBe("https://t.me/veltrix_bot?startgroup=true&admin=delete_messages+pin_messages+invite_users+manage_topics+post_stories+edit_stories+delete_stories");
     expect(r.addToChannelUrl).toContain("startchannel=true");
     expect(db.tables.telegram_link_codes[0]).toMatchObject({ kind: "community", user_id: "u1" });
   });
