@@ -36,6 +36,13 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
+/**
+ * Permisos de administrador que el enlace «Agregar al grupo» le propone al bot (la persona puede cambiarlos antes de confirmar).
+ * delete_messages: la bienvenida borra su saludo anterior; manage_topics: publicar en los temas; pin_messages, invite_users y las
+ * tres de historias: los que pidió la comunidad. Nombres según https://core.telegram.org/api/links
+ */
+const GROUP_ADMIN_RIGHTS = ["delete_messages", "pin_messages", "invite_users", "manage_topics", "post_stories", "edit_stories", "delete_stories"];
+
 const MAX_PER_MINUTE = 20; // mismo límite que el webhook de TradingView
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_MINUTES = 10;
@@ -790,7 +797,7 @@ async function handleClient(req: Request, body: Record<string, unknown>) {
       code,
       botUsername: username,
       command: `/comunidad@${username} ${code}`,
-      addToGroupUrl: `https://t.me/${username}?startgroup=true`,
+      addToGroupUrl: `https://t.me/${username}?startgroup=true&admin=${GROUP_ADMIN_RIGHTS.join("+")}`,
       addToChannelUrl: `https://t.me/${username}?startchannel=true&admin=post_messages`,
     });
   }
