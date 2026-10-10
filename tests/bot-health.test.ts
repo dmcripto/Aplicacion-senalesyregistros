@@ -43,7 +43,7 @@ describe("alarma: el servidor no revisa el bot", () => {
 });
 
 describe("el estado del bot se puede refrescar sin parpadear", () => {
-  const loaded = (lastTickAt: string | null) => ({ ...DEFAULT_BOT, enabled: true, lastTickAt, rulesSupported: true, profileSupported: true, notifySupported: true, scanSupported: true });
+  const loaded = (lastTickAt: string | null) => ({ ...DEFAULT_BOT, enabled: true, lastTickAt, rulesSupported: true, profileSupported: true, notifySupported: true, scanSupported: true, unlockSupported: true });
 
   it("trae la revisión nueva sin pasar por «cargando»", async () => {
     let tick: string | null = null;

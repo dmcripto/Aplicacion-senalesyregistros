@@ -13,7 +13,9 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate } from "../_shared/botStrategy.ts";
+import { cleanUnlock, unlockNote } from "../_shared/unlockFilter.ts";
+import type { UnlockEvent } from "../_shared/unlockFilter.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
@@ -126,6 +128,16 @@ async function universe(n: number): Promise<string[]> {
 }
 
 /**
+ * Desbloqueos de tokens guardados por la función que lee la fuente de datos (tabla token_unlocks, sin acceso desde la app).
+ * Sin la tabla, o vacía, devuelve [] y el filtro no cambia nada.
+ */
+async function loadUnlocks(fromMs: number, toMs: number): Promise<UnlockEvent[]> {
+  const { data, error } = await admin.from("token_unlocks").select("symbol, at, pct").gte("at", new Date(fromMs).toISOString()).lte("at", new Date(toMs).toISOString()).limit(5000);
+  if (error) return [];
+  return ((data ?? []) as Array<{ symbol: string; at: string; pct: number }>).map((r) => ({ symbol: r.symbol, at: new Date(r.at).getTime(), pct: Number(r.pct) })).filter((e) => Number.isFinite(e.at) && Number.isFinite(e.pct));
+}
+
+/**
  * Simula el bot completo (con los topes y las reglas guardadas de la persona) sobre el historial real y lo compara
  * con el mismo bot sin reglas. Las reglas salen de operaciones de la persona, no de estos precios: es una prueba justa.
  */
@@ -169,6 +181,14 @@ async function runBacktest(userId: string, chosen: string[], days: number) {
   const sim = (rules: BotAction[], p: BotParams) => simulate(p.tf === "4h" ? bars4h : bars, { symbols, rules, ...base }, p);
   const without = sim([], params);
   const withRules = rules.length ? sim(rules, params) : null;
+  // Filtro de desbloqueos: el mismo bot, con y sin el filtro, sobre las fechas de desbloqueo que haya cargadas.
+  const unlockCfg = cleanUnlock({ mode: cfg?.unlock_mode, windowDays: cfg?.unlock_window_days, minPct: cfg?.unlock_min_pct });
+  let unlock: { mode: string; events: number; without: ReturnType<typeof botStats>; with: ReturnType<typeof botStats> } | null = null;
+  if (unlockCfg.mode !== "off") {
+    const events = await loadUnlocks(Date.now() - (days + 40) * 86_400_000, Date.now() + 40 * 86_400_000);
+    const filtered = events.length ? simulate(params.tf === "4h" ? bars4h : bars, { symbols, rules: [], ...base, unlock: { cfg: unlockCfg, events } }, params) : null;
+    unlock = { mode: unlockCfg.mode, events: events.length, without: botStats(without.trades.map((t) => t.r)), with: botStats((filtered ?? without).trades.map((t) => t.r)) };
+  }
   // Los perfiles, sin reglas y con los mismos límites, para compararlos.
   const byProfile = BOT_PROFILE_IDS.map((id) => ({ id, current: id === profile, stats: botStats(sim([], BOT_PROFILES[id]).trades.map((t) => t.r)) }));
   return {
@@ -179,6 +199,7 @@ async function runBacktest(userId: string, chosen: string[], days: number) {
     byProfile,
     total: botStats(without.trades.map((t) => t.r)),
     withRules: withRules ? botStats(withRules.trades.map((t) => t.r)) : null,
+    unlock,
     rulesApplied: rules.length,
     scanned: scan ? symbols.length : 0,
     // Con escaneo hay decenas de activos: se muestran los 10 con más operaciones.
@@ -285,6 +306,9 @@ interface Settings {
   daily_loss_r: number;
   rules?: unknown;
   scan_top?: unknown;
+  unlock_mode?: unknown;
+  unlock_window_days?: unknown;
+  unlock_min_pct?: unknown;
 }
 
 interface OpenBotTrade {
@@ -441,6 +465,9 @@ async function tick() {
     const { data: pr } = await admin.from("bot_news_pause").select("user_id, enabled, before_min, after_min, paused_until").in("user_id", settings.map((x) => x.user_id));
     for (const r of (pr ?? []) as Array<{ user_id: string; paused_until?: string | null }>) pauseRows.set(r.user_id, r);
   }
+  // Desbloqueos de los próximos días (solo si alguien tiene el filtro encendido).
+  const anyUnlock = settings.some((x) => cleanUnlock({ mode: x.unlock_mode }).mode !== "off");
+  const unlocks = anyUnlock ? await loadUnlocks(nowMs, nowMs + 31 * 86_400_000) : [];
   const t0 = Date.now();
   const inds = new Map<string, Indicators>(); // indicadores por activo y perfil (se calculan una vez por corrida)
   let deferred = 0;
@@ -480,7 +507,8 @@ async function tick() {
     }
     let count = openSymbols.size;
     // Todas las señales de esta vela; si hay más que lugares, entran primero las más fuertes (igual que en la prueba con historial).
-    const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
+    const unlockCfg = cleanUnlock({ mode: s.unlock_mode, windowDays: s.unlock_window_days, minPct: s.unlock_min_pct });
+    const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>>; near: boolean; boosted: boolean }> = [];
     for (const symbol of watchOf(s)) {
       if (openSymbols.has(symbol)) continue;
       const b = bars.get(`${symbol}|${tf}`);
@@ -490,11 +518,16 @@ async function tick() {
       if (i < 0) continue;
       const key = `${symbol}:${profile}`;
       if (!inds.has(key)) inds.set(key, indicators(done, params));
+      if (unlockCfg.mode !== "off" && unlocks.length) {
+        const f = signalWithUnlock(done, inds.get(key)!, i, params, symbol, done[i].t + barMs, unlocks, unlockCfg);
+        if (f && f.sig.t === done[i].t) found.push({ symbol, sig: f.sig, near: f.nearUnlock, boosted: f.boosted });
+        continue;
+      }
       const sig = signalAt(done, inds.get(key)!, i, params);
-      if (sig && sig.t === done[i].t) found.push({ symbol, sig });
+      if (sig && sig.t === done[i].t) found.push({ symbol, sig, near: false, boosted: false });
     }
-    found.sort((a, b) => b.sig.strength - a.sig.strength);
-    for (const { symbol, sig } of found) {
+    found.sort((a, b) => Number(b.boosted) - Number(a.boosted) || b.sig.strength - a.sig.strength);
+    for (const { symbol, sig, near, boosted } of found) {
       if (count >= s.max_open) break;
       if (maxPerDay != null && openedToday >= maxPerDay) continue;
       const when = localParts(sig.t + barMs, tzOf.get(s.user_id) ?? null);
@@ -516,7 +549,7 @@ async function tick() {
       }
       const { data: trade, error: trErr } = await admin
         .from("trades")
-        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: tf === "4h" ? `${symbol}:${sig.t}:4h` : `${symbol}:${sig.t}`, notes: noteFor(profile), tags: [TAG] })
+        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: tf === "4h" ? `${symbol}:${sig.t}:4h` : `${symbol}:${sig.t}`, notes: near ? `${noteFor(profile)} ${unlockNote(unlockCfg, boosted)}` : noteFor(profile), tags: [TAG] })
         .select("id")
         .single();
       if (trErr || !trade) {

@@ -1627,6 +1627,24 @@ export interface BotSettings {
   profile: BotProfileId; // perfil de estrategia
   notify: boolean; // avisar de cada operación del bot (app y Telegram propios)
   scanTop: BotScan; // 0 = solo sus activos; 20 o 40 = además mira los futuros más operados
+  unlockMode: BotUnlockMode; // filtro de desbloqueos de tokens
+  unlockWindowDays: number; // cuántos días antes de un desbloqueo grande se aplica
+  unlockMinPct: number; // tamaño mínimo del desbloqueo, en % de lo que ya circula
+}
+
+/** Filtro de desbloqueos: apagado · cuidadoso (no compra antes de un desbloqueo grande) · agresivo (además busca ventas). */
+export type BotUnlockMode = "off" | "careful" | "aggressive";
+export const BOT_UNLOCK_MODES: BotUnlockMode[] = ["off", "careful", "aggressive"];
+export const UNLOCK_LIMITS = { windowDays: { min: 1, max: 30 }, minPct: { min: 0.1, max: 50 } } as const;
+export function botUnlockInfo(mode: BotUnlockMode): { name: string; blurb: string } {
+  switch (mode) {
+    case "careful":
+      return { name: tr("Cuidadoso"), blurb: tr("No abre compras cuando falta poco para un desbloqueo grande del activo. Las ventas siguen igual.") };
+    case "aggressive":
+      return { name: tr("Agresivo"), blurb: tr("Además de evitar las compras, busca ventas antes del desbloqueo: acepta la ruptura a la baja con una condición de tendencia más relajada y la pone primera. Siempre hace falta la ruptura técnica del perfil. Más riesgo: si el precio sube de golpe, la venta pierde.") };
+    default:
+      return { name: tr("Apagado"), blurb: tr("El bot no mira los desbloqueos.") };
+  }
 }
 
 /** Cuántos futuros (los de más volumen) mira el bot además de los elegidos. */
@@ -1757,7 +1775,7 @@ export const liveStatusLabel = (st: LiveOrder["status"]) =>
 /** Ajusta un valor al rango permitido (y a un número válido); si no es número devuelve el de reserva. */
 export const clampLive = (v: number, min: number, max: number, fallback: number) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0 };
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0, unlockMode: "off", unlockWindowDays: 7, unlockMinPct: 2 };
 
 /** Si el bot está encendido pero el servidor hace rato que no lo revisa, cuántos minutos van (null = está todo bien o está apagado). */
 export const BOT_STALE_MIN = 15;
@@ -1784,7 +1802,7 @@ export interface BotStatsRow {
 }
 
 export type BotBacktest =
-  | { ok: true; days: number; scanned?: number; total: BotStatsRow; withRules: BotStatsRow | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
+  | { ok: true; days: number; scanned?: number; total: BotStatsRow; withRules: BotStatsRow | null; unlock?: { mode: BotUnlockMode; events: number; without: BotStatsRow; with: BotStatsRow } | null; rulesApplied: number; profile?: BotProfileId; byProfile?: Array<{ id: BotProfileId; current: boolean; stats: BotStatsRow }>; symbols: Array<{ symbol: string; stats: BotStatsRow; error?: string }> }
   | { ok: false; error?: string };
 
 // ─── Laboratorio de variantes del bot ───────────────────────────────────────

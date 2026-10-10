@@ -467,6 +467,71 @@ describe("función bot · perfiles de estrategia", () => {
   });
 });
 
+describe("función bot · filtro de desbloqueos", () => {
+  const unlockIn = (days: number, pct = 5) => ({ symbol: "BTCUSDT", at: new Date(Date.now() + days * 86_400_000).toISOString(), pct });
+
+  it("apagado (de fábrica) o sin datos cargados: opera como siempre", async () => {
+    enable();
+    db.tables.token_unlocks = [unlockIn(2)];
+    expect((await tick()).body.opened).toBe(1); // modo apagado: ignora los desbloqueos
+    resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+    enable({ unlock_mode: "careful" }); // modo cuidadoso pero sin tabla ni datos
+    expect((await tick()).body.opened).toBe(1);
+  });
+
+  it("cuidadoso: no abre una COMPRA si hay un desbloqueo grande dentro de la ventana", async () => {
+    enable({ unlock_mode: "careful", unlock_window_days: 7, unlock_min_pct: 2 });
+    db.tables.token_unlocks = [unlockIn(3)];
+    const r = await tick();
+    expect(r.body.opened).toBe(0);
+    expect(db.tables.trades).toHaveLength(0);
+  });
+
+  it("cuidadoso: deja pasar la compra si el desbloqueo es chico, lejano o ya pasó", async () => {
+    for (const row of [unlockIn(3, 0.5), unlockIn(20), unlockIn(-2)]) {
+      resetDb({ bot_settings: [], bot_signals: [], trades: [] });
+      enable({ unlock_mode: "careful", unlock_window_days: 7, unlock_min_pct: 2 });
+      db.tables.token_unlocks = [row];
+      expect((await tick()).body.opened).toBe(1);
+    }
+  });
+
+  it("la persona decide la ventana y el tamaño mínimo", async () => {
+    enable({ unlock_mode: "careful", unlock_window_days: 2, unlock_min_pct: 2 });
+    db.tables.token_unlocks = [unlockIn(3)]; // cae fuera de una ventana de 2 días
+    expect((await tick()).body.opened).toBe(1);
+  });
+
+  it("el desbloqueo de otro activo no afecta", async () => {
+    enable({ unlock_mode: "careful" });
+    db.tables.token_unlocks = [{ ...unlockIn(2), symbol: "ARBUSDT" }];
+    expect((await tick()).body.opened).toBe(1);
+  });
+
+  it("la prueba con historial muestra el bot con y sin el filtro", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, unlock_mode: "careful" });
+    const call = async () => {
+      const res = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: "Bearer good" }, body: JSON.stringify({ action: "backtest", symbols: ["BTCUSDT"] }) }));
+      return (await res.json()) as any;
+    };
+    let r = await call();
+    expect(r.unlock).toMatchObject({ mode: "careful", events: 0 }); // sin datos cargados todavía
+    db.tables.token_unlocks = [];
+    for (let d = 10; d < 200; d += 10) db.tables.token_unlocks.push(unlockIn(-d, 5)); // muchos desbloqueos pasados
+    r = await call();
+    expect(r.unlock.events).toBeGreaterThan(10);
+    expect(r.unlock.with.n).toBeLessThanOrEqual(r.unlock.without.n);
+  });
+
+  it("sin el filtro encendido la prueba no trae el bloque", async () => {
+    klines = series(3000, true);
+    db.tables.bot_settings.push({ user_id: "u1", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3 });
+    const res = await handler(new Request("http://x/functions/v1/bot", { method: "POST", headers: { Authorization: "Bearer good" }, body: JSON.stringify({ action: "backtest", symbols: ["BTCUSDT"] }) }));
+    expect(((await res.json()) as any).unlock).toBeNull();
+  });
+});
+
 describe("función bot · muchas personas", () => {
   it("revisa primero a quienes hace más que no se revisan y avisa si deja gente para la próxima", async () => {
     // 3 personas con el bot encendido; la que nunca se revisó va primero

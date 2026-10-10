@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BOT_PROFILE_LIST, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
@@ -30,7 +30,7 @@ function StatsLine({ s }: { s: BotStatsRow }) {
 }
 
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
-  const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported, scanSupported, unlockSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<BotBacktest | null>(null);
@@ -204,6 +204,39 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           </div>
         )}
 
+        {unlockSupported && (
+          <div>
+            <span className={label}>{t("Filtro de desbloqueos")}</span>
+            <div className="grid grid-cols-3 gap-2">
+              {BOT_UNLOCK_MODES.map((m) => (
+                <button
+                  key={m}
+                  onClick={() => update({ unlockMode: m })}
+                  className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.unlockMode === m ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
+                >
+                  {botUnlockInfo(m).name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{botUnlockInfo(s.unlockMode).blurb}</p>
+            {s.unlockMode !== "off" && (
+              <>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <label>
+                    <span className={label}>{t("Días antes del desbloqueo")}</span>
+                    <input type="number" className="field" min={UNLOCK_LIMITS.windowDays.min} max={UNLOCK_LIMITS.windowDays.max} step={1} value={s.unlockWindowDays} onChange={(e) => update({ unlockWindowDays: Number(e.target.value) })} />
+                  </label>
+                  <label>
+                    <span className={label}>{t("Tamaño mínimo (% de lo que circula)")}</span>
+                    <input type="number" className="field" min={UNLOCK_LIMITS.minPct.min} max={UNLOCK_LIMITS.minPct.max} step={0.5} value={s.unlockMinPct} onChange={(e) => update({ unlockMinPct: Number(e.target.value) })} />
+                  </label>
+                </div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{t("Funciona cuando el servidor tiene cargadas las fechas de los desbloqueos (viene de una fuente de datos externa). Si no hay datos de un activo, el bot opera como siempre.")}</p>
+              </>
+            )}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <label>
             <span className={label}>{t("Operaciones abiertas a la vez")}</span>
@@ -290,6 +323,27 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                     ))}
                   </div>
                   <p>{backtestVerdict(test.total, test.withRules, (n) => `${fmtR(n)}R`)}</p>
+                </div>
+              )}
+              {test.unlock && (
+                <div className="space-y-1.5 rounded-md border border-gold/40 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-snow">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Con y sin el filtro de desbloqueos")}</p>
+                  {test.unlock.events === 0 ? (
+                    <p>{t("Todavía no hay fechas de desbloqueos cargadas en el servidor: la prueba no puede medir el filtro.")}</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        [t("Sin el filtro"), test.unlock.without],
+                        [t("Con el filtro ({mode})", { mode: botUnlockInfo(test.unlock.mode).name }), test.unlock.with],
+                      ].map(([name, st]) => (
+                        <div key={name as string} className="rounded-md border border-line bg-ink/50 p-2.5">
+                          <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-dim">{name as string}</p>
+                          <p className={cx("num text-base font-bold", (st as BotStatsRow).expectancy > 0 ? "text-bull" : (st as BotStatsRow).expectancy < 0 ? "text-bear" : "text-fog")}>{fmtR((st as BotStatsRow).expectancy)}R</p>
+                          <p className="num text-[10.5px] text-fog">{(st as BotStatsRow).n} {t("ops")} · {Math.round((st as BotStatsRow).winRate)}%</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

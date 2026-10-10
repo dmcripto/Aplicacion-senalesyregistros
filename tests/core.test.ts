@@ -339,3 +339,21 @@ describe("rangos de apalancamiento del bot real", () => {
     expect(normalizeLeverage(12.6, 33.2)).toEqual({ min: 13, max: 33 });
   });
 });
+
+describe("filtro de desbloqueos: ajustes del bot", () => {
+  it("de fábrica está apagado, con 7 días y 2 %", async () => {
+    const { DEFAULT_BOT, BOT_UNLOCK_MODES, botUnlockInfo, UNLOCK_LIMITS } = await import("../packages/core/src/trading");
+    expect(DEFAULT_BOT).toMatchObject({ unlockMode: "off", unlockWindowDays: 7, unlockMinPct: 2 });
+    expect(BOT_UNLOCK_MODES).toEqual(["off", "careful", "aggressive"]);
+    expect(botUnlockInfo("careful").name).toBe("Cuidadoso");
+    expect(botUnlockInfo("aggressive").blurb).toContain("Más riesgo");
+    expect(UNLOCK_LIMITS.windowDays.max).toBe(30);
+  });
+  it("los límites del núcleo coinciden con los del servidor", async () => {
+    const core = await import("../packages/core/src/trading");
+    const srv = await import("../supabase/functions/_shared/unlockFilter");
+    expect(core.UNLOCK_LIMITS).toEqual(srv.UNLOCK_LIMITS);
+    expect(core.BOT_UNLOCK_MODES).toEqual(srv.UNLOCK_MODES);
+    expect({ unlockMode: core.DEFAULT_BOT.unlockMode, unlockWindowDays: core.DEFAULT_BOT.unlockWindowDays, unlockMinPct: core.DEFAULT_BOT.unlockMinPct }).toEqual({ unlockMode: srv.DEFAULT_UNLOCK.mode, unlockWindowDays: srv.DEFAULT_UNLOCK.windowDays, unlockMinPct: srv.DEFAULT_UNLOCK.minPct });
+  });
+});
