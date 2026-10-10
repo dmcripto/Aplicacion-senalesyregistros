@@ -5,6 +5,7 @@ import { createAlert, fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
 import AlertsSection from "./AlertsSection";
 import ChartDrawings from "./ChartDrawings";
+import TradingViewEmbed from "./TradingViewEmbed";
 import Panel from "./Panel";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -35,6 +36,7 @@ const DEFAULTS: Prefs = {
 };
 
 const SIZE_KEY = "veltrix_chart_size_v1";
+const ENGINE_KEY = "veltrix_chart_engine_v1";
 const SUB_PANE = 110;
 const SCALE_LABEL = ["Normal", "Log", "%"] as const;
 const loadPrefs = (): Prefs => {
@@ -116,6 +118,22 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
     }
   });
   const [fs, setFs] = useState(false);
+  const [engine, setEngine] = useState<"veltrix" | "tv">(() => {
+    try {
+      return localStorage.getItem(ENGINE_KEY) === "tv" ? "tv" : "veltrix";
+    } catch {
+      return "veltrix";
+    }
+  });
+  const pickEngine = (v: "veltrix" | "tv") => {
+    setEngine(v);
+    try {
+      localStorage.setItem(ENGINE_KEY, v);
+    } catch {
+      /* igual */
+    }
+  };
+  const tv = engine === "tv";
   const [subCount, setSubCount] = useState(0);
   const [scaleMode, setScaleMode] = useState<0 | 1 | 2>(0); // 0 normal · 1 logarítmica · 2 porcentaje
   const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"]) => void; destroy: () => void; chart: any; series: any } | null>(null);
@@ -423,7 +441,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={cx("grid gap-2 sm:grid-cols-2", tv && "hidden")}>
         {([0, 1] as const).map((i) => {
           const s = prefs.slots[i];
           const dot = i === 0 ? "#f5c518" : "#c084fc";
@@ -446,7 +464,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         })}
       </div>
 
-      {liqOn && (
+      {liqOn && !tv && (
         <div className="flex flex-wrap items-center gap-2 text-[11.5px] text-dim">
           {liqState === "loading" && <span>{t("Calculando…")}</span>}
           {liqState === "none" && <span>{t("Este activo no tiene mapa de liquidaciones.")}</span>}
@@ -463,6 +481,16 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         {change24 != null && <span className={cx("num text-[12px] font-semibold", change24 >= 0 ? "text-bull" : "text-bear")}>{`${change24 >= 0 ? "+" : "−"}${Math.abs(change24).toFixed(2)}%`}</span>}
         {levels.length > 0 && <span className="text-[11.5px] text-gold">{t("Se muestran tus señales abiertas de este activo: entrada, TP y SL.")}</span>}
       </div>
+
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span className="mr-1 text-dim">{t("Gráfico")}</span>
+        {(["veltrix", "tv"] as const).map((v) => (
+          <button key={v} type="button" onClick={() => pickEngine(v)} aria-pressed={engine === v} className={cx("rounded border px-2.5 py-1 font-semibold", engine === v ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-dim hover:text-fog")}>
+            {v === "veltrix" ? t("VELTRIX (tus señales y alertas)") : t("TradingView (todas sus herramientas)")}
+          </button>
+        ))}
+      </div>
+      {tv && <p className="text-[11px] leading-relaxed text-dim">{t("Estás viendo el gráfico de TradingView, con todas sus herramientas e indicadores. Tus señales abiertas y alertas se ven en el gráfico de VELTRIX; las alertas se crean igual abajo.")}</p>}
 
       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
         <span className="mr-1 text-dim">{t("Tamaño")}</span>
@@ -490,7 +518,9 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       </div>
 
       <div ref={wrapRef} className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
-        <div ref={boxRef} className="ml-10" style={{ height: fs ? "100vh" : (size === "large" ? 680 : 520) + subCount * SUB_PANE }} />
+        {tv && <TradingViewEmbed symbol={symbolKey} tf={prefs.tf} height={fs ? "100vh" : size === "large" ? 780 : 640} />}
+        <div ref={boxRef} className={cx("ml-10", tv && "hidden")} style={{ height: fs ? "100vh" : (size === "large" ? 680 : 520) + subCount * SUB_PANE }} />
+        <div className={tv ? "hidden" : undefined}>
         <ChartDrawings
           api={apiRef.current}
           ready={ready}
@@ -515,6 +545,7 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
               : undefined
           }
         />
+        </div>
         {state !== "ok" && (
           <div className="absolute inset-0 grid place-items-center bg-ink/70 px-6 text-center text-[12.5px] text-dim">
             {state === "loading" ? t("Cargando velas…") : t("No se pudieron cargar las velas de este activo. Probá con otro (por ejemplo BTCUSDT).")}
