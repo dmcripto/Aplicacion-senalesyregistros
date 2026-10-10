@@ -7,7 +7,7 @@ import type { Lang } from "./telegram.ts";
 import { favorPct, prettyPair, targetAdvice } from "./community.ts";
 import type { CommunityTrade } from "./community.ts";
 
-const CARD_SITE = "https://veltrix-trading.vercel.app";
+const CARD_SITE = "https://www.veltrix-trading.com.ar";
 const CARD_W = 1080;
 const CARD_H = 1080;
 

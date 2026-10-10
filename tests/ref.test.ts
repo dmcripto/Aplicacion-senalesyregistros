@@ -30,8 +30,8 @@ describe("programa de invitados", () => {
     expect(cleanInvite(undefined)).toBeNull();
   });
   it("el enlace y el mensaje llevan el código", () => {
-    expect(inviteLink("XPUC9U6Q")).toBe("https://veltrix-trading.vercel.app/?inv=XPUC9U6Q");
-    expect(inviteMessage("XPUC9U6Q")).toContain("https://veltrix-trading.vercel.app/?inv=XPUC9U6Q");
+    expect(inviteLink("XPUC9U6Q")).toBe("https://www.veltrix-trading.com.ar/?inv=XPUC9U6Q");
+    expect(inviteMessage("XPUC9U6Q")).toContain("https://www.veltrix-trading.com.ar/?inv=XPUC9U6Q");
   });
 });
 
@@ -49,7 +49,7 @@ describe("tarjeta de la semana para compartir", () => {
   });
   it("el texto del post lleva el resultado y el enlace de invitado", () => {
     const s = summarize([mk("a", "TP", 1), mk("b", "TP", 2)], "week", now);
-    const txt = resultShareText(s, "https://veltrix-trading.vercel.app/?inv=ABCD2345");
+    const txt = resultShareText(s, "https://www.veltrix-trading.com.ar/?inv=ABCD2345");
     expect(txt).toContain("Mi semana en R");
     expect(txt).toContain("2 operaciones");
     expect(txt).toContain("?inv=ABCD2345");

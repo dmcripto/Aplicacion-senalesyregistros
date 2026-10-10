@@ -253,7 +253,7 @@ describe("/anunciar escrito dentro del grupo (en el tema Noticias)", () => {
     expect(posted()).toHaveLength(1);
     expect(posted()[0].payload.message_thread_id).toBe(9);
     expect(posted()[0].payload.text).toContain("BOT AUTOMÁTICO");
-    expect(posted()[0].payload.text).toContain("veltrix-trading.vercel.app/app");
+    expect(posted()[0].payload.text).toContain("www.veltrix-trading.com.ar/app");
     expect(posted()[0].payload.text).not.toMatch(/\[[^\]]*\]|2FA|Authenticator/); // nada por completar ni funciones que todavía no existen
   });
 

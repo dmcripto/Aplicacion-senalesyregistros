@@ -1,0 +1,4 @@
+$ORIGIN veltrix-trading.com.ar.
+@ 60 IN MX 10 mx1.improvmx.com.
+@ 60 IN MX 20 mx2.improvmx.com.
+@ 60 IN TXT "v=spf1 include:spf.improvmx.com ~all"

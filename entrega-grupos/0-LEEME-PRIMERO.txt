@@ -1,0 +1,29 @@
+BOT DE TELEGRAM EN LOS GRUPOS: INVITACIONES, FIJAR Y FILTRO DE ENLACES
+======================================================================
+
+Qué hace con los permisos que ya le diste
+  🔗 /miinvitacion  → cada persona recibe SU enlace de invitación; el bot cuenta quién entra con él.
+     /misinvitados  → cuántas personas entraron con tu enlace.
+  📌 Fijado automático: el ranking semanal y los avisos de /anunciar quedan fijados en su tema (se suelta el anterior).
+     /fijar          → un administrador responde a un mensaje con /fijar y el bot lo fija.
+  🛡️ /antispam on|off → borra los enlaces que publican las personas que entraron hace menos de 24 horas.
+     Los administradores no se ven afectados. Viene APAGADO: lo prende un administrador del grupo.
+
+PASOS (en este orden, unos 5 minutos)
+  1. En Telegram, en «Privilegios de admin» del bot, tocá «Listo» para guardar los permisos que marcaste
+     (Eliminar mensajes, Invitar con un enlace, Fijar mensajes, Gestionar temas).
+  2. Supabase → SQL Editor → pegar TODO 1-SQL-grupos.txt → Run → «Success».
+  3. Edge Functions → telegram-bot → Code → borrar todo → pegar 2-FUNCION-telegram-bot.txt → Deploy.
+  4. Edge Functions → auto-close → Code → borrar todo → pegar 3-FUNCION-auto-close.txt → Deploy.
+  5. En el chat PRIVADO con el bot (con tu cuenta habilitada), escribí:  /webhook
+     Tiene que contestar «Webhook actualizado». Esto hace que el bot reciba las entradas al grupo (hace falta para contar invitaciones).
+  6. En el grupo prueba:
+        /miinvitacion              → te da tu enlace
+        (entrá con otra cuenta usando ese enlace)  →  /misinvitados  → «1 persona»
+        /antispam on               → (solo administradores)
+        respondé a un mensaje con /fijar → queda fijado
+
+LO QUE NO SE PUEDE
+  • Historias: la API de bots de Telegram solo permite publicar historias en cuentas de empresa conectadas, no en un grupo.
+    El permiso «Gestionar historias» queda marcado pero no hay forma de usarlo desde el bot.
+  • Si un permiso no está marcado (por ejemplo «Fijar mensajes»), la acción simplemente no se hace; el resto sigue funcionando.

@@ -707,7 +707,14 @@ async function webhookCommand(chatId: number, link: Link, lang: Lang) {
   const base = Deno.env.get("SUPABASE_URL");
   if (!token || !secret || !base) return say(chatId, es ? "Faltan secretos del bot en el servidor." : "The bot secrets are missing on the server.");
   const r = await tgApi(token, "setWebhook", { url: `${base}/functions/v1/telegram-bot`, secret_token: secret, allowed_updates: ["message", "callback_query", "channel_post", "chat_member", "my_chat_member"] });
-  return say(chatId, r?.ok ? (es ? "✅ Webhook actualizado: ya recibo las entradas al grupo (para contar invitaciones)." : "✅ Webhook updated: I now receive group joins (to count invitations).") : `${es ? "No se pudo actualizar" : "Could not update"}: ${esc(r?.description ?? "error")}`);
+  // Permisos que Telegram propone por defecto al agregar el bot a un grupo (sin marcarlos a mano).
+  const rights: Record<string, boolean> = { can_manage_chat: true, can_delete_messages: true, can_pin_messages: true, can_invite_users: true, can_manage_topics: true, can_post_stories: true, can_edit_stories: true, can_delete_stories: true, can_send_welcome_messages: true };
+  let d = await tgApi(token, "setMyDefaultAdministratorRights", { rights });
+  if (!d?.ok) { delete rights.can_send_welcome_messages; d = await tgApi(token, "setMyDefaultAdministratorRights", { rights }); }
+  if (!r?.ok) return say(chatId, `${es ? "No se pudo actualizar" : "Could not update"}: ${esc(r?.description ?? "error")}`);
+  const ok = es ? "✅ Webhook actualizado: ya recibo las entradas al grupo (para contar invitaciones)." : "✅ Webhook updated: I now receive group joins (to count invitations).";
+  const okRights = d?.ok ? (es ? "\n✅ Permisos de administrador por defecto actualizados." : "\n✅ Default admin rights updated.") : `\n⚠️ ${es ? "No se pudieron fijar los permisos por defecto" : "Could not set default admin rights"}: ${esc(d?.description ?? "error")}`;
+  return say(chatId, ok + okRights);
 }
 
 async function handleMessage(msg: any) {
@@ -823,6 +830,14 @@ async function handleMessage(msg: any) {
       return announce(chatId, link, lang, rest);
     case "/webhook":
       return webhookCommand(chatId, link, lang);
+    case "/miinvitacion":
+    case "/myinvite":
+    case "/misinvitados":
+    case "/myinvites":
+    case "/fijar":
+    case "/pin":
+    case "/antispam":
+      return say(chatId, lang === "es" ? "ℹ️ Este comando solo funciona <b>dentro del grupo</b> (con el bot como administrador). Escribilo allá." : "ℹ️ This command only works <b>inside the group</b> (with the bot as an admin). Type it there.");
     case "/idioma":
     case "/language": {
       const want = (rest[0] ?? "").toLowerCase();

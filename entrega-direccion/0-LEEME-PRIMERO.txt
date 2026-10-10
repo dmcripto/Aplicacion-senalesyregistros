@@ -1,0 +1,13 @@
+NUEVA DIRECCION: https://www.veltrix-trading.com.ar
+
+Pega cada archivo en su funcion de Supabase (Edge Functions -> abrir la funcion -> Code -> pegar todo -> Deploy):
+  1-FUNCION-telegram-bot.txt          -> funcion "telegram-bot"
+  2-FUNCION-auto-close.txt            -> funcion "auto-close"
+  3-FUNCION-tradingview-webhook.txt   -> funcion "tradingview-webhook"
+  4-FUNCION-whatsapp.txt              -> funcion "whatsapp"
+No hay SQL nuevo.
+
+IMPORTANTE (login por correo): en Supabase -> Authentication -> URL Configuration -> Redirect URLs agrega:
+  https://www.veltrix-trading.com.ar/**
+  https://veltrix-trading.com.ar/**
+Sin eso, el enlace del correo de inicio de sesion no vuelve a la web nueva.

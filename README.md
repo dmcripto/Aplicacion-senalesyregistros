@@ -15,7 +15,8 @@ Diario de trading con señales: web (React + Vite), app Android (Expo) y backend
 
 ## Direcciones de la web
 
-- `https://veltrix-trading.vercel.app`: la que se comparte.
+- `https://www.veltrix-trading.com.ar`: la oficial, la que se comparte (el dominio sin `www` redirige aquí).
+- `https://veltrix-trading.vercel.app`: la dirección anterior; sigue funcionando.
 - `https://aplicacion-senalesyregistros.vercel.app`: la original; sigue funcionando.
 
 En Supabase → Authentication → URL Configuration, las dos tienen que estar en *Redirect URLs*.
