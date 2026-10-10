@@ -16,6 +16,7 @@ import { postSessionAlerts } from "../_shared/sessions.ts";
 import { postMarketAlerts, postMarketMorning, postWeeklyRanking } from "../_shared/communityTools.ts";
 import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
+import { pinReplace } from "../_shared/groupTools.ts";
 import { waResultText } from "../_shared/whatsapp.ts";
 
 const supabase = createClient(
@@ -109,7 +110,7 @@ Deno.serve(async () => {
       const send = async (chatId: number, html: string, thread: number | null) => (token ? await sendMessage(token, chatId, html, thread ? { message_thread_id: thread } : {}) : undefined);
       await postMarketMorning({ supabase, send });
       await postMarketAlerts({ supabase, send });
-      await postWeeklyRanking({ supabase, send });
+      await postWeeklyRanking({ supabase, send, pin: async (chatId, messageId, prevId) => (token ? await pinReplace(token, chatId, messageId, prevId) : false) });
     } catch (e) {
       console.error("community-tools:", e instanceof Error ? e.message : e);
     }

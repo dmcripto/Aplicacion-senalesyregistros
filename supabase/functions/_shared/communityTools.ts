@@ -94,13 +94,15 @@ export function isWeeklyTime(now: number, tz: string): boolean {
 
 export interface PostDeps {
   supabase: any;
-  send: (chatId: number, html: string, thread: number | null) => Promise<{ ok?: boolean; error_code?: number } | void>;
+  send: (chatId: number, html: string, thread: number | null) => Promise<{ ok?: boolean; error_code?: number; result?: { message_id?: number } } | void>;
+  /** Fija el mensaje publicado y suelta el anterior (opcional). Devuelve si se pudo fijar. */
+  pin?: (chatId: number, messageId: number, prevId: number | null) => Promise<boolean>;
 }
 
 /** Domingo a la noche: publica el ranking de la semana en cada comunidad (una vez por semana). */
 export async function postWeeklyRanking(deps: PostDeps, now = Date.now()): Promise<number> {
   const { supabase } = deps;
-  const { data: rows, error } = await supabase.from("telegram_communities").select("id,user_id,chat_id,thread_id");
+  const { data: rows, error } = await supabase.from("telegram_communities").select("*");
   if (error || !rows?.length) return 0;
   const owners = [...new Set((rows as any[]).map((r) => r.user_id as string))];
   const { data: profiles } = await supabase.from("profiles").select("id,timezone,lang").in("id", owners);
@@ -117,8 +119,15 @@ export async function postWeeklyRanking(deps: PostDeps, now = Date.now()): Promi
     const w = weeklyRanking(trades, now - WEEK_MS, now + 1);
     if (!w) continue; // semana sin cierres: no se publica nada
     const r = await deps.send(chatId, weeklyMessage(w, prof?.lang === "en" ? "en" : "es"), row.thread_id ? Number(row.thread_id) : null);
-    if (r?.ok) sent++;
-    else {
+    if (r?.ok) {
+      sent++;
+      // El ranking queda fijado en su tema (y se suelta el de la semana anterior). Si al bot le falta el permiso, no se fija y sigue todo igual.
+      const messageId = r.result?.message_id;
+      if (deps.pin && messageId) {
+        const pinned = await deps.pin(chatId, messageId, row.weekly_pin_id ? Number(row.weekly_pin_id) : null);
+        if (pinned) await supabase.from("telegram_communities").update({ weekly_pin_id: messageId }).eq("id", row.id);
+      }
+    } else {
       await unclaim(supabase, key, chatId);
       if (r?.error_code === 403) await supabase.from("telegram_communities").delete().eq("id", row.id);
     }

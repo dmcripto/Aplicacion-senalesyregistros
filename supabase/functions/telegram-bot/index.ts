@@ -24,6 +24,7 @@ import {
   sendExposureNotice, streakMessage, streaks, weeklyMessage, weeklyRanking, WEEK_MS,
 } from "../_shared/communityTools.ts";
 import { castVote, parseVote, voteKeyboard } from "../_shared/votes.ts";
+import { hasLink, isNewMember, myInvite, pinReplace, recordJoin } from "../_shared/groupTools.ts";
 import { normalizeSymbol } from "../_shared/chartImage.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -597,12 +598,132 @@ async function riskCommand(chatId: number, link: Link, lang: Lang, args: string[
   return say(chatId, on ? (es ? "🛡️ Listo: te aviso si juntás demasiadas operaciones abiertas." : "🛡️ Done: I'll warn you if you pile up too many open trades.") : (es ? "Listo, apagué el aviso de exposición." : "Done, I turned the exposure warning off."));
 }
 
+// ─── Herramientas dentro de los grupos ──────────────────────────────────────
+
+const groupOwnerOf = async (chatId: number): Promise<string | null> => {
+  const { data } = await admin.from("telegram_communities").select("user_id").eq("chat_id", chatId).limit(1).maybeSingle();
+  return (data as { user_id?: string } | null)?.user_id ?? null;
+};
+
+/** /miinvitacion: el enlace de invitación propio de quien lo pide (se crea una vez). Cada persona que entre con él se cuenta. */
+async function myInviteCommand(msg: any) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  const owner = await groupOwnerOf(chatId);
+  if (!token || !owner || !msg.from?.id || msg.from.is_bot) return;
+  const lang = await langOf(owner, guessLang(msg.from?.language_code));
+  const es = lang === "es";
+  const extra = threadOf(msg);
+  const inv = await myInvite(admin, token, chatId, msg.from);
+  if (!inv) return say(chatId, es ? "No pude crear tu enlace. Avisale a un administrador que me dé el permiso «Invitar con un enlace» (y que corra el SQL de grupos)." : "I couldn't create your link. Ask an admin to give me the “Invite with a link” permission (and run the groups SQL).", extra);
+  return say(chatId, es
+    ? `🔗 <b>Tu enlace de invitación</b>\n\n${esc(inv.link)}\n\nCada persona que entre con él se cuenta para vos. Lo ves con /misinvitados.`
+    : `🔗 <b>Your invite link</b>\n\n${esc(inv.link)}\n\nEveryone who joins with it counts for you. Check it with /myinvites.`, extra);
+}
+
+/** /misinvitados: cuántas personas entraron con tu enlace. */
+async function myInvitesCommand(msg: any) {
+  const chatId: number = msg.chat.id;
+  const owner = await groupOwnerOf(chatId);
+  if (!owner || !msg.from?.id) return;
+  const lang = await langOf(owner, guessLang(msg.from?.language_code));
+  const { data } = await admin.from("group_invites").select("joins").eq("chat_id", chatId).eq("tg_user_id", msg.from.id).maybeSingle();
+  const n = Number((data as { joins?: number } | null)?.joins ?? 0);
+  const es = lang === "es";
+  if (!data) return say(chatId, es ? "Todavía no tenés enlace. Pedilo con /miinvitacion." : "You don't have a link yet. Get it with /myinvite.", threadOf(msg));
+  return say(chatId, es ? `👥 Entraron <b>${n}</b> ${n === 1 ? "persona" : "personas"} con tu enlace.` : `👥 <b>${n}</b> ${n === 1 ? "person" : "people"} joined with your link.`, threadOf(msg));
+}
+
+/** /fijar (respondiendo a un mensaje): lo fija. Solo administradores. */
+async function pinCommand(msg: any) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  if (!token || !(await groupOwnerOf(chatId))) return;
+  const lang = guessLang(msg.from?.language_code);
+  const es = lang === "es";
+  const extra = threadOf(msg);
+  if (!(await isAdminOf(token, msg))) return say(chatId, T[lang].adminOnly, extra);
+  const target = msg.reply_to_message && !msg.reply_to_message.forum_topic_created ? msg.reply_to_message.message_id : null;
+  if (!target) return say(chatId, es ? "Respondé al mensaje que querés fijar con /fijar." : "Reply to the message you want to pin with /pin.", extra);
+  const ok = await pinReplace(token, chatId, target, null);
+  if (!ok) return say(chatId, es ? "No pude fijarlo: necesito el permiso «Fijar mensajes»." : "I couldn't pin it: I need the “Pin messages” permission.", extra);
+}
+
+/** /antispam on|off: borra los enlaces que publican los recién llegados (primeras 24 h). Solo administradores. */
+async function antispamCommand(msg: any, arg: string | undefined) {
+  const token = botToken();
+  const chatId: number = msg.chat.id;
+  const owner = await groupOwnerOf(chatId);
+  if (!token || !owner) return;
+  const lang = await langOf(owner, guessLang(msg.from?.language_code));
+  const es = lang === "es";
+  const extra = threadOf(msg);
+  if (!(await isAdminOf(token, msg))) return say(chatId, T[lang].adminOnly, extra);
+  const word = String(arg ?? "").toLowerCase();
+  const on = ["on", "si", "sí", "activar", "yes"].includes(word);
+  if (!on && !["off", "no", "desactivar"].includes(word)) return say(chatId, es ? "Usá /antispam on o /antispam off." : "Use /antispam on or /antispam off.", extra);
+  const { error } = await admin.from("telegram_communities").update({ antispam: on }).eq("chat_id", chatId);
+  if (error) return say(chatId, es ? "Todavía falta correr el SQL de grupos en Supabase." : "The groups SQL has not been run in Supabase yet.", extra);
+  return say(chatId, on
+    ? (es ? "🛡️ Listo: voy a borrar los enlaces que publiquen las personas que entraron hace menos de 24 horas (necesito el permiso «Eliminar mensajes»). Los administradores no se ven afectados. Para apagarlo: /antispam off" : "🛡️ Done: I'll delete links posted by people who joined less than 24 hours ago (I need the “Delete messages” permission). Admins aren't affected. To turn it off: /antispam off")
+    : (es ? "Listo, apagué el filtro de enlaces de recién llegados." : "Done, I turned off the new-member link filter."), extra);
+}
+
+/** Borra el mensaje si trae un enlace, el filtro está encendido, quien lo publica entró hace menos de 24 h y no es administrador. */
+async function antispamCheck(msg: any) {
+  const token = botToken();
+  if (!token || !msg.from?.id || msg.from.is_bot || !hasLink(msg)) return;
+  const chatId: number = msg.chat.id;
+  const { data: com, error } = await admin.from("telegram_communities").select("antispam").eq("chat_id", chatId).limit(1).maybeSingle();
+  if (error || !(com as { antispam?: boolean } | null)?.antispam) return;
+  if (!(await isNewMember(admin, chatId, msg.from.id))) return;
+  if (await isAdminOf(token, msg)) return;
+  await tgApi(token, "deleteMessage", { chat_id: chatId, message_id: msg.message_id });
+}
+
+/** Alguien entró (o salió) del grupo: se anota quién entró y con el enlace de quién, para contar las invitaciones. */
+async function handleChatMember(cm: any) {
+  const chatId: number | undefined = cm?.chat?.id;
+  const user = cm?.new_chat_member?.user;
+  if (!chatId || !user || user.is_bot) return;
+  const before = cm.old_chat_member?.status;
+  const after = cm.new_chat_member?.status;
+  const joined = (!before || before === "left" || before === "kicked") && (after === "member" || after === "restricted");
+  if (!joined) return;
+  if (!(await groupOwnerOf(chatId))) return;
+  await recordJoin(admin, chatId, user.id, cm.invite_link?.invite_link ?? null);
+}
+
+/**
+ * /webhook (chat privado, solo cuentas habilitadas): vuelve a registrar el webhook del bot con todos los tipos de aviso que usa
+ * (incluye la entrada de miembros, que hace falta para contar las invitaciones). Se usa una vez después de actualizar.
+ */
+async function webhookCommand(chatId: number, link: Link, lang: Lang) {
+  const es = lang === "es";
+  const { data: prof, error } = await admin.from("profiles").select("bot_beta").eq("id", link.user_id).maybeSingle();
+  if (error || !(prof as { bot_beta?: boolean } | null)?.bot_beta) return say(chatId, T[lang].help);
+  const token = botToken();
+  const secret = Deno.env.get("TELEGRAM_WEBHOOK_SECRET");
+  const base = Deno.env.get("SUPABASE_URL");
+  if (!token || !secret || !base) return say(chatId, es ? "Faltan secretos del bot en el servidor." : "The bot secrets are missing on the server.");
+  const r = await tgApi(token, "setWebhook", { url: `${base}/functions/v1/telegram-bot`, secret_token: secret, allowed_updates: ["message", "callback_query", "channel_post", "chat_member", "my_chat_member"] });
+  return say(chatId, r?.ok ? (es ? "✅ Webhook actualizado: ya recibo las entradas al grupo (para contar invitaciones)." : "✅ Webhook updated: I now receive group joins (to count invitations).") : `${es ? "No se pudo actualizar" : "Could not update"}: ${esc(r?.description ?? "error")}`);
+}
+
 async function handleMessage(msg: any) {
   if (msg.chat?.type !== "private") {
-    if (Array.isArray(msg.new_chat_members) && msg.new_chat_members.length) return welcomeJoin(msg);
+    if (Array.isArray(msg.new_chat_members) && msg.new_chat_members.length) {
+      for (const m of msg.new_chat_members as Array<{ id: number; is_bot?: boolean }>) if (!m.is_bot) await recordJoin(admin, msg.chat.id, m.id, null);
+      return welcomeJoin(msg);
+    }
     const text = String(msg.text ?? "").trim();
     const [first, ...rest] = text.split(/\s+/);
     const cmd = first.startsWith("/") ? first.split("@")[0].toLowerCase() : null;
+    if (!cmd) return antispamCheck(msg); // texto común o con foto: el filtro de enlaces de recién llegados (si está encendido)
+    if (cmd === "/miinvitacion" || cmd === "/myinvite") return myInviteCommand(msg);
+    if (cmd === "/misinvitados" || cmd === "/myinvites") return myInvitesCommand(msg);
+    if (cmd === "/fijar" || cmd === "/pin") return pinCommand(msg);
+    if (cmd === "/antispam") return antispamCommand(msg, rest[0]);
     if (cmd === "/comunidad" || cmd === "/community" || cmd === "/desconectarcomunidad" || cmd === "/disconnectcommunity") return communityCommand(msg, cmd, rest[0]);
     if (cmd === "/noticias" || cmd === "/news") return newsCommand(msg, rest[0]);
     if (cmd === "/bienvenida" || cmd === "/welcome") return welcomeCommand(msg, text);
@@ -700,6 +821,8 @@ async function handleMessage(msg: any) {
     case "/anunciar":
     case "/announce":
       return announce(chatId, link, lang, rest);
+    case "/webhook":
+      return webhookCommand(chatId, link, lang);
     case "/idioma":
     case "/language": {
       const want = (rest[0] ?? "").toLowerCase();
@@ -760,7 +883,15 @@ async function announceHere(msg: any, args: string[]) {
     const id = (args[0] ?? "").toLowerCase();
     return say(chatId, lang === "es" ? `Para publicarlo acá (en este tema) escribí:\n/anunciar ${id} confirmar` : `To publish it here (in this topic) type:\n/announce ${id} confirm`, extra);
   }
-  return sendMessage(token, chatId, text[lang], extra);
+  const r = await sendMessage(token, chatId, text[lang], extra);
+  // El aviso queda fijado en su tema (y se suelta el anterior que fijó el bot). Sin el permiso, simplemente no se fija.
+  const messageId = r?.result?.message_id;
+  if (r?.ok && messageId) {
+    const { data: pinRow } = await admin.from("telegram_communities").select("announce_pin_id").eq("chat_id", chatId).limit(1).maybeSingle();
+    const prev = (pinRow as { announce_pin_id?: number | null } | null)?.announce_pin_id ?? null;
+    if (await pinReplace(token, chatId, messageId, prev)) await admin.from("telegram_communities").update({ announce_pin_id: messageId }).eq("chat_id", chatId);
+  }
+  return r;
 }
 
 // ─── Pedidos de la app ──────────────────────────────────────────────────────
@@ -825,6 +956,7 @@ Deno.serve(async (req) => {
       if (body.callback_query) await handleCallback(body.callback_query);
       else if (body.message) await handleMessage(body.message);
       else if (body.channel_post) await handleMessage(body.channel_post);
+      else if (body.chat_member) await handleChatMember(body.chat_member);
     } catch (e) {
       console.error("telegram-bot:", e instanceof Error ? e.message : e); // siempre 200: Telegram no debe reintentar
     }
