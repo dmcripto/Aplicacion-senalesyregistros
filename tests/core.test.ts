@@ -320,3 +320,22 @@ describe("demo animada de la bienvenida", () => {
     expect(demoFrame(9000).win?.title).toBe("TP HIT");
   });
 });
+
+describe("rangos de apalancamiento del bot real", () => {
+  it("los rangos sugeridos por perfil", async () => {
+    const { LEVERAGE_PRESETS, LIVE_LIMITS, normalizeLeverage, leverageRangeText } = await import("../packages/core/src/trading");
+    expect(LEVERAGE_PRESETS.map((p) => [p.id, p.min, p.max])).toEqual([["conservative", 1, 20], ["balanced", 1, 40], ["dynamic", 40, 100]]);
+    expect(LIVE_LIMITS.maxLeverage).toBe(100);
+    expect(leverageRangeText(1, 20)).toBe("hasta 20x");
+    expect(leverageRangeText(40, 100)).toBe("desde 40x hasta 100x");
+    expect(leverageRangeText(25, 25)).toBe("exactamente 25x");
+  });
+  it("normaliza: enteros de 1 a 100 y el piso nunca por encima del tope", async () => {
+    const { normalizeLeverage } = await import("../packages/core/src/trading");
+    expect(normalizeLeverage(40, 100)).toEqual({ min: 40, max: 100 });
+    expect(normalizeLeverage(80, 30)).toEqual({ min: 30, max: 30 });
+    expect(normalizeLeverage(0, 500)).toEqual({ min: 1, max: 100 });
+    expect(normalizeLeverage(NaN, NaN)).toEqual({ min: 1, max: 10 });
+    expect(normalizeLeverage(12.6, 33.2)).toEqual({ min: 13, max: 33 });
+  });
+});

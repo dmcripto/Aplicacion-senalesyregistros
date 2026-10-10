@@ -24,6 +24,8 @@ export interface BxCfg {
   risk_usdt: number; // lo máximo que se pierde si salta el stop
   max_margin_usdt: number; // lo máximo de margen (plata de la cuenta) que usa una operación
   max_leverage: number;
+  /** Piso de apalancamiento (Dinámico: 40x). Sin dato = 1x, o sea, el bot usa el mínimo que alcance. */
+  min_leverage?: number;
 }
 
 export interface BxSignal {
@@ -60,7 +62,9 @@ export function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg
   const qty = pair.qtyStep && pair.qtyStep > 0 ? floorTo(Math.floor(wanted / pair.qtyStep + 1e-9) * pair.qtyStep, pair.qtyDecimals) : floorTo(wanted, pair.qtyDecimals);
   if (!(qty > 0) || qty < pair.minQty) return { ok: false, reason: `Con tus topes el tamaño (${wanted.toPrecision(2)}) queda por debajo del mínimo del exchange (${pair.minQty}).` };
   const notional = qty * price;
-  const leverage = Math.min(levCap, Math.max(1, Math.ceil(notional / cfg.max_margin_usdt)));
+  // El apalancamiento es el mínimo que entra en el margen, pero nunca menos que el piso de la persona ni más que el tope (ni que el del exchange).
+  const floor = Math.min(levCap, Math.max(1, Math.round(cfg.min_leverage ?? 1)));
+  const leverage = Math.min(levCap, Math.max(floor, Math.ceil(notional / cfg.max_margin_usdt)));
   const margin = notional / leverage;
   const risk = qty * dist;
   if (margin > cfg.max_margin_usdt + 1e-9) return { ok: false, reason: "El margen necesario supera tu tope." };

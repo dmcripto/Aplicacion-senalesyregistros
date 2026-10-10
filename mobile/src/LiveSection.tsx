@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, t } from "@dmcripto/core";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
 import type { LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
@@ -31,7 +31,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiSecret, setApiSecret] = useState("");
   const [apiPass, setApiPass] = useState("");
   const [openList, setOpenList] = useState(false);
-  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", daily: "0.5" });
+  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", daily: "0.5" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
 
@@ -44,7 +44,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     try {
       const v = await fetchLive(userId);
       setView(v);
-      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), daily: String(v.live.dailyLossUsdt) });
+      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), daily: String(v.live.dailyLossUsdt) });
       setUnavailable(false);
     } catch {
       setUnavailable(true);
@@ -150,7 +150,8 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
       {
         maxMarginUsdt: clampLive(Number(lim.margin.replace(",", ".")), 1, LIVE_LIMITS.maxMarginUsdt, DEFAULT_LIVE.maxMarginUsdt),
         riskUsdt: clampLive(Number(lim.risk.replace(",", ".")), 0.01, LIVE_LIMITS.riskUsdt, DEFAULT_LIVE.riskUsdt),
-        maxLeverage: Math.round(clampLive(Number(lim.lev.replace(",", ".")), 1, LIVE_LIMITS.maxLeverage, DEFAULT_LIVE.maxLeverage)),
+        maxLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).max,
+        minLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).min,
         dailyLossUsdt: clampLive(Number(lim.daily.replace(",", ".")), 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
       },
       t("Topes guardados."),
@@ -245,9 +246,24 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               <Num name={t("Margen máximo (USDT)")} value={lim.margin} onChange={(v) => setLim({ ...lim, margin: v })} />
               <Num name={t("Riesgo por operación (USDT)")} value={lim.risk} onChange={(v) => setLim({ ...lim, risk: v })} />
+              <Num name={t("Apalancamiento mínimo")} value={lim.minLev} onChange={(v) => setLim({ ...lim, minLev: v })} />
               <Num name={t("Apalancamiento máximo")} value={lim.lev} onChange={(v) => setLim({ ...lim, lev: v })} />
               <Num name={t("Pérdida máxima por día (USDT)")} value={lim.daily} onChange={(v) => setLim({ ...lim, daily: v })} />
             </View>
+            <Text style={s.label}>{t("Rango de apalancamiento")}</Text>
+            <Text style={s.hint}>{t("Rangos sugeridos por perfil (tocá uno y se rellena; después lo podés ajustar a mano):")}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {LEVERAGE_PRESETS.map((p) => {
+                const on = Number(lim.minLev) === p.min && Number(lim.lev) === p.max;
+                return (
+                  <TouchableOpacity key={p.id} style={[s.chip, on && s.chipOn]} onPress={() => setLim({ ...lim, minLev: String(p.min), lev: String(p.max) })}>
+                    <Text style={[s.chipText, on && { color: colors.ink }]}>{leveragePresetName(p.id)} · {leverageRangeText(p.min, p.max)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={s.hint}>{t("El bot usa el menor apalancamiento que entre en tu margen, pero nunca menos que el mínimo ni más que el máximo.")}</Text>
+            {Math.max(Number(lim.minLev) || 0, Number(lim.lev) || 0) >= HIGH_LEVERAGE && <Text style={[s.hint, { color: colors.bear }]}>⚠️ {t("Con {x}x o más, una variación chica del precio liquida la posición. El bot solo opera si el stop queda bien antes de la liquidación (a 40x, a menos de 1,5 % del precio); si no, omite la operación. El riesgo por operación sigue siendo el tope que fijaste.", { x: HIGH_LEVERAGE })}</Text>}
             <Text style={s.hint}>{t("Una sola posición abierta a la vez. Si hay 3 errores seguidos, el bot real se apaga solo.")}</Text>
             <TouchableOpacity style={[s.outline, busy != null && { opacity: 0.4 }]} disabled={busy != null} onPress={saveLimits}>
               <Text style={s.outlineText}>{t("Guardar topes")}</Text>
