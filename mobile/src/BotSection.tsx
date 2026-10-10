@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
+import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
 import NewsPauseRow from "./NewsPauseRow";
 import { runBotBacktest, runBotLab } from "./tradesApi";
 import { colors } from "./theme";
 
-const short = (s: string) => s.replace("USDT", "");
+const short = (s: string) => botAssetName(s);
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
 
 function Line({ s }: { s: BotStatsRow }) {
@@ -51,7 +52,6 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
     }
   };
 
-  const toggleSymbol = (a: string) => update({ symbols: s.symbols.includes(a) ? s.symbols.filter((x) => x !== a) : [...s.symbols, a] });
 
   const probarLab = async () => {
     setLabBusy(true);
@@ -147,13 +147,7 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
       )}
 
       <Text style={st.label}>{t("Activos")}</Text>
-      <View style={st.wrap}>
-        {BOT_ASSETS.map((a) => (
-          <TouchableOpacity key={a} style={[st.chip, s.symbols.includes(a) && st.chipOn]} onPress={() => toggleSymbol(a)}>
-            <Text style={[st.chipText, s.symbols.includes(a) && { color: colors.ink }]}>{short(a)}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <AssetPicker selected={s.symbols} onChange={(symbols) => update({ symbols })} />
 
       {scanSupported && (
         <>

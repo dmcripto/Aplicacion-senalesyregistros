@@ -215,7 +215,8 @@ export const isTradableSymbol = (s: unknown): s is string => typeof s === "strin
 export const SCAN_SIZES = [0, 20, 40] as const;
 export const scanSizeOf = (x: unknown): number => (SCAN_SIZES as readonly number[]).includes(Number(x)) ? Number(x) : 0;
 
-export const isBotSymbol = (s: unknown): s is (typeof BOT_SYMBOLS)[number] => typeof s === "string" && (BOT_SYMBOLS as readonly string[]).includes(s);
+/** Cualquier futuro USDT (la lista de activos que se ofrece vive en la app; el servidor acepta todo lo que parezca un futuro USDT y, si el exchange no lo lista, lo omite). */
+export const isBotSymbol = (s: unknown): s is string => isTradableSymbol(s);
 
 // ─── Velas públicas ─────────────────────────────────────────────────────────
 
