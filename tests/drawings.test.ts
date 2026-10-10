@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DRAWINGS, cleanDrawings, fibPrices, logicalToTime, timeToLogical } from "../packages/core/src/drawings";
+import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, timeToLogical } from "../packages/core/src/drawings";
 
 const times = [1000, 1060, 1120, 1180, 1240]; // velas de 60 s
 
@@ -54,5 +54,40 @@ describe("lectura de dibujos guardados", () => {
     const c = cleanDrawings(many);
     expect(c).toHaveLength(MAX_DRAWINGS);
     expect(c[c.length - 1].id).toBe(String(MAX_DRAWINGS + 9));
+  });
+});
+
+describe("herramientas nuevas: línea vertical, rayo, regla y nota", () => {
+  it("la vertical y la nota llevan un solo punto; el rayo y la regla, dos", () => {
+    const raw = [
+      { id: "v", kind: "vline", a: { t: 5, p: 1 } },
+      { id: "r", kind: "ray", a: { t: 1, p: 2 }, b: { t: 3, p: 4 } },
+      { id: "g", kind: "ruler", a: { t: 1, p: 2 }, b: { t: 3, p: 4 } },
+      { id: "n", kind: "text", a: { t: 2, p: 9 }, text: "  soporte  " },
+      { id: "r2", kind: "ray", a: { t: 1, p: 2 } }, // al rayo le falta el segundo punto
+      { id: "n2", kind: "text", a: { t: 2, p: 9 }, text: "   " }, // nota vacía
+    ];
+    const c = cleanDrawings(raw);
+    expect(c.map((d) => d.id)).toEqual(["v", "r", "g", "n"]);
+    expect(c.find((d) => d.id === "n")!.text).toBe("soporte");
+    expect(c.find((d) => d.id === "v")!.b).toBeUndefined();
+  });
+  it("el texto se corta y el color solo se acepta como #rrggbb", () => {
+    const [a, b, c] = cleanDrawings([
+      { id: "a", kind: "text", a: { t: 1, p: 1 }, text: "x".repeat(MAX_TEXT + 40), color: "#FFAA00" },
+      { id: "b", kind: "hline", a: { t: 1, p: 1 }, color: "rojo" },
+      { id: "c", kind: "hline", a: { t: 1, p: 1 }, color: "#16d98a" },
+    ]);
+    expect(a.text).toHaveLength(MAX_TEXT);
+    expect(a.color).toBe("#FFAA00");
+    expect(b.color).toBeUndefined();
+    expect(c.color).toBe("#16d98a");
+  });
+  it("la regla mide diferencia, porcentaje y tiempo", () => {
+    const m = measure({ t: 1000, p: 80000 }, { t: 4600, p: 82000 });
+    expect(m.diff).toBe(2000);
+    expect(m.pct).toBeCloseTo(2.5, 10);
+    expect(m.seconds).toBe(3600);
+    expect(measure({ t: 5, p: 100 }, { t: 1, p: 90 }).pct).toBeCloseTo(-10, 10);
   });
 });

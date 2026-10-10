@@ -34,6 +34,9 @@ const DEFAULTS: Prefs = {
   ],
 };
 
+const SIZE_KEY = "veltrix_chart_size_v1";
+const SUB_PANE = 110;
+const SCALE_LABEL = ["Normal", "Log", "%"] as const;
 const loadPrefs = (): Prefs => {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? "null");
@@ -104,6 +107,17 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
   const [candles, setCandles] = useState<ChartCandle[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   const boxRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<"normal" | "large">(() => {
+    try {
+      return localStorage.getItem(SIZE_KEY) === "large" ? "large" : "normal";
+    } catch {
+      return "normal";
+    }
+  });
+  const [fs, setFs] = useState(false);
+  const [subCount, setSubCount] = useState(0);
+  const [scaleMode, setScaleMode] = useState<0 | 1 | 2>(0); // 0 normal · 1 logarítmica · 2 porcentaje
   const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"]) => void; destroy: () => void; chart: any; series: any } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
   const liqOn = prefs.slots.some((x) => x.kind === "liq");
@@ -224,7 +238,8 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
           });
           // Altura: las velas ocupan lo principal; cada panel de abajo, una franja.
           const panes = chart.panes();
-          panes.forEach((pn, i) => i > 0 && pn.setHeight(110));
+          panes.forEach((pn, i) => i > 0 && pn.setHeight(SUB_PANE));
+          setSubCount(sub);
           // Niveles de las señales abiertas de este activo.
           for (const l of lines) candle.removePriceLine(l);
           lines = [];
@@ -272,7 +287,35 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
       apiRef.current = null;
     };
   }, []);
+  useEffect(() => {
+    const onFs = () => setFs(!!document.fullscreenElement && document.fullscreenElement === wrapRef.current);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+  const toggleFs = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void wrapRef.current?.requestFullscreen?.().catch(() => notify(t("Tu navegador no permite la pantalla completa."), "err"));
+  };
+  const pickSize = (v: "normal" | "large") => {
+    setSize(v);
+    try {
+      localStorage.setItem(SIZE_KEY, v);
+    } catch {
+      /* igual */
+    }
+  };
+  const zoom = (f: number) => {
+    const ts = apiRef.current?.chart.timeScale();
+    const r = ts?.getVisibleLogicalRange();
+    if (!ts || !r) return;
+    const mid = (r.from + r.to) / 2;
+    const half = ((r.to - r.from) / 2) * f;
+    ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
+  };
   const [ready, setReady] = useState(0);
+  useEffect(() => {
+    apiRef.current?.chart.priceScale("right").applyOptions({ mode: scaleMode });
+  }, [scaleMode, ready]);
 
   const levels = useMemo(() => trades.filter((x) => x.outcome === "ABIERTA" && binanceSymbol(x.symbol)?.symbol === symbolKey), [trades, symbolKey]);
 
@@ -421,8 +464,33 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
         {levels.length > 0 && <span className="text-[11.5px] text-gold">{t("Se muestran tus señales abiertas de este activo: entrada, TP y SL.")}</span>}
       </div>
 
-      <div className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
-        <div ref={boxRef} className="ml-10 h-[460px]" />
+      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span className="mr-1 text-dim">{t("Tamaño")}</span>
+        {(["normal", "large"] as const).map((v) => (
+          <button key={v} type="button" onClick={() => pickSize(v)} aria-pressed={size === v} className={cx("rounded border px-2 py-1 font-semibold", size === v ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-dim hover:text-fog")}>
+            {v === "normal" ? t("Normal") : t("Grande")}
+          </button>
+        ))}
+        <button type="button" onClick={toggleFs} className="rounded border border-line px-2 py-1 font-semibold text-dim hover:text-fog" title={t("Pantalla completa")}>
+          ⛶ {t("Pantalla completa")}
+        </button>
+        <span className="mx-1 h-4 w-px bg-line" aria-hidden />
+        <button type="button" onClick={() => zoom(0.7)} className="rounded border border-line px-2 py-1 font-semibold text-dim hover:text-fog" title={t("Acercar")} aria-label={t("Acercar")}>
+          ＋
+        </button>
+        <button type="button" onClick={() => zoom(1 / 0.7)} className="rounded border border-line px-2 py-1 font-semibold text-dim hover:text-fog" title={t("Alejar")} aria-label={t("Alejar")}>
+          −
+        </button>
+        <button type="button" onClick={() => apiRef.current?.chart.timeScale().scrollToRealTime()} className="rounded border border-line px-2 py-1 font-semibold text-dim hover:text-fog" title={t("Ir a la última vela")}>
+          ⏭ {t("Última vela")}
+        </button>
+        <button type="button" onClick={() => setScaleMode((m) => ((m + 1) % 3) as 0 | 1 | 2)} className={cx("rounded border px-2 py-1 font-semibold", scaleMode ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-dim hover:text-fog")} title={t("Escala del precio: normal, logarítmica o porcentaje")}>
+          {t("Escala")}: {SCALE_LABEL[scaleMode]}
+        </button>
+      </div>
+
+      <div ref={wrapRef} className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
+        <div ref={boxRef} className="ml-10" style={{ height: fs ? "100vh" : (size === "large" ? 680 : 520) + subCount * SUB_PANE }} />
         <ChartDrawings
           api={apiRef.current}
           ready={ready}

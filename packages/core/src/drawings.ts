@@ -1,8 +1,12 @@
-// ─── VELTRIX · Dibujos sobre el gráfico (líneas, rectángulos, Fibonacci) ───
+// ─── VELTRIX · Dibujos sobre el gráfico (líneas, rayos, reglas, notas, rectángulos, Fibonacci) ───
 // Cada dibujo se guarda con puntos en (hora, precio), así sigue en su lugar aunque el gráfico se corra o cambie de temporalidad.
 
-export type DrawKind = "hline" | "trend" | "rect" | "fib";
-export const DRAW_KINDS: DrawKind[] = ["hline", "trend", "rect", "fib"];
+export type DrawKind = "hline" | "vline" | "trend" | "ray" | "rect" | "fib" | "ruler" | "text";
+export const DRAW_KINDS: DrawKind[] = ["hline", "vline", "trend", "ray", "rect", "fib", "ruler", "text"];
+/** Dibujos que se hacen con un solo toque (los demás necesitan dos puntos). */
+export const ONE_POINT_KINDS: DrawKind[] = ["hline", "vline", "text"];
+export const DRAW_COLORS = ["#2962ff", "#f5b301", "#16d98a", "#ff4d67", "#c084fc", "#d1d4dc"] as const;
+export const MAX_TEXT = 60;
 export const MAX_DRAWINGS = 60;
 
 export interface DrawPoint {
@@ -13,7 +17,15 @@ export interface Drawing {
   id: string;
   kind: DrawKind;
   a: DrawPoint;
-  b?: DrawPoint; // la línea horizontal tiene un solo punto
+  b?: DrawPoint; // las líneas horizontal y vertical y la nota tienen un solo punto
+  color?: string; // #rrggbb; si falta, azul
+  text?: string; // solo en las notas
+}
+
+/** Lo que mide la regla entre dos puntos: diferencia de precio, porcentaje y tiempo. */
+export function measure(a: DrawPoint, b: DrawPoint) {
+  const diff = b.p - a.p;
+  return { diff, pct: a.p ? (diff / a.p) * 100 : 0, seconds: Math.abs(b.t - a.t) };
 }
 
 /** Niveles de retroceso de Fibonacci. El 0 está en el segundo punto y el 1 en el primero (como en TradingView). */
@@ -54,10 +66,15 @@ export function cleanDrawings(raw: unknown): Drawing[] {
   const out: Drawing[] = [];
   for (const d of raw) {
     if (!d || typeof d !== "object") continue;
-    const { id, kind, a, b } = d as Drawing;
+    const { id, kind, a, b, color, text } = d as Drawing;
     if (typeof id !== "string" || !DRAW_KINDS.includes(kind) || !okPoint(a)) continue;
-    if (kind !== "hline" && !okPoint(b)) continue;
-    out.push(kind === "hline" ? { id, kind, a: { t: a.t, p: a.p } } : { id, kind, a: { t: a.t, p: a.p }, b: { t: b!.t, p: b!.p } });
+    const one = ONE_POINT_KINDS.includes(kind);
+    if (!one && !okPoint(b)) continue;
+    if (kind === "text" && (typeof text !== "string" || !text.trim())) continue;
+    const item: Drawing = one ? { id, kind, a: { t: a.t, p: a.p } } : { id, kind, a: { t: a.t, p: a.p }, b: { t: b!.t, p: b!.p } };
+    if (typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)) item.color = color;
+    if (kind === "text") item.text = text!.trim().slice(0, MAX_TEXT);
+    out.push(item);
   }
   return out.slice(-MAX_DRAWINGS);
 }
