@@ -27,6 +27,8 @@ export const EN: Record<string, string> = {
   "Nivel del RSI": "RSI level",
   "Crear alerta": "Create alert",
   "Crear alerta de precio": "Create price alert",
+  "Muestra en el gráfico dónde entraste y saliste de tus operaciones de este activo (con el resultado en R).": "Shows on the chart where you entered and exited your trades on this asset (with the result in R).",
+  "Mis operaciones": "My trades",
   "Posición de compra (entrada, stop y objetivo)": "Buy position (entry, stop and target)",
   "Posición de venta (entrada, stop y objetivo)": "Sell position (entry, stop and target)",
   "Compra": "Buy",

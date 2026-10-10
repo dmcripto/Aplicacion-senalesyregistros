@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtUsdShort, locale, t } from "../lib";
-import type { ChartCandle, IndicatorKind, LiquidationMap, NewTrade, Trade } from "../lib";
+import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtR, fmtUsdShort, locale, resultR, t, tradeMarks } from "../lib";
+import type { ChartCandle, IndicatorKind, LiquidationMap, NewTrade, Trade, TradeMark } from "../lib";
 import { useMoney } from "../money";
 import { createAlert, fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
@@ -138,7 +138,7 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
   const tv = engine === "tv";
   const [subCount, setSubCount] = useState(0);
   const [scaleMode, setScaleMode] = useState<0 | 1 | 2>(0); // 0 normal · 1 logarítmica · 2 porcentaje
-  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"]) => void; destroy: () => void; chart: any; series: any } | null>(null);
+  const apiRef = useRef<{ update: (c: ChartCandle[], p: Prefs, levels: Trade[], alertLevels: number[], liq: LiquidationMap["hotspots"], marks: TradeMark[]) => void; destroy: () => void; chart: any; series: any } | null>(null);
   const symbolKey = binanceSymbol(prefs.symbol)?.symbol ?? prefs.symbol;
   const liqOn = prefs.slots.some((x) => x.kind === "liq");
 
@@ -215,9 +215,10 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
       let liqLines: any[] = [];
       const candle = chart.addSeries(lc.CandlestickSeries, { upColor: BULL, downColor: BEAR, borderUpColor: BULL, borderDownColor: BEAR, wickUpColor: BULL, wickDownColor: BEAR });
       let lastKey = "";
+      const markerPlugin = lc.createSeriesMarkers(candle, []);
 
       apiRef.current = {
-        update(c, p, levels, alertLevels, liq) {
+        update(c, p, levels, alertLevels, liq, marks) {
           const range = chart.timeScale().getVisibleLogicalRange();
           candle.setData(c.map((x) => ({ time: x.time as any, open: x.open, high: x.high, low: x.low, close: x.close })));
           // Indicadores: se rehacen enteros (son baratos con 500 velas).
@@ -289,6 +290,14 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
               }),
             );
           }
+          markerPlugin.setMarkers(
+            marks.map((m) => {
+              const long = m.direction === "LONG";
+              if (m.kind === "entry") return { time: m.time as any, position: long ? ("belowBar" as const) : ("aboveBar" as const), shape: long ? ("arrowUp" as const) : ("arrowDown" as const), color: long ? "#2ec4f1" : "#f5b301", text: `${m.bot ? "Bot " : ""}${long ? "L" : "S"}` };
+              const win = (m.r ?? 0) > 0;
+              return { time: m.time as any, position: long ? ("aboveBar" as const) : ("belowBar" as const), shape: "circle" as const, color: m.r == null ? "#93a5ba" : win ? "#16d98a" : "#ff4d67", text: m.r == null ? "" : `${fmtR(m.r)}R` };
+            }),
+          );
           const key = `${p.symbol}|${p.tf}`;
           if (key !== lastKey) {
             lastKey = key;
@@ -337,6 +346,26 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
     apiRef.current?.chart.priceScale("right").applyOptions({ mode: scaleMode });
   }, [scaleMode, ready]);
 
+  const [showMarks, setShowMarks] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("veltrix_chart_marks_v1") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleMarks = () =>
+    setShowMarks((v) => {
+      try {
+        localStorage.setItem("veltrix_chart_marks_v1", v ? "0" : "1");
+      } catch {
+        /* igual */
+      }
+      return !v;
+    });
+  const marks = useMemo<TradeMark[]>(
+    () => (showMarks && candles ? tradeMarks(trades.filter((x) => binanceSymbol(x.symbol)?.symbol === symbolKey).map((x) => ({ ...x, r: resultR(x) })), candles.map((c) => c.time), TF_SEC[prefs.tf]) : []),
+    [showMarks, candles, trades, symbolKey, prefs.tf],
+  );
   const levels = useMemo(() => trades.filter((x) => x.outcome === "ABIERTA" && binanceSymbol(x.symbol)?.symbol === symbolKey), [trades, symbolKey]);
 
   // Mis alertas (si todavía no se corrió el SQL de alertas, esa parte no se muestra).
@@ -388,8 +417,8 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
   const liqSpots = useMemo(() => (liqOn && liqMap ? liqMap.hotspots : []), [liqOn, liqMap]);
 
   useEffect(() => {
-    if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels, liqSpots);
-  }, [candles, prefs, levels, alertLevels, liqSpots, ready]);
+    if (candles && ready) apiRef.current?.update(candles, prefs, levels, alertLevels, liqSpots, marks);
+  }, [candles, prefs, levels, alertLevels, liqSpots, marks, ready]);
 
   const last = candles?.[candles.length - 1];
   const first = candles?.[Math.max(0, candles.length - 1 - (prefs.tf === "1d" ? 1 : prefs.tf === "4h" ? 6 : prefs.tf === "1h" ? 24 : prefs.tf === "15m" ? 96 : 288))];
@@ -517,6 +546,10 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
         <button type="button" onClick={() => setScaleMode((m) => ((m + 1) % 3) as 0 | 1 | 2)} className={cx("rounded border px-2 py-1 font-semibold", scaleMode ? "border-gold/60 bg-gold/10 text-gold" : "border-line text-dim hover:text-fog")} title={t("Escala del precio: normal, logarítmica o porcentaje")}>
           {t("Escala")}: {SCALE_LABEL[scaleMode]}
         </button>
+        <label className="flex cursor-pointer items-center gap-1.5 rounded border border-line px-2 py-1 font-semibold text-dim hover:text-fog" title={t("Muestra en el gráfico dónde entraste y saliste de tus operaciones de este activo (con el resultado en R).")}>
+          <input type="checkbox" checked={showMarks} onChange={toggleMarks} className="accent-gold" />
+          {t("Mis operaciones")}
+        </label>
       </div>
 
       <div ref={wrapRef} className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
