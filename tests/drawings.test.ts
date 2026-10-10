@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, positionLevels, timeToLogical } from "../packages/core/src/drawings";
+import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, positionLevels, timeToLogical, candleTimeAt, tradeMarks } from "../packages/core/src/drawings";
 
 const times = [1000, 1060, 1120, 1180, 1240]; // velas de 60 s
 
@@ -115,5 +115,34 @@ describe("herramienta de posición (compra / venta)", () => {
     expect(c.map((d) => d.id)).toEqual(["a", "b"]);
     expect(c[0].rr).toBe(3);
     expect(c[1].rr).toBeUndefined();
+  });
+});
+
+describe("marcas de tus operaciones en el gráfico", () => {
+  const hour = 3600;
+  const ts = [0, 1, 2, 3, 4].map((i) => 10 * hour + i * hour);
+  it("ubica un momento en la vela que lo contiene y omite lo que queda fuera", () => {
+    expect(candleTimeAt(ts, hour, 12 * hour + 1800)).toBe(12 * hour);
+    expect(candleTimeAt(ts, hour, 10 * hour)).toBe(10 * hour);
+    expect(candleTimeAt(ts, hour, 9 * hour)).toBeNull();
+    expect(candleTimeAt(ts, hour, 14 * hour + 3599)).toBe(14 * hour);
+    expect(candleTimeAt(ts, hour, 15 * hour)).toBeNull();
+    expect(candleTimeAt([], hour, 5)).toBeNull();
+  });
+  it("entradas y salidas, ordenadas, con el resultado en R y marcando las del bot", () => {
+    const iso = (h: number) => new Date(h * hour * 1000).toISOString();
+    const m = tradeMarks(
+      [
+        { direction: "LONG", date: iso(12.5), closedAt: iso(13.2), outcome: "TP", source: "bot", r: 2 },
+        { direction: "SHORT", date: iso(10.1), outcome: "ABIERTA", r: null },
+        { direction: "LONG", date: iso(1), closedAt: iso(2), outcome: "SL", r: -1 }, // fuera de las velas
+      ],
+      ts,
+      hour,
+    );
+    expect(m.map((x) => [x.time / hour, x.kind])).toEqual([[10, "entry"], [12, "entry"], [13, "exit"]]);
+    expect(m[1].bot).toBe(true);
+    expect(m[2].r).toBe(2);
+    expect(m[0].bot).toBe(false);
   });
 });

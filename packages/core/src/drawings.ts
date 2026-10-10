@@ -104,3 +104,50 @@ export function cleanDrawings(raw: unknown): Drawing[] {
   }
   return out.slice(-MAX_DRAWINGS);
 }
+
+// ─── Marcas de tus operaciones sobre el gráfico ───
+
+export interface TradeMark {
+  time: number; // hora de apertura de la vela donde ocurre
+  kind: "entry" | "exit";
+  direction: "LONG" | "SHORT";
+  bot: boolean;
+  r?: number; // resultado en R (solo en la salida)
+}
+
+/** Vela (su hora de apertura) que contiene un momento; null si es anterior a la primera o posterior a la última vela. */
+export function candleTimeAt(times: number[], tfSec: number, sec: number): number | null {
+  if (!times.length || sec < times[0]) return null;
+  if (sec >= times[times.length - 1] + tfSec) return null;
+  let lo = 0;
+  let hi = times.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (times[mid] <= sec) lo = mid;
+    else hi = mid - 1;
+  }
+  return times[lo];
+}
+
+interface MarkSource {
+  direction: "LONG" | "SHORT";
+  date: string;
+  closedAt?: string;
+  outcome: string;
+  source?: string;
+}
+
+/** Entradas y salidas de las operaciones, ubicadas en la vela que les toca (las de fuera de las velas cargadas se omiten). */
+export function tradeMarks(trades: Array<MarkSource & { r: number | null }>, times: number[], tfSec: number): TradeMark[] {
+  const out: TradeMark[] = [];
+  for (const tr of trades) {
+    const bot = tr.source === "bot";
+    const open = candleTimeAt(times, tfSec, Date.parse(tr.date) / 1000);
+    if (open != null) out.push({ time: open, kind: "entry", direction: tr.direction, bot });
+    if (tr.outcome !== "ABIERTA" && tr.closedAt) {
+      const close = candleTimeAt(times, tfSec, Date.parse(tr.closedAt) / 1000);
+      if (close != null) out.push({ time: close, kind: "exit", direction: tr.direction, bot, r: tr.r ?? undefined });
+    }
+  }
+  return out.sort((a, b) => a.time - b.time);
+}
