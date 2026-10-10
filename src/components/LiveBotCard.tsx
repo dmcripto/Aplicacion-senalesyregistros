@@ -20,6 +20,57 @@ function NumField({ name, value, onChange, min, max, step }: { name: string; val
   );
 }
 
+/** Resumen corto de las órdenes: cuántas salieron, cuántas dieron problemas y cuántas quedaron sin enviar. */
+function ordersSummary(orders: LiveOrder[]): string {
+  const sent = orders.filter((o) => o.status === "sent").length;
+  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error").length;
+  const rest = orders.length - sent - bad;
+  return [sent ? t("{n} enviadas", { n: sent }) : "", bad ? t("{n} con problemas", { n: bad }) : "", rest ? t("{n} sin enviar", { n: rest }) : ""].filter(Boolean).join(" · ");
+}
+
+/** Últimas órdenes del bot real: cerradas de entrada (con un resumen); al abrirlas, una lista con scroll donde cada orden muestra 2 líneas y se expande al tocarla. */
+function LiveOrdersList({ orders }: { orders: LiveOrder[] }) {
+  const [open, setOpen] = useState(false);
+  const [wide, setWide] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setWide((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex w-full items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3 py-2.5 text-left transition-colors hover:border-line2">
+        <span className="min-w-0">
+          <span className={label}>{t("Últimas órdenes del bot real")} · {orders.length}</span>
+          <span className="block truncate text-[11px] text-dim">{ordersSummary(orders)}</span>
+        </span>
+        <span className="shrink-0 text-[11px] font-bold text-gold">{open ? t("Ocultar") : t("Ver")} {open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{t("Las órdenes sin efecto (en seco, omitidas o rechazadas) se borran solas a los 7 días; las enviadas, a los 30. Tocá una orden para ver el detalle.")}</p>
+      )}
+      {open && (
+        <ul className="mt-1.5 max-h-80 space-y-1.5 overflow-y-auto pr-1">
+          {orders.map((o: LiveOrder) => (
+            <li key={o.id}>
+              <button type="button" onClick={() => toggle(o.id)} className="w-full rounded-md border border-line bg-ink/40 px-3 py-2 text-left text-[11.5px] text-fog hover:border-line2">
+                <span className="flex flex-wrap items-center gap-2">
+                  <b className="num text-snow">{o.symbol}</b>
+                  <span className={cx("rounded-full border px-2 py-px text-[10px] font-bold", o.status === "sent" ? "border-bull/50 text-bull" : o.status === "rejected" || o.status === "error" ? "border-bear/50 text-bear" : "border-line text-dim")}>{liveStatusLabel(o.status)}</span>
+                  {o.kind !== "bot" && <span className="text-[10px] uppercase text-dim">{o.kind === "test" ? t("prueba") : t("apagado")}</span>}
+                  <span className="ml-auto text-dim">{ago(o.createdAt, Date.now())}</span>
+                </span>
+                {o.note && <span className={cx("mt-0.5 block break-words text-dim", !wide.has(o.id) && "line-clamp-2")}>{o.note}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Bot con dinero real (prueba mínima) con el exchange que cada persona elija. Solo se ve en cuentas con la llave beta y cuando el servidor ya lo tiene. */
 export default function LiveBotCard({ userId, notify }: { userId: string; notify: Notify }) {
   const bot = useBot();
@@ -328,24 +379,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
           </div>
         )}
 
-        {view.orders.length > 0 && (
-          <div>
-            <p className={label}>{t("Últimas órdenes del bot real")}</p>
-            <ul className="space-y-1.5">
-              {view.orders.map((o: LiveOrder) => (
-                <li key={o.id} className="rounded-md border border-line bg-ink/40 px-3 py-2 text-[11.5px] text-fog">
-                  <p className="flex flex-wrap items-center gap-2">
-                    <b className="num text-snow">{o.symbol}</b>
-                    <span className={cx("rounded-full border px-2 py-px text-[10px] font-bold", o.status === "sent" ? "border-bull/50 text-bull" : o.status === "rejected" || o.status === "error" ? "border-bear/50 text-bear" : "border-line text-dim")}>{liveStatusLabel(o.status)}</span>
-                    {o.kind !== "bot" && <span className="text-[10px] uppercase text-dim">{o.kind === "test" ? t("prueba") : t("apagado")}</span>}
-                    <span className="ml-auto text-dim">{ago(o.createdAt, Date.now())}</span>
-                  </p>
-                  {o.note && <p className="mt-0.5 break-words text-dim">{o.note}</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {view.orders.length > 0 && <LiveOrdersList orders={view.orders} />}
       </div>
     </Panel>
   );

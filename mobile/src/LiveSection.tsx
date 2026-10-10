@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
 import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
-import type { LiveSettings } from "@dmcripto/core";
+import type { LiveOrder, LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
 import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "./tradesApi";
@@ -300,21 +300,47 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
           </View>
         )}
 
-        {view.orders.length > 0 && (
-          <>
-            <Text style={s.label}>{t("Últimas órdenes del bot real")}</Text>
-            {view.orders.map((o) => (
-              <View key={o.id} style={s.order}>
-                <Text style={{ color: colors.snow, fontWeight: "800", fontSize: 12 }}>
-                  {o.symbol} · <Text style={{ color: o.status === "sent" ? colors.bull : o.status === "rejected" || o.status === "error" ? colors.bear : colors.dim }}>{liveStatusLabel(o.status)}</Text>
-                  {o.kind !== "bot" ? ` · ${o.kind === "test" ? t("prueba") : t("apagado")}` : ""} · {ago(o.createdAt, Date.now())}
-                </Text>
-                {o.note && <Text style={s.hint}>{o.note}</Text>}
-              </View>
-            ))}
-          </>
-        )}
+        {view.orders.length > 0 && <OrdersList orders={view.orders} />}
       </View>
+    </>
+  );
+}
+
+/** Resumen corto de las órdenes: cuántas salieron, cuántas dieron problemas y cuántas quedaron sin enviar. */
+function ordersSummary(orders: LiveOrder[]): string {
+  const sent = orders.filter((o) => o.status === "sent").length;
+  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error").length;
+  const rest = orders.length - sent - bad;
+  return [sent ? t("{n} enviadas", { n: sent }) : "", bad ? t("{n} con problemas", { n: bad }) : "", rest ? t("{n} sin enviar", { n: rest }) : ""].filter(Boolean).join(" · ");
+}
+
+/** Últimas órdenes del bot real: cerradas de entrada (con un resumen); al abrirlas, cada orden muestra 2 líneas y se expande al tocarla. */
+function OrdersList({ orders }: { orders: LiveOrder[] }) {
+  const [open, setOpen] = useState(false);
+  const [wide, setWide] = useState<string[]>([]);
+  const toggle = (id: string) => setWide((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  return (
+    <>
+      <TouchableOpacity onPress={() => setOpen((v) => !v)} style={s.order} accessibilityRole="button" accessibilityState={{ expanded: open }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>{t("Últimas órdenes del bot real")} · {orders.length}</Text>
+            <Text style={s.hint} numberOfLines={1}>{ordersSummary(orders)}</Text>
+          </View>
+          <Text style={{ color: colors.gold, fontWeight: "800", fontSize: 11.5 }}>{open ? t("Ocultar") : t("Ver")} {open ? "▲" : "▼"}</Text>
+        </View>
+      </TouchableOpacity>
+      {open && <Text style={s.hint}>{t("Las órdenes sin efecto (en seco, omitidas o rechazadas) se borran solas a los 7 días; las enviadas, a los 30. Tocá una orden para ver el detalle.")}</Text>}
+      {open &&
+        orders.map((o) => (
+          <TouchableOpacity key={o.id} style={s.order} onPress={() => toggle(o.id)}>
+            <Text style={{ color: colors.snow, fontWeight: "800", fontSize: 12 }}>
+              {o.symbol} · <Text style={{ color: o.status === "sent" ? colors.bull : o.status === "rejected" || o.status === "error" ? colors.bear : colors.dim }}>{liveStatusLabel(o.status)}</Text>
+              {o.kind !== "bot" ? ` · ${o.kind === "test" ? t("prueba") : t("apagado")}` : ""} · {ago(o.createdAt, Date.now())}
+            </Text>
+            {o.note && <Text style={s.hint} numberOfLines={wide.includes(o.id) ? undefined : 2}>{o.note}</Text>}
+          </TouchableOpacity>
+        ))}
     </>
   );
 }
