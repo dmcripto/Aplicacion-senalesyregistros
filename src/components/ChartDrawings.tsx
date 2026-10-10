@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MAX_DRAWINGS, cleanDrawings, cx, fibPrices, fmtPrice, logicalToTime, t, timeToLogical } from "../lib";
+import type { AlertDraft, AlertTf } from "../lib";
 import type { ChartCandle, DrawKind, DrawPoint, Drawing } from "../lib";
 
 const KEY = "veltrix_draw_v1";
@@ -28,24 +29,34 @@ const saveFor = (symbol: string, list: Drawing[]) => {
   }
 };
 
-type Tool = "cursor" | DrawKind;
+type Tool = "cursor" | DrawKind | "alert";
 const TOOLS: Array<{ id: Tool; icon: string; title: string }> = [
   { id: "cursor", icon: "✛", title: "Cursor" },
   { id: "hline", icon: "─", title: "Línea horizontal" },
   { id: "trend", icon: "⟋", title: "Línea de tendencia" },
   { id: "rect", icon: "▭", title: "Rectángulo" },
   { id: "fib", icon: "Fib", title: "Retroceso de Fibonacci" },
+  { id: "alert", icon: "🔔", title: "Crear alerta de precio" },
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /** Barra de dibujo (a la izquierda) y capa transparente con los dibujos. Solo atrapa el mouse cuando hay una herramienta elegida o sobre un dibujo. */
-export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { api: ChartHandle | null; ready: number; candles: ChartCandle[] | null; tfSec: number; symbol: string }) {
+export interface AlertMaker {
+  lastPrice: number | null;
+  tf: AlertTf;
+  create: (d: AlertDraft) => Promise<void>;
+}
+
+export default function ChartDrawings({ api, ready, candles, tfSec, symbol, alertMaker }: { api: ChartHandle | null; ready: number; candles: ChartCandle[] | null; tfSec: number; symbol: string; alertMaker?: AlertMaker }) {
   const [list, setList] = useState<Drawing[]>(() => cleanDrawings(loadAll()[symbol]));
   const [tool, setTool] = useState<Tool>("cursor");
   const [pending, setPending] = useState<DrawPoint | null>(null);
   const [hover, setHover] = useState<DrawPoint | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [alertHover, setAlertHover] = useState<number | null>(null); // precio bajo el mouse mientras se elige dónde poner la alerta
+  const [alertAt, setAlertAt] = useState<number | null>(null); // precio elegido, a la espera de confirmar
+  const [alertBusy, setAlertBusy] = useState(false);
   const [geom, setGeom] = useState("");
   const times = useMemo(() => (candles ?? []).map((c) => c.time), [candles]);
   const timesRef = useRef(times);
@@ -62,6 +73,7 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { 
     setList(cleanDrawings(loadAll()[symbol]));
     setSelected(null);
     setPending(null);
+    setAlertAt(null);
     setTool("cursor");
   }, [symbol]);
 
@@ -118,6 +130,7 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { 
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (e.key === "Escape") {
+        setAlertAt(null);
         setPending(null);
         setTool("cursor");
         setSelected(null);
@@ -135,11 +148,30 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { 
     return () => window.removeEventListener("keydown", onKey);
   }, [selected, symbol]);
 
+  const roundPrice = (p: number) => Number(p.toFixed(p < 10 ? 5 : 2));
+  const alertDir = (level: number): "above" | "below" => (alertMaker?.lastPrice != null && level < alertMaker.lastPrice ? "below" : "above");
+  const confirmAlert = async () => {
+    if (alertAt == null || !alertMaker || alertBusy) return;
+    setAlertBusy(true);
+    try {
+      await alertMaker.create({ symbol, kind: "price", tf: alertMaker.tf, dir: alertDir(alertAt), level: alertAt, period: null, once: true });
+      setAlertAt(null);
+    } finally {
+      setAlertBusy(false);
+    }
+  };
+
   const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (tool === "cursor" || e.button !== 0) return;
     const pt = fromEvent(e);
     if (!pt) return;
     e.preventDefault();
+    if (tool === "alert") {
+      setAlertAt(roundPrice(pt.p));
+      setAlertHover(null);
+      setTool("cursor");
+      return;
+    }
     if (tool === "hline") {
       const d: Drawing = { id: uid(), kind: "hline", a: pt };
       commit([...list, d]);
@@ -250,6 +282,7 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { 
             onClick={() => {
               setTool(x.id);
               setPending(null);
+              setAlertAt(null);
               if (x.id !== "cursor") setSelected(null);
             }}
             className={btn(tool === x.id)}
@@ -293,18 +326,55 @@ export default function ChartDrawings({ api, ready, candles, tfSec, symbol }: { 
         className="absolute top-0 z-[5]"
         style={{ left: TOOLBAR_W, right: 0, height: H || "100%", width: `calc(100% - ${TOOLBAR_W}px)`, pointerEvents: drawing ? "auto" : "none", cursor: drawing ? "crosshair" : "default", touchAction: drawing ? "none" : "auto" }}
         onPointerDown={onDown}
-        onPointerMove={(e) => drawing && pending && setHover(fromEvent(e))}
+        onPointerMove={(e) => {
+          if (tool === "alert") {
+            const pt = fromEvent(e);
+            setAlertHover(pt ? roundPrice(pt.p) : null);
+          } else if (drawing && pending) setHover(fromEvent(e));
+        }}
       >
         <defs>
           <clipPath id="veltrix-draw-clip">
             <rect x={0} y={0} width={Math.max(0, W)} height={H || 9999} />
           </clipPath>
         </defs>
-        <g clipPath="url(#veltrix-draw-clip)">{shapes.map(render)}</g>
+        <g clipPath="url(#veltrix-draw-clip)">
+          {shapes.map(render)}
+          {[tool === "alert" ? alertHover : null, alertAt].map((lv, i) => {
+            const y = lv != null ? toY(lv) : null;
+            if (lv == null || y == null) return null;
+            const col = i === 1 ? "#f5b301" : "#787b86";
+            return (
+              <g key={i} style={{ pointerEvents: "none" }}>
+                <line x1={0} x2={W} y1={y} y2={y} stroke={col} strokeWidth={1} strokeDasharray={i === 1 ? undefined : "5 4"} />
+                <rect x={W - 62} y={y - 9} width={62} height={18} fill={col} rx={2} />
+                <text x={W - 31} y={y + 4} textAnchor="middle" fontSize={11} fill="#131722" fontWeight={600}>
+                  {fmtPrice(lv)}
+                </text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
       {drawing && (
         <div className="pointer-events-none absolute left-12 top-2 z-10 rounded bg-[#1e222d]/90 px-2 py-1 text-[11px] text-[#d1d4dc]">
-          {tool === "hline" ? t("Tocá el gráfico para poner la línea.") : pending ? t("Tocá el segundo punto. Esc cancela.") : t("Tocá el primer punto.")}
+          {tool === "alert" ? t("Tocá el gráfico en el precio donde querés la alerta. Esc cancela.") : tool === "hline" ? t("Tocá el gráfico para poner la línea.") : pending ? t("Tocá el segundo punto. Esc cancela.") : t("Tocá el primer punto.")}
+        </div>
+      )}
+      {alertAt != null && api && alertMaker && (
+        <div
+          className="absolute z-20 flex items-center gap-2 rounded border border-[#f5b301]/60 bg-[#1e222d] px-2.5 py-1.5 text-[11.5px] text-[#d1d4dc] shadow-lg"
+          style={{ top: Math.max(4, Math.min((toY(alertAt) ?? 40) - 46, Math.max(4, H - 56))), right: api.chart.priceScale("right").width() + 8 }}
+        >
+          <span>
+            {alertDir(alertAt) === "above" ? t("Avisarme si el precio cruza por encima de {n}", { n: fmtPrice(alertAt) }) : t("Avisarme si el precio cruza por debajo de {n}", { n: fmtPrice(alertAt) })}
+          </span>
+          <button type="button" disabled={alertBusy} onClick={confirmAlert} className="rounded bg-[#f5b301] px-2 py-0.5 font-semibold text-[#131722] disabled:opacity-50">
+            {t("Crear alerta")}
+          </button>
+          <button type="button" onClick={() => setAlertAt(null)} className="rounded px-1.5 py-0.5 text-[#b2b5be] hover:text-white" aria-label={t("Cancelar")}>
+            ✕
+          </button>
         </div>
       )}
     </>
