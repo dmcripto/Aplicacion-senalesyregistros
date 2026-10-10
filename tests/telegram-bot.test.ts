@@ -220,6 +220,14 @@ describe("/anunciar: publicar el aviso oficial en las comunidades", () => {
     const { ANNOUNCEMENTS } = await import("../supabase/functions/_shared/announcements");
     for (const a of Object.values(ANNOUNCEMENTS)) for (const t of [a.es, a.en]) expect(t.length).toBeLessThan(4096);
   });
+
+  it("el aviso «novedades» no ofrece MEXC para el bot real y trae el aviso legal", async () => {
+    const { ANNOUNCEMENTS } = await import("../supabase/functions/_shared/announcements");
+    for (const t of [ANNOUNCEMENTS.novedades.es, ANNOUNCEMENTS.novedades.en]) {
+      expect(t).not.toMatch(/MEXC/i);
+      expect(t).toContain("<i>");
+    }
+  });
 });
 
 describe("/anunciar escrito dentro del grupo (en el tema Noticias)", () => {
