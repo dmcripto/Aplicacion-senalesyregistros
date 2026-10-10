@@ -19,6 +19,14 @@ export interface UnlockSettings {
 }
 
 export const DEFAULT_UNLOCK: UnlockSettings = { mode: "off", windowDays: 7, minPct: 2 };
+/**
+ * Valores sugeridos al elegir cada modo. Cuidadoso: evita compras ante desbloqueos medianos (5 %).
+ * Agresivo: solo actúa con desbloqueos muy grandes (30 % de lo que circula, el umbral que usa el video de referencia) y con poco margen: 3 días.
+ */
+export const UNLOCK_MODE_DEFAULTS: Record<Exclude<UnlockMode, "off">, { windowDays: number; minPct: number }> = {
+  careful: { windowDays: 7, minPct: 5 },
+  aggressive: { windowDays: 3, minPct: 30 },
+};
 export const UNLOCK_LIMITS = { windowDays: { min: 1, max: 30 }, minPct: { min: 0.1, max: 50 } } as const;
 
 /** Un desbloqueo: activo del bot (por ejemplo ARBUSDT), momento y tamaño sobre lo que circula. */

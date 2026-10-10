@@ -1414,7 +1414,7 @@ export const EN: Record<string, string> = {
   "Cuidadoso": "Careful",
   "Agresivo": "Aggressive",
   "No abre compras cuando falta poco para un desbloqueo grande del activo. Las ventas siguen igual.": "It doesn't open buys when a big unlock of the asset is close. Sells stay the same.",
-  "Además de evitar las compras, busca ventas antes del desbloqueo: acepta la ruptura a la baja con una condición de tendencia más relajada y la pone primera. Siempre hace falta la ruptura técnica del perfil. Más riesgo: si el precio sube de golpe, la venta pierde.": "Besides avoiding buys, it looks for sells ahead of the unlock: it accepts the downside breakout with a more relaxed trend condition and puts it first. The profile's technical breakout is always required. More risk: if the price jumps up, the sell loses.",
+  "Además de evitar las compras, busca ventas antes del desbloqueo: acepta la ruptura a la baja con una condición de tendencia más relajada y la pone primera. Solo actúa con desbloqueos muy grandes (30 % de lo que circula, por defecto) y con pocos días de margen. Siempre hace falta la ruptura técnica del perfil. Más riesgo: si el precio sube de golpe, la venta pierde.": "Besides avoiding buys, it looks for sells ahead of the unlock: it accepts the downside breakout with a more relaxed trend condition and puts it first. It only acts on very large unlocks (30% of circulating supply by default) with a few days of lead time. The profile's technical breakout is always required. More risk: if the price jumps up, the sell loses.",
   "El bot no mira los desbloqueos.": "The bot ignores unlocks.",
   "Filtro de desbloqueos": "Unlock filter",
   "Días antes del desbloqueo": "Days before the unlock",

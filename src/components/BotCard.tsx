@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
@@ -211,7 +211,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
               {BOT_UNLOCK_MODES.map((m) => (
                 <button
                   key={m}
-                  onClick={() => update({ unlockMode: m })}
+                  onClick={() => update(m === "off" ? { unlockMode: m } : { unlockMode: m, unlockWindowDays: UNLOCK_MODE_DEFAULTS[m].windowDays, unlockMinPct: UNLOCK_MODE_DEFAULTS[m].minPct })}
                   className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.unlockMode === m ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
                 >
                   {botUnlockInfo(m).name}
