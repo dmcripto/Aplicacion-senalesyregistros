@@ -532,6 +532,25 @@ describe("función bot · filtro de desbloqueos", () => {
   });
 });
 
+describe("función bot · limpieza de órdenes del bot real", () => {
+  const day = 86_400_000;
+  const order = (id: string, status: string, daysAgo: number) => ({ id, user_id: "u1", symbol: "BTCUSDT", side: "BUY", kind: "bot", status, created_at: new Date(Date.now() - daysAgo * day).toISOString() });
+  it("borra las sin efecto a los 7 días y las enviadas a los 30", async () => {
+    enable();
+    db.tables.live_orders = [
+      order("a", "dry_run", 8), order("b", "rejected", 9), order("c", "skipped", 10), order("d", "error", 8),
+      order("e", "dry_run", 2), order("f", "sent", 20), order("g", "sent", 31), order("h", "rejected", 1),
+    ];
+    await tick();
+    expect(db.tables.live_orders.map((o: any) => o.id).sort()).toEqual(["e", "f", "h"]);
+  });
+  it("sin la tabla (falta el SQL del bot real) no rompe la corrida", async () => {
+    enable();
+    delete (db.tables as any).live_orders;
+    expect((await tick()).status).toBe(200);
+  });
+});
+
 describe("función bot · muchas personas", () => {
   it("revisa primero a quienes hace más que no se revisan y avisa si deja gente para la próxima", async () => {
     // 3 personas con el bot encendido; la que nunca se revisó va primero

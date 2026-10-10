@@ -128,6 +128,19 @@ async function universe(n: number): Promise<string[]> {
 }
 
 /**
+ * Limpieza de «Últimas órdenes del bot real»: las que no tuvieron efecto (en seco, omitidas, rechazadas o con error) se borran a los
+ * 7 días; las enviadas, a los 30. Una sola consulta barata por corrida; si la tabla no existe, no pasa nada.
+ */
+async function purgeLiveOrders(nowMs: number): Promise<void> {
+  try {
+    await admin.from("live_orders").delete().in("status", ["dry_run", "skipped", "rejected", "error"]).lt("created_at", new Date(nowMs - 7 * 86_400_000).toISOString());
+    await admin.from("live_orders").delete().eq("status", "sent").lt("created_at", new Date(nowMs - 30 * 86_400_000).toISOString());
+  } catch {
+    /* sin limpieza esta vez */
+  }
+}
+
+/**
  * Desbloqueos de tokens guardados por la función que lee la fuente de datos (tabla token_unlocks, sin acceso desde la app).
  * Sin la tabla, o vacía, devuelve [] y el filtro no cambia nada.
  */
@@ -465,6 +478,7 @@ async function tick() {
     const { data: pr } = await admin.from("bot_news_pause").select("user_id, enabled, before_min, after_min, paused_until").in("user_id", settings.map((x) => x.user_id));
     for (const r of (pr ?? []) as Array<{ user_id: string; paused_until?: string | null }>) pauseRows.set(r.user_id, r);
   }
+  await purgeLiveOrders(nowMs);
   // Desbloqueos de los próximos días (solo si alguien tiene el filtro encendido).
   const anyUnlock = settings.some((x) => cleanUnlock({ mode: x.unlock_mode }).mode !== "off");
   const unlocks = anyUnlock ? await loadUnlocks(nowMs, nowMs + 31 * 86_400_000) : [];
