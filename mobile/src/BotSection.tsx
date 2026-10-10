@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_PROFILE_LIST, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
@@ -24,7 +24,7 @@ function Line({ s }: { s: BotStatsRow }) {
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
 export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleProp<TextStyle>; userId?: string }) {
-  const { status, settings: s, store, profileSupported, notifySupported, scanSupported } = useBot();
+  const { status, settings: s, store, profileSupported, notifySupported, scanSupported, unlockSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
   const [test, setTest] = useState<Extract<BotBacktest, { ok: true }> | null>(null);
@@ -167,6 +167,41 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
         </>
       )}
 
+      {unlockSupported && (
+        <>
+          <Text style={st.label}>{t("Filtro de desbloqueos")}</Text>
+          <View style={st.wrap}>
+            {BOT_UNLOCK_MODES.map((m) => (
+              <TouchableOpacity key={m} style={[st.chip, s.unlockMode === m && st.chipOn]} onPress={() => update({ unlockMode: m })}>
+                <Text style={[st.chipText, s.unlockMode === m && { color: colors.ink }]}>{botUnlockInfo(m).name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={st.dim}>{botUnlockInfo(s.unlockMode).blurb}</Text>
+          {s.unlockMode !== "off" && (
+            <>
+              <Text style={st.label}>{t("Días antes del desbloqueo")}</Text>
+              <View style={st.wrap}>
+                {[1, 3, 7, 14, 30].map((n) => (
+                  <TouchableOpacity key={n} style={[st.chip, s.unlockWindowDays === n && st.chipOn]} onPress={() => update({ unlockWindowDays: Math.min(UNLOCK_LIMITS.windowDays.max, Math.max(UNLOCK_LIMITS.windowDays.min, n)) })}>
+                    <Text style={[st.chipText, s.unlockWindowDays === n && { color: colors.ink }]}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={st.label}>{t("Tamaño mínimo (% de lo que circula)")}</Text>
+              <View style={st.wrap}>
+                {[1, 2, 5, 10].map((n) => (
+                  <TouchableOpacity key={n} style={[st.chip, s.unlockMinPct === n && st.chipOn]} onPress={() => update({ unlockMinPct: n })}>
+                    <Text style={[st.chipText, s.unlockMinPct === n && { color: colors.ink }]}>{n} %</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={st.dim}>{t("Funciona cuando el servidor tiene cargadas las fechas de los desbloqueos (viene de una fuente de datos externa). Si no hay datos de un activo, el bot opera como siempre.")}</Text>
+            </>
+          )}
+        </>
+      )}
+
       <Text style={st.label}>{t("Operaciones abiertas a la vez")}</Text>
       <View style={st.wrap}>
         {[1, 2, 3, 4, 5].map((n) => (
@@ -226,6 +261,23 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
                 </Text>
               </View>
               <Text style={[st.hint, { color: colors.snow }]}>{backtestVerdict(test.total, test.withRules, (n) => `${fmtR(n)}R`)}</Text>
+            </View>
+          )}
+          {test.unlock && (
+            <View style={st.notice}>
+              <Text style={st.label}>{t("Con y sin el filtro de desbloqueos")}</Text>
+              {test.unlock.events === 0 ? (
+                <Text style={st.hint}>{t("Todavía no hay fechas de desbloqueos cargadas en el servidor: la prueba no puede medir el filtro.")}</Text>
+              ) : (
+                <View style={st.row}>
+                  <Text style={st.hint}>
+                    {t("Sin el filtro")}: <Text style={{ color: rColor(test.unlock.without.expectancy), fontWeight: "800" }}>{fmtR(test.unlock.without.expectancy)}R</Text> · {test.unlock.without.n} {t("ops")}
+                  </Text>
+                  <Text style={st.hint}>
+                    {t("Con el filtro ({mode})", { mode: botUnlockInfo(test.unlock.mode).name })}: <Text style={{ color: rColor(test.unlock.with.expectancy), fontWeight: "800" }}>{fmtR(test.unlock.with.expectancy)}R</Text> · {test.unlock.with.n} {t("ops")}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
           {!test.withRules && s.rules.length > 0 && <Text style={st.dim}>{t("La prueba no trae la comparación con tus reglas: falta actualizar la función del servidor.")}</Text>}

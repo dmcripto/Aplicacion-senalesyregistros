@@ -16,6 +16,8 @@ export interface BotLoaded extends BotSettings {
   notifySupported: boolean;
   /** false si el servidor todavía no tiene la columna del escaneo del mercado. */
   scanSupported: boolean;
+  /** false si el servidor todavía no tiene las columnas del filtro de desbloqueos. */
+  unlockSupported: boolean;
 }
 
 export interface BotCaps {
@@ -23,6 +25,7 @@ export interface BotCaps {
   profile: boolean;
   notify: boolean;
   scan: boolean;
+  unlock: boolean;
 }
 
 export interface BotApi {
@@ -39,10 +42,11 @@ export interface BotState {
   profileSupported: boolean;
   notifySupported: boolean;
   scanSupported: boolean;
+  unlockSupported: boolean;
 }
 
 export function createBotStore(api: BotApi) {
-  let state: BotState = { status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false, notifySupported: false, scanSupported: false };
+  let state: BotState = { status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false, notifySupported: false, scanSupported: false, unlockSupported: false };
   const listeners = new Set<() => void>();
   const set = (next: BotState) => {
     state = next;
@@ -59,15 +63,15 @@ export function createBotStore(api: BotApi) {
     },
     /** Vuelve al estado de fábrica (al cerrar sesión o cambiar de cuenta, para no mostrar lo de otra persona). */
     reset() {
-      set({ status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false, notifySupported: false, scanSupported: false });
+      set({ status: "idle", settings: DEFAULT_BOT, rulesSupported: false, profileSupported: false, notifySupported: false, scanSupported: false, unlockSupported: false });
     },
     /** Carga una sola vez (las demás llamadas esperan a la primera). */
     async load(force = false) {
       if (!force && state.status !== "idle") return;
       set({ ...state, status: "loading" });
       try {
-        const { rulesSupported, profileSupported, notifySupported, scanSupported, ...settings } = await api.load();
-        set({ status: "ready", settings, rulesSupported, profileSupported, notifySupported, scanSupported });
+        const { rulesSupported, profileSupported, notifySupported, scanSupported, unlockSupported, ...settings } = await api.load();
+        set({ status: "ready", settings, rulesSupported, profileSupported, notifySupported, scanSupported, unlockSupported });
       } catch {
         set({ ...state, status: "missing" });
       }
@@ -76,8 +80,8 @@ export function createBotStore(api: BotApi) {
     async refresh() {
       if (state.status !== "ready") return;
       try {
-        const { rulesSupported, profileSupported, notifySupported, scanSupported, ...settings } = await api.load();
-        if (state.status === "ready") set({ status: "ready", settings, rulesSupported, profileSupported, notifySupported, scanSupported });
+        const { rulesSupported, profileSupported, notifySupported, scanSupported, unlockSupported, ...settings } = await api.load();
+        if (state.status === "ready") set({ status: "ready", settings, rulesSupported, profileSupported, notifySupported, scanSupported, unlockSupported });
       } catch {
         /* sin conexión por un momento: se queda como estaba */
       }
@@ -88,7 +92,7 @@ export function createBotStore(api: BotApi) {
       const next = { ...state.settings, ...patch };
       set({ ...state, settings: next });
       try {
-        await api.save(next, { rules: state.rulesSupported, profile: state.profileSupported, notify: state.notifySupported, scan: state.scanSupported });
+        await api.save(next, { rules: state.rulesSupported, profile: state.profileSupported, notify: state.notifySupported, scan: state.scanSupported, unlock: state.unlockSupported });
       } catch (e) {
         set(prev);
         throw e;

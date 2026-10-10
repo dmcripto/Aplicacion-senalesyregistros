@@ -7,6 +7,9 @@
 //   · Stop: 1,5 veces el ATR(14) de distancia. Objetivo: 2 veces lo arriesgado (2R).
 // Funciona sobre velas de 1 hora ya cerradas, sin mirar nunca el futuro. Sin dependencias de Deno.
 
+import { bigUnlockAhead } from "./unlockFilter.ts";
+import type { UnlockEvent, UnlockSettings } from "./unlockFilter.ts";
+
 export interface Bar {
   t: number; // apertura, ms
   o: number;
@@ -115,7 +118,7 @@ export function indicators(bars: Bar[], p: BotParams = DEFAULT_PARAMS): Indicato
 }
 
 /** Señal de la vela cerrada número `i` (solo usa datos hasta `i`). null = sin señal. */
-export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams = DEFAULT_PARAMS): BotSignal | null {
+export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams = DEFAULT_PARAMS, opts?: { relaxShort?: boolean }): BotSignal | null {
   if (i < Math.max(p.emaSlow, p.lookback + 1, p.atrLen + 1) || i >= bars.length) return null;
   const f = ind.fast[i], s = ind.slow[i], a = ind.atr[i], c = bars[i].c;
   if (![f, s, a, c].every(Number.isFinite) || a <= 0) return null;
@@ -126,8 +129,29 @@ export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams =
   }
   const dist = a * p.atrMult;
   if (c > hi && f > s && c > s) return { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t, strength: (c - hi) / a };
-  if (c < lo && f < s && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
+  // relaxShort (filtro de desbloqueos, modo agresivo): la venta solo exige estar bajo la media lenta, no que la rápida ya la haya cruzado.
+  if (c < lo && (opts?.relaxShort ? true : f < s) && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
   return null;
+}
+
+export interface FilteredSignal {
+  sig: BotSignal;
+  /** Ya hay un desbloqueo grande cerca de este activo. */
+  nearUnlock: boolean;
+  /** Modo agresivo: es una venta ante un desbloqueo, entra primero si hay pocos lugares. */
+  boosted: boolean;
+}
+
+/**
+ * La señal del perfil para este activo, pasada por el filtro de desbloqueos (ver unlockFilter.ts). La usan tanto la corrida en vivo
+ * como la prueba con historial, así las dos deciden igual. Null si no hay señal o si el filtro la descarta.
+ */
+export function signalWithUnlock(bars: Bar[], ind: Indicators, i: number, p: BotParams, symbol: string, now: number, events: UnlockEvent[], cfg: UnlockSettings): FilteredSignal | null {
+  const nearUnlock = bigUnlockAhead(events, symbol, now, cfg) != null;
+  const sig = signalAt(bars, ind, i, p, nearUnlock && cfg.mode === "aggressive" ? { relaxShort: true } : undefined);
+  if (!sig) return null;
+  if (nearUnlock && sig.direction === "LONG") return null; // ninguna compra justo antes de un desbloqueo grande
+  return { sig, nearUnlock, boosted: nearUnlock && cfg.mode === "aggressive" && sig.direction === "SHORT" };
 }
 
 /** Primera vela posterior que toca el stop o el objetivo. Si una misma vela toca ambos, se asume el stop (criterio conservador). */
@@ -406,6 +430,8 @@ export interface SimSettings {
   dailyLossR: number;
   rules: BotAction[];
   timeZone: string | null;
+  /** Filtro de desbloqueos (opcional): sin esto, o con el modo apagado, el bot decide como siempre. */
+  unlock?: { cfg: UnlockSettings; events: UnlockEvent[] };
 }
 
 export interface SimTrade {
@@ -465,15 +491,20 @@ export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p:
       if (streak >= stopAfter) continue;
     }
     // Todas las señales de esta vela; si hay más que lugares, entran primero las más fuertes.
-    const found: Array<{ symbol: string; sig: BotSignal }> = [];
+    const found: Array<{ symbol: string; sig: BotSignal; boosted: boolean }> = [];
     for (const symbol of symbols) {
       if (open.has(symbol)) continue;
       const i = at.get(symbol)!.get(T);
       if (i == null) continue;
+      if (s.unlock && s.unlock.cfg.mode !== "off") {
+        const f = signalWithUnlock(barsBySymbol[symbol], ind.get(symbol)!, i, p, symbol, now, s.unlock.events, s.unlock.cfg);
+        if (f) found.push({ symbol, sig: f.sig, boosted: f.boosted });
+        continue;
+      }
       const sig = signalAt(barsBySymbol[symbol], ind.get(symbol)!, i, p);
-      if (sig) found.push({ symbol, sig });
+      if (sig) found.push({ symbol, sig, boosted: false });
     }
-    found.sort((a, b) => b.sig.strength - a.sig.strength);
+    found.sort((a, b) => Number(b.boosted) - Number(a.boosted) || b.sig.strength - a.sig.strength);
     for (const { symbol, sig } of found) {
       if (open.size >= s.maxOpen) break;
       if (maxPerDay != null && opened.filter((x) => x > now - DAY_MS).length >= maxPerDay) continue;

@@ -2,8 +2,8 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
-import { BOT_PROFILE_LIST, BOT_SCAN_LIST, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, t } from "@dmcripto/core";
+import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, BotUnlockMode, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, BOT_SCAN_LIST, BOT_UNLOCK_MODES, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, UNLOCK_LIMITS, clampLive, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
 interface TradeRow {
@@ -305,14 +305,15 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
   if (error) throw error;
   if (!data) {
     // Sin fila todavía: se mira si cada columna opcional existe preguntándole por ella.
-    const [r, p, n, sc] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1), supabase.from("bot_settings").select("notify").limit(1), supabase.from("bot_settings").select("scan_top").limit(1)]);
-    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error, notifySupported: !n.error, scanSupported: !sc.error };
+    const [r, p, n, sc, ul] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1), supabase.from("bot_settings").select("notify").limit(1), supabase.from("bot_settings").select("scan_top").limit(1), supabase.from("bot_settings").select("unlock_mode").limit(1)]);
+    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error, notifySupported: !n.error, scanSupported: !sc.error, unlockSupported: !ul.error };
   }
-  const row = data as { rules?: unknown; profile?: unknown; notify?: unknown; scan_top?: unknown };
+  const row = data as { rules?: unknown; profile?: unknown; notify?: unknown; scan_top?: unknown; unlock_mode?: unknown; unlock_window_days?: unknown; unlock_min_pct?: unknown };
   const rulesSupported = Array.isArray(row.rules);
   const profileSupported = typeof row.profile === "string";
   const notifySupported = typeof row.notify === "boolean";
   const scanSupported = typeof row.scan_top === "number";
+  const unlockSupported = typeof row.unlock_mode === "string";
   return {
     enabled: !!data.enabled,
     symbols: (data.symbols as string[]) ?? DEFAULT_BOT.symbols,
@@ -324,19 +325,28 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
     profile: profileSupported && (BOT_PROFILE_LIST as string[]).includes(row.profile as string) ? (row.profile as BotProfileId) : "balanced",
     notify: notifySupported ? (row.notify as boolean) : true,
     scanTop: scanSupported && BOT_SCAN_LIST.includes(row.scan_top as BotScan) ? (row.scan_top as BotScan) : 0,
+    unlockMode: unlockSupported && BOT_UNLOCK_MODES.includes(row.unlock_mode as BotUnlockMode) ? (row.unlock_mode as BotUnlockMode) : "off",
+    unlockWindowDays: unlockSupported ? Number(row.unlock_window_days ?? DEFAULT_BOT.unlockWindowDays) : DEFAULT_BOT.unlockWindowDays,
+    unlockMinPct: unlockSupported ? Number(row.unlock_min_pct ?? DEFAULT_BOT.unlockMinPct) : DEFAULT_BOT.unlockMinPct,
     rulesSupported,
     profileSupported,
     notifySupported,
     scanSupported,
+    unlockSupported,
   };
 }
 
-export async function saveBotSettings(userId: string, s: BotSettings, caps: { rules: boolean; profile: boolean; notify: boolean; scan: boolean } = { rules: true, profile: true, notify: true, scan: true }) {
+export async function saveBotSettings(userId: string, s: BotSettings, caps: { rules: boolean; profile: boolean; notify: boolean; scan: boolean; unlock: boolean } = { rules: true, profile: true, notify: true, scan: true, unlock: true }) {
   const row: Record<string, unknown> = { user_id: userId, enabled: s.enabled, symbols: s.symbols, max_open: s.maxOpen, daily_loss_r: s.dailyLossR, updated_at: new Date().toISOString() };
   if (caps.rules) row.rules = s.rules;
   if (caps.profile) row.profile = s.profile;
   if (caps.notify) row.notify = s.notify;
   if (caps.scan) row.scan_top = s.scanTop;
+  if (caps.unlock) {
+    row.unlock_mode = s.unlockMode;
+    row.unlock_window_days = Math.round(clampLive(s.unlockWindowDays, UNLOCK_LIMITS.windowDays.min, UNLOCK_LIMITS.windowDays.max, DEFAULT_BOT.unlockWindowDays));
+    row.unlock_min_pct = clampLive(s.unlockMinPct, UNLOCK_LIMITS.minPct.min, UNLOCK_LIMITS.minPct.max, DEFAULT_BOT.unlockMinPct);
+  }
   const { error } = await supabase.from("bot_settings").upsert(row, { onConflict: "user_id" });
   if (error) throw error;
 }
