@@ -8,6 +8,7 @@ import type { PushMessage } from "./expoPush.ts";
 import { signalCardHtml } from "./community.ts";
 import { notifyTelegram } from "./telegram.ts";
 import { waSignalText } from "./whatsapp.ts";
+import { wantsSymbol } from "./communityTools.ts";
 
 export const FEED_SOURCE = "veltrix";
 
@@ -36,16 +37,20 @@ export async function fanOutSignal(
   let copied = 0;
   try {
     for (let from = 0; ; from += PAGE) {
-      const { data: people, error } = await supabase
-        .from("profiles")
-        .select("id, lang")
-        .eq("follow_signals", true)
-        .neq("id", providerId)
-        .order("id")
-        .range(from, from + PAGE - 1);
+      const page = (cols: string) => supabase.from("profiles").select(cols).eq("follow_signals", true).neq("id", providerId).order("id").range(from, from + PAGE - 1);
+      let { data: everyone, error } = await page("id, lang, signal_symbols");
+      // Si todavía no se corrió el SQL del filtro de activos, se reparte a todos como antes.
+      if (error) ({ data: everyone, error } = await page("id, lang"));
       // Si todavía no se corrió el SQL (la columna no existe), no hay a quién repartir.
-      if (error || !people?.length) break;
+      if (error || !everyone?.length) break;
+      const pageSize = everyone.length;
+      // Quien eligió solo ciertos activos (/activos) no recibe las señales de los demás.
+      const people = (everyone as Array<{ id: string; lang?: string; signal_symbols?: string | null }>).filter((p) => wantsSymbol(p.signal_symbols, sig.symbol));
       followers += people.length;
+      if (!people.length) {
+        if (pageSize < PAGE) break;
+        continue;
+      }
       const langOf = new Map<string, string | undefined>(people.map((p: { id: string; lang?: string }) => [p.id, p.lang]));
 
       const base = (id: string) => ({ user_id: id, symbol: sig.symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl, date, source: FEED_SOURCE, external_id: providerTradeId });
@@ -87,7 +92,7 @@ export async function fanOutSignal(
           );
         }
       }
-      if (people.length < PAGE) break;
+      if (pageSize < PAGE) break;
     }
   } catch (e) {
     console.error("señales de VELTRIX:", e instanceof Error ? e.message : e);

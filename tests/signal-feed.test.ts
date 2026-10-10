@@ -175,3 +175,18 @@ describe("publicar a mano sin comunidad", () => {
     expect(pre.headers.get("access-control-allow-headers")).toContain("x-veltrix-community");
   });
 });
+
+describe("Filtro de activos (/activos)", () => {
+  it("quien eligió otros activos no recibe la señal ni la copia", async () => {
+    db.tables.profiles.find((p) => p.id === "s1")!.signal_symbols = "ETHUSDT,SOLUSDT";
+    db.tables.profiles.find((p) => p.id === "s2")!.signal_symbols = "BTCUSDT";
+    await fanOutSignal(createClient() as any, "u1", "tr1", { symbol: "BTCUSDT", direction: "LONG", entry: 100, tp: 110, sl: 95 }, new Date().toISOString());
+    expect(copies().map((t) => t.user_id)).toEqual(["s2"]);
+    expect(push().map((m) => m.to)).toEqual(["ExponentPushToken[s2]"]);
+  });
+  it("si falta el SQL del filtro, reparte a todos como antes", async () => {
+    db.missingSelect = ["signal_symbols"];
+    await fanOutSignal(createClient() as any, "u1", "tr2", { symbol: "BTCUSDT", direction: "LONG", entry: 100, tp: 110, sl: 95 }, new Date().toISOString());
+    expect(copies().map((t) => t.user_id).sort()).toEqual(["s1", "s2"]);
+  });
+});

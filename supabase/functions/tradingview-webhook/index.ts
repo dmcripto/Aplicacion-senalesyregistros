@@ -16,6 +16,7 @@ import { botToken, notifyTelegram } from "../_shared/telegram.ts";
 import { waSignalText } from "../_shared/whatsapp.ts";
 import { fanOutSignal } from "../_shared/signalFeed.ts";
 import { FEED_ONLY_NOTE } from "../_shared/autoClose.ts";
+import { sendExposureNotice } from "../_shared/communityTools.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -170,7 +171,7 @@ async function handle(req: Request): Promise<Response> {
   const sig = { symbol: alert.symbol, direction: alert.direction, entry: alert.entry, tp: alert.tp, sl: alert.sl, targets: alert.targets };
   await runInBackground(
     Promise.all([
-      noCommunity ? Promise.resolve() : publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang)),
+      noCommunity ? Promise.resolve() : publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang), trade.id),
       // Aviso por WhatsApp (si la persona vinculó su número).
       noCommunity ? Promise.resolve() : notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
       // Cuenta emisora: la señal también llega al diario y a los avisos de quienes activaron «Señales de VELTRIX».
@@ -178,8 +179,12 @@ async function handle(req: Request): Promise<Response> {
     ]),
   );
 
+  // Aviso de sobreexposición (solo a quien lo tiene activado y con el chat de Telegram vinculado).
+  await runInBackground(sendExposureNotice(supabase, profile.id));
+
   return new Response(JSON.stringify({ ok: true, trade }), {
     status: 201,
     headers: { "Content-Type": "application/json" },
   });
 }
+
