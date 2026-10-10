@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ALERT_TFS, MAX_ACTIVE_ALERTS, checkAlertDraft, cx, fmtPrice, t } from "../lib";
+import { ALERT_TFS, MAX_ACTIVE_ALERTS, checkAlertDraft, cx, fmtPrice, levelLooksOff, parseAlertLevel, t } from "../lib";
 import type { AlertKind, AlertSide, AlertTf, UserAlert } from "../lib";
 import { createAlert, deleteAlert, setAlertActive } from "../tradesApi";
 
@@ -44,11 +44,13 @@ export default function AlertsSection({
   const active = alerts.filter((a) => a.active).length;
 
   const num = (v: string) => Number(v.trim().replace(",", "."));
-  const draft = { symbol, kind, tf, dir, level: kind === "ema" ? null : num(level), period: kind === "price" ? null : num(period), once };
+  const lvl = (v: string) => (kind === "price" ? parseAlertLevel(v, lastPrice) : num(v));
+  const draft = { symbol, kind, tf, dir, level: kind === "ema" ? null : lvl(level), period: kind === "price" ? null : num(period), once };
   const check = checkAlertDraft(draft);
 
   const create = async () => {
     if (!check.ok) return notify(check.error === "level" ? (kind === "rsi" ? t("El nivel del RSI tiene que estar entre 1 y 99.") : t("Poné un precio mayor a 0.")) : t("Revisá el período."), "err");
+    if (kind === "price" && draft.level != null && levelLooksOff(draft.level, lastPrice)) return notify(t("Ese precio está muy lejos del actual ({n}). Escribilo completo y sin puntos de miles, por ejemplo {e}.", { n: fmtPrice(lastPrice ?? 0), e: String(Math.round(lastPrice ?? 0)) }), "err");
     setBusy(true);
     try {
       await createAlert(userId, draft);

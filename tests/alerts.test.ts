@@ -176,3 +176,29 @@ describe("validación del borrador (mismos límites que la tabla)", () => {
     expect(checkAlertDraft({ ...e, period: null })).toEqual({ ok: false, error: "period" });
   });
 });
+
+import { levelLooksOff, parseAlertLevel } from "../packages/core/src/alerts";
+
+describe("parseAlertLevel / levelLooksOff", () => {
+  it("lee el punto de miles cuando el precio actual lo deja claro", () => {
+    expect(parseAlertLevel("81.700", 81700)).toBe(81700);
+    expect(parseAlertLevel("81,700", 81700)).toBe(81700);
+    expect(parseAlertLevel("81700", 81700)).toBe(81700);
+    expect(parseAlertLevel("1.234.567", 1_200_000)).toBe(1234567);
+  });
+  it("mantiene los decimales de precios chicos", () => {
+    expect(parseAlertLevel("1.234", 1.2)).toBe(1.234);
+    expect(parseAlertLevel("0,5", 0.48)).toBe(0.5);
+    expect(parseAlertLevel("82987.7", 83000)).toBe(82987.7);
+  });
+  it("sin precio de referencia lo lee tal cual", () => {
+    expect(parseAlertLevel("81.700", null)).toBe(81.7);
+    expect(parseAlertLevel("abc", 81700)).toBeNaN();
+  });
+  it("detecta un nivel muy lejano al precio", () => {
+    expect(levelLooksOff(81.8, 82987)).toBe(true);
+    expect(levelLooksOff(81700, 82987)).toBe(false);
+    expect(levelLooksOff(500000, 82987)).toBe(true);
+    expect(levelLooksOff(81.8, null)).toBe(false);
+  });
+});
