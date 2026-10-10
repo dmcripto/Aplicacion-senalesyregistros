@@ -119,7 +119,7 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
   return (
     <>
     <Text style={titleStyle}>{t("BOT AUTOMÁTICO")}</Text>
-    <TouchableOpacity style={[st.outline, { marginBottom: 10 }]} onPress={() => Linking.openURL("https://veltrix-trading.vercel.app/bot-automatico.mp4").catch(() => {})}>
+    <TouchableOpacity style={[st.outline, { marginBottom: 10 }]} onPress={() => Linking.openURL("https://www.veltrix-trading.com.ar/bot-automatico.mp4").catch(() => {})}>
       <Text style={st.outlineText}>{"🎬 "}{t("Ver el video: cómo funciona el bot (1 min 50 s)")}</Text>
     </TouchableOpacity>
     <View style={st.card}>

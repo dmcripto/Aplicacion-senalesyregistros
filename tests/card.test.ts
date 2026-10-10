@@ -113,7 +113,7 @@ describe("imagen PNG", () => {
     expect(png.length).toBeGreaterThan(20_000); // tiene contenido (texto, logo), no una imagen vacía
     // La imagen ya dice todo: el pie solo lleva el aviso legal y el enlace, sin repetir los números.
     expect(img!.caption).toContain("asesoramiento");
-    expect(img!.caption).toContain("veltrix-trading.vercel.app");
+    expect(img!.caption).toContain("www.veltrix-trading.com.ar");
     expect(img!.caption).not.toMatch(/65000|66500|64500|BTC/);
   });
 

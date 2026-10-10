@@ -1932,7 +1932,7 @@ export function cleanRef(raw: unknown): string | null {
 
 // ─── Programa de invitados ──────────────────────────────────────────────────
 
-export const SITE_URL = "https://veltrix-trading.vercel.app";
+export const SITE_URL = "https://www.veltrix-trading.com.ar";
 
 /** Código de invitación válido (letras y números, 6 a 12), en mayúsculas. Devuelve null si no sirve. */
 export function cleanInvite(raw: unknown): string | null {

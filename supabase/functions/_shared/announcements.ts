@@ -6,7 +6,7 @@ export interface Announcement {
   en: string;
 }
 
-const APP_URL = "veltrix-trading.vercel.app/app";
+const APP_URL = "www.veltrix-trading.com.ar/app";
 
 export const ANNOUNCEMENTS: Record<string, Announcement> = {
   bot: {

@@ -1,0 +1,661 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+// ─── VELTRIX · Botón «Enviar a WhatsApp» en los avisos de Telegram ──────────
+// WhatsApp no deja que un bot escriba solo. Con el interruptor activado, cada aviso del bot trae un botón
+// que abre WhatsApp con el mensaje ya escrito: un toque y elegís a quién mandarlo. Sin dinero ni datos de la cuenta.
+
+
+interface WaSignal {
+  symbol: string;
+  direction: string; // LONG | SHORT
+  entry: number;
+  tp: number;
+  sl: number;
+}
+
+const WA_LABEL = { es: "📲 Enviar a WhatsApp", en: "📲 Send to WhatsApp" };
+
+const whatsappUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;
+
+function waSignalText(t: WaSignal, lang: Lang): string {
+  const en = lang === "en";
+  const risk = Math.abs(t.entry - t.sl);
+  const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
+  const side = t.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA";
+  return [
+    `📢 ${en ? "New signal" : "Nueva señal"}`,
+    `${t.direction === "LONG" ? "▲" : "▼"} ${t.symbol} ${side}`,
+    `${en ? "Entry" : "Entrada"} ${t.entry} · TP ${t.tp} · SL ${t.sl} · R:R 1:${rr.toFixed(1)}`,
+    en ? "⚠️ For personal record-keeping: not financial advice." : "⚠️ Información para registro personal: no es asesoramiento financiero.",
+    "VELTRIX",
+  ].join("\n");
+}
+
+function waResultText(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang): string {
+  const en = lang === "en";
+  const ok = outcome === "TP";
+  const title = ok ? (en ? "TP hit" : "TP alcanzado") : en ? "SL hit" : "SL alcanzado";
+  return `${ok ? "✅" : "❌"} ${title} · ${symbol}\n${en ? "Result" : "Resultado"} ${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(1)}R\nVELTRIX`;
+}
+
+/** Teclado de Telegram con el botón de WhatsApp. */
+const waKeyboard = (text: string, lang: Lang) => ({
+  inline_keyboard: [[{ text: WA_LABEL[lang], url: whatsappUrl(text) }]],
+});
+
+// ─── VELTRIX · Telegram (API de bots) ───────────────────────────────────────
+// Funciones comunes para hablar con Telegram y avisar al usuario desde cualquier función del servidor.
+
+
+type Lang = "es" | "en";
+
+const API = "https://api.telegram.org";
+
+const botToken = (): string | undefined => Deno.env.get("TELEGRAM_BOT_TOKEN") || undefined;
+
+/** Escapa el texto para usarlo dentro de mensajes con formato HTML. */
+const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function tgApi(token: string, method: string, payload: Record<string, unknown> = {}): Promise<any> {
+  try {
+    const res = await fetch(`${API}/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
+const sendMessage = (token: string, chatId: number, html: string, extra: Record<string, unknown> = {}) =>
+  tgApi(token, "sendMessage", { chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
+
+/** Manda una imagen PNG (con texto opcional abajo). Si Telegram la rechaza, devuelve el error igual que sendMessage. */
+async function sendPhoto(token: string, chatId: number, png: Uint8Array, caption: string, extra: Record<string, string | number> = {}): Promise<any> {
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    form.append("caption", caption.slice(0, 1000));
+    form.append("parse_mode", "HTML");
+    for (const [k, v] of Object.entries(extra)) form.append(k, String(v));
+    form.append("photo", new Blob([png], { type: "image/png" }), "veltrix.png");
+    const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(15000) });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
+/**
+ * Avisa por Telegram al usuario si tiene el chat vinculado. `build` arma el texto en su idioma.
+ * Nunca lanza errores: un fallo de Telegram no debe romper el registro de la señal.
+ * Si el usuario bloqueó al bot, se borra la vinculación.
+ */
+async function notifyTelegram(
+  supabase: any,
+  userId: string,
+  build: (lang: Lang) => string,
+  /** Texto plano para el botón «Enviar a WhatsApp». Solo se agrega si la persona activó el interruptor. */
+  whatsappText?: (lang: Lang) => string,
+): Promise<void> {
+  try {
+    const token = botToken();
+    if (!token) return;
+    const { data: link } = await supabase.from("telegram_links").select("chat_id").eq("user_id", userId).maybeSingle();
+    if (!link) return;
+    const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+    let extra: Record<string, unknown> = {};
+    if (whatsappText) {
+      // Columna opcional: si todavía no existe (falta correr el SQL), simplemente no hay botón.
+      const { data: wa } = await supabase.from("profiles").select("whatsapp_button").eq("id", userId).maybeSingle();
+      if ((wa as { whatsapp_button?: boolean } | null)?.whatsapp_button === true) extra = { reply_markup: waKeyboard(whatsappText(lang), lang) };
+    }
+    const r = await sendMessage(token, Number(link.chat_id), build(lang), extra);
+    if (!r?.ok && r?.error_code === 403) await supabase.from("telegram_links").delete().eq("user_id", userId);
+  } catch {
+    /* sin aviso por Telegram */
+  }
+}
+
+// ─── VELTRIX · Votación 👍/👎 de las señales en los grupos de Telegram ──────────
+// Archivo aparte (sin dependencias) para que community.ts pueda usarlo sin ciclos de importación.
+
+interface VoteCount {
+  up: number;
+  down: number;
+}
+
+const voteData = (kind: "u" | "d", tradeId: string) => `v:${kind}:${tradeId}`;
+
+function voteKeyboard(tradeId: string, c: VoteCount = { up: 0, down: 0 }, lang: "es" | "en" = "es") {
+  const en = lang === "en";
+  return {
+    inline_keyboard: [[
+      { text: `👍 ${en ? "I'm taking it" : "La tomo"}${c.up ? ` · ${c.up}` : ""}`, callback_data: voteData("u", tradeId) },
+      { text: `👎 ${en ? "I'll pass" : "Paso"}${c.down ? ` · ${c.down}` : ""}`, callback_data: voteData("d", tradeId) },
+    ]],
+  };
+}
+
+function parseVote(data: string): { kind: "u" | "d"; tradeId: string } | null {
+  const m = /^v:([ud]):([0-9a-zA-Z-]{8,40})$/.exec(data);
+  return m ? { kind: m[1] as "u" | "d", tradeId: m[2] } : null;
+}
+
+/** Registra (o cambia, o quita si repite) el voto de una persona y devuelve el recuento. Null si falta la tabla. */
+async function castVote(supabase: any, tradeId: string, voter: number, kind: "u" | "d"): Promise<VoteCount | null> {
+  const vote = kind === "u" ? 1 : -1;
+  const { data: prev, error } = await supabase.from("signal_votes").select("vote").eq("trade_id", tradeId).eq("voter", voter).maybeSingle();
+  if (error) return null;
+  if (prev?.vote === vote) await supabase.from("signal_votes").delete().eq("trade_id", tradeId).eq("voter", voter);
+  else await supabase.from("signal_votes").upsert({ trade_id: tradeId, voter, vote }, { onConflict: "trade_id,voter" });
+  const { data: all } = await supabase.from("signal_votes").select("vote").eq("trade_id", tradeId);
+  const list = (all ?? []) as Array<{ vote: number }>;
+  return { up: list.filter((x) => x.vote > 0).length, down: list.filter((x) => x.vote < 0).length };
+}
+
+// ─── VELTRIX · Publicar en la comunidad de Telegram ─────────────────────────
+// El dueño de la cuenta conecta un grupo o canal; cada señal nueva y cada TP/SL que toque se publica ahí.
+// Las señales se publican sin datos personales ni dinero: solo el activo, los niveles y el resultado en R.
+
+
+interface CommunityTrade {
+  symbol: string;
+  direction: string; // LONG | SHORT
+  entry: number;
+  tp: number; // TP final
+  sl: number;
+  /** Targets parciales (TP1, TP2…) antes del TP final, del más cercano al más lejano. */
+  targets?: number[] | null;
+}
+
+const DISCLAIMER = {
+  es: "⚠️ Información para registro personal: no es asesoramiento financiero.",
+  en: "⚠️ For personal record-keeping: not financial advice.",
+};
+
+const SITE = "https://www.veltrix-trading.com.ar";
+const R_OF = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
+const PCT = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
+
+/** "BTCUSDT" → "BTC/USDT" (si no se reconoce la moneda de cotización, queda igual). */
+function prettyPair(symbol: string): string {
+  const m = String(symbol).toUpperCase().match(/^([A-Z0-9]{2,15}?)(USDT|USDC|BUSD|USD)(\.P|PERP)?$/);
+  return m ? `${m[1]}/${m[2]}${m[3] ?? ""}` : String(symbol);
+}
+
+/** Los targets de la señal con su distancia en %: «Target» si hay uno solo, «Target 1», «Target 2»… si hay varios. El último es el TP final. */
+function targetLines(t: CommunityTrade, dir: number): string[] {
+  const levels = [...(t.targets ?? []), t.tp];
+  const out: string[] = [];
+  levels.forEach((n, i) => {
+    const pct = t.entry ? ((dir * (n - t.entry)) / t.entry) * 100 : 0;
+    out.push(`💠 Target${levels.length > 1 ? ` ${i + 1}` : ""} :- <b>${n}</b>  <i>(${PCT(pct)})</i>`, "");
+  });
+  return out;
+}
+
+/** Qué se sugiere hacer al tocar el target número `n` (1 = el primero). */
+const targetAdvice = (n: number, lang: Lang): string =>
+  n <= 1
+    ? lang === "en" ? "Close 50% and move the SL to break-even" : "Cerrar 50% y mover el SL a break-even"
+    : lang === "en" ? `Lock in profit: move the SL to Target ${n - 1}` : `Asegurar ganancias: mover el SL al Target ${n - 1}`;
+
+/**
+ * Aviso extra del resultado según cómo llegó el precio: `reached` = cuántos targets parciales (de `total`) se tocaron antes del cierre.
+ * Devuelve null si la operación no tenía targets o no hay nada que aclarar.
+ */
+function resultNote(outcome: "TP" | "SL", reached: number, total: number, lang: Lang): string | null {
+  if (total <= 0) return null;
+  const en = lang === "en";
+  if (outcome === "SL") {
+    if (reached === 0) return en ? "SL hit before Target 1" : "SL tocado antes del Target 1";
+    return en ? `Target ${reached} was reached before the SL` : `Había llegado al Target ${reached} antes del SL`;
+  }
+  if (reached === 0) return total === 1 ? (en ? "Straight to TP, skipping Target 1" : "Directo al TP, sin pasar por el Target 1") : en ? "Straight to TP, skipping the targets" : "Directo al TP, sin pasar por los targets";
+  return null;
+}
+
+/**
+ * Señal en texto de Telegram, con un emoji por línea y cada dato bien separado: par y dirección, entrada, objetivo (TP) y stop,
+ * con su distancia en % y el R:R. `header` es el emoji de arriba (📢 comunidad, 🔔 aviso privado). Sin datos personales ni dinero.
+ */
+function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: string; disclaimer?: boolean } = {}): string {
+  const en = lang === "en";
+  const long = t.direction === "LONG";
+  const risk = Math.abs(t.entry - t.sl);
+  const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
+  const dir = long ? 1 : -1;
+  const slPct = t.entry ? ((dir * (t.sl - t.entry)) / t.entry) * 100 : 0;
+  const lines = [
+    `${opts.header ?? "📢"} <b>${en ? "NEW SIGNAL" : "NUEVA SEÑAL"}</b>`,
+    "",
+    `⏳ <b>${esc(prettyPair(t.symbol))}</b> ( ${long ? (en ? "LONG 🟢" : "LONG 🟢") : "SHORT 🔴"} )`,
+    "",
+    `⛩ ${en ? "Entry" : "Entrada"} ➡️ <b>${t.entry}</b>`,
+    "",
+    ...targetLines(t, dir),
+    `🛑 Stoploss = <b>${t.sl}</b>  <i>(${PCT(slPct)})</i>`,
+    "",
+    `⚖️ R:R <b>1 : ${rr.toFixed(1)}</b>`,
+  ];
+  if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
+  return lines.join("\n");
+}
+
+const communitySignalMessage = (t: CommunityTrade, lang: Lang) => signalCardHtml(t, lang, { header: "📢" });
+
+/** Porcentaje de movimiento del precio a favor entre la entrada y `price` (según la dirección). */
+const favorPct = (t: Pick<CommunityTrade, "direction" | "entry">, price: number) => (t.entry ? (((t.direction === "LONG" ? 1 : -1) * (price - t.entry)) / t.entry) * 100 : 0);
+
+/** Aviso de target: el precio avanzó a favor; se sugiere tomar parcial / asegurar ganancias. `opts.n` es el número de target (1 por defecto). */
+function partialCardHtml(t: CommunityTrade, level: number, r: number, lang: Lang, opts: { header?: string; disclaimer?: boolean; n?: number } = {}): string {
+  const en = lang === "en";
+  const n = opts.n ?? 1;
+  const lines = [
+    `${opts.header ?? "🎯"} <b>${en ? `TARGET ${n} HIT` : `TARGET ${n} ALCANZADO`}</b>`,
+    "",
+    `⏳ <b>${esc(prettyPair(t.symbol))}</b> ( ${t.direction === "LONG" ? "LONG 🟢" : "SHORT 🔴"} )`,
+    "",
+    `💰 Profit <b>${PCT(favorPct(t, level))}</b>  <i>(${R_OF(r)})</i>`,
+    "",
+    `💡 <b>${en ? "Suggested management:" : "Gestión sugerida:"}</b> ${targetAdvice(n, lang).replace(/^./, (c) => c.toLowerCase())}`,
+  ];
+  if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
+  return lines.join("\n");
+}
+
+/** Resultado de una operación al tocar TP o SL. */
+function resultCardHtml(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, opts: { label?: string; note?: string | null } = {}): string {
+  const en = lang === "en";
+  const ok = outcome === "TP";
+  const title = ok ? (en ? "TP HIT" : "TP ALCANZADO") : en ? "SL HIT" : "SL ALCANZADO";
+  const label = opts.label ?? (en ? "Result" : "Resultado");
+  return [
+    `${ok ? "✅" : "❌"} <b>${title}</b> ${ok ? "🎉" : ""}`.trim(),
+    "",
+    `⏳ <b>${esc(prettyPair(symbol))}</b>`,
+    "",
+    `${ok ? "🏆" : "📉"} ${label}: <b>${R_OF(r)}</b>`,
+    ...(opts.note ? ["", `${ok ? "⚡" : "⚠️"} <i>${esc(opts.note)}</i>`] : []),
+  ].join("\n");
+}
+
+const communityResultMessage = (symbol: string, outcome: "TP" | "SL", r: number, lang: Lang, note?: string | null) => resultCardHtml(symbol, outcome, r, lang, { note });
+
+/**
+ * Publica en todas las comunidades conectadas de esa cuenta. Nunca lanza errores: un fallo de Telegram
+ * no debe romper el registro de la señal. Si el bot ya no está en el grupo, se borra la conexión.
+ */
+async function publishToCommunities(
+  supabase: any,
+  token: string | undefined,
+  userId: string,
+  build: (lang: Lang) => string,
+  /** Imagen tarjeta opcional: si se arma bien se publica la imagen con su texto; si no, el texto de `build`. */
+  photo?: (lang: Lang) => Promise<{ png: Uint8Array; caption: string } | null>,
+  /** Si se pasa, la publicación lleva los botones 👍/👎 para votar la señal. */
+  tradeId?: string,
+): Promise<number> {
+  try {
+    if (!token) return 0;
+    const { data: rows } = await supabase.from("telegram_communities").select("id,chat_id,thread_id").eq("user_id", userId);
+    if (!rows?.length) return 0;
+    const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+    const text = build(lang);
+    let img: { png: Uint8Array; caption: string } | null = null;
+    if (photo) {
+      try {
+        img = await photo(lang);
+      } catch {
+        img = null;
+      }
+    }
+    let ok = 0;
+    for (const row of rows as Array<{ id: string; chat_id: number; thread_id?: number | null }>) {
+      // En un grupo con temas se publica en el tema donde se conectó.
+      const thread = row.thread_id ? { message_thread_id: Number(row.thread_id) } : {};
+      const markup = tradeId ? voteKeyboard(tradeId, { up: 0, down: 0 }, lang) : null;
+      let r = img ? await sendPhoto(token, Number(row.chat_id), img.png, img.caption, markup ? { ...thread, reply_markup: JSON.stringify(markup) } : thread) : null;
+      // Si la imagen no salió (error de Telegram distinto de "el bot ya no está"), se manda el texto.
+      if (!r?.ok && r?.error_code !== 403) r = await sendMessage(token, Number(row.chat_id), text, markup ? { ...thread, reply_markup: markup } : thread);
+      if (r?.ok) ok++;
+      else if (r?.error_code === 403 || r?.error_code === 400) await supabase.from("telegram_communities").delete().eq("id", row.id);
+    }
+    return ok;
+  } catch {
+    return 0;
+  }
+}
+
+// ─── VELTRIX · WhatsApp Cloud API (oficial, de Meta) ────────────────────────
+// Manda mensajes de plantilla al número que cada persona vinculó y confirmó con un código.
+// Secretos: WHATSAPP_TOKEN, WHATSAPP_PHONE_ID (y opcionales WHATSAPP_CODE_TEMPLATE, WHATSAPP_SIGNAL_TEMPLATE, WHATSAPP_RESULT_TEMPLATE).
+
+
+const GRAPH = "https://graph.facebook.com/v21.0";
+
+interface WaConfig {
+  token: string;
+  phoneId: string;
+  templates: { code: string; signal: string; result: string };
+}
+
+const env = (k: string): string | undefined => {
+  try {
+    return (globalThis as any).Deno?.env?.get(k) || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** null si falta la configuración de Meta: en ese caso WhatsApp queda apagado y nadie ve nada raro. */
+function waConfig(): WaConfig | null {
+  const token = env("WHATSAPP_TOKEN");
+  const phoneId = env("WHATSAPP_PHONE_ID");
+  if (!token || !phoneId) return null;
+  return {
+    token,
+    phoneId,
+    templates: {
+      code: env("WHATSAPP_CODE_TEMPLATE") ?? "veltrix_codigo",
+      signal: env("WHATSAPP_SIGNAL_TEMPLATE") ?? "veltrix_senal",
+      result: env("WHATSAPP_RESULT_TEMPLATE") ?? "veltrix_resultado",
+    },
+  };
+}
+
+/** Solo los números, con código de país y sin ceros ni signos: 5491155550000. */
+const waDigits = (s: string) => String(s ?? "").replace(/\D/g, "");
+const waValidPhone = (digits: string) => /^[1-9]\d{7,14}$/.test(digits);
+/** +54 9 **** 0000: se muestra sin dejar el número completo a la vista. */
+const waMask = (digits: string) => (digits.length > 6 ? `+${digits.slice(0, 2)} ${"•".repeat(Math.max(3, digits.length - 6))} ${digits.slice(-4)}` : `+${digits}`);
+
+interface WaResult {
+  ok: boolean;
+  status: number;
+  code?: number; // código de error de Meta
+  error?: string;
+}
+
+/** Manda un mensaje por la API. Nunca lanza errores. */
+async function waSend(cfg: WaConfig, payload: Record<string, unknown>): Promise<WaResult> {
+  try {
+    const res = await fetch(`${GRAPH}/${cfg.phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", ...payload }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body: any = await res.json().catch(() => ({}));
+    if (res.ok && !body?.error) return { ok: true, status: res.status };
+    return { ok: false, status: res.status, code: body?.error?.code, error: body?.error?.message };
+  } catch (e) {
+    return { ok: false, status: 0, error: e instanceof Error ? e.message : "network" };
+  }
+}
+
+/** Mensaje de plantilla: `params` van en orden en {{1}}, {{2}}…; `urlParam` es para el botón «copiar código» de la plantilla de códigos. */
+function waTemplate(to: string, name: string, lang: Lang, params: string[], urlParam?: string) {
+  const components: Array<Record<string, unknown>> = [{ type: "body", parameters: params.map((text) => ({ type: "text", text: String(text).replace(/\s+/g, " ").trim() })) }];
+  if (urlParam !== undefined) components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: urlParam }] });
+  return { to, type: "template", template: { name, language: { code: lang }, components } };
+}
+
+/** Código de confirmación al número que la persona quiere vincular. */
+const waSendCode = (cfg: WaConfig, to: string, code: string, lang: Lang) => waSend(cfg, waTemplate(to, cfg.templates.code, lang, [code], code));
+
+/** Texto libre (solo permitido dentro de las 24 h desde que la persona escribió, por ejemplo para contestar BAJA). */
+const waSendText = (cfg: WaConfig, to: string, body: string) => waSend(cfg, { to, type: "text", text: { body } });
+
+/** Valores de la plantilla de señal: par, dirección, entrada, target, stop, riesgo/beneficio. */
+function waSignalParams(t: CommunityTrade, lang: Lang): string[] {
+  const en = lang === "en";
+  const long = t.direction === "LONG";
+  const risk = Math.abs(t.entry - t.sl);
+  const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
+  return [prettyPair(t.symbol), long ? (en ? "BUY (LONG)" : "COMPRA (LONG)") : en ? "SELL (SHORT)" : "VENTA (SHORT)", String(t.entry), String(t.tp), String(t.sl), rr.toFixed(1)];
+}
+
+/** Valores de la plantilla de resultado: par, qué pasó y el R. */
+function waResultParams(symbol: string, outcome: "TP" | "SL", r: number, lang: Lang): string[] {
+  const en = lang === "en";
+  const ok = outcome === "TP";
+  const what = ok ? (en ? "TP hit ✅" : "TP alcanzado ✅") : en ? "SL hit ❌" : "SL alcanzado ❌";
+  return [prettyPair(symbol), what, `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(1)}R`];
+}
+
+/**
+ * Avisa por WhatsApp a la persona si vinculó su número y no lo pausó. Nunca lanza errores:
+ * un fallo de WhatsApp no debe romper el registro de la señal.
+ */
+async function notifyWhatsApp(
+  supabase: any,
+  userId: string,
+  build: (lang: Lang) => { kind: "signal" | "result"; params: string[] },
+): Promise<void> {
+  try {
+    const cfg = waConfig();
+    if (!cfg) return;
+    const { data: link } = await supabase.from("whatsapp_links").select("phone, enabled").eq("user_id", userId).maybeSingle();
+    if (!link || link.enabled === false) return;
+    const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+    const spec = build(lang);
+    const r = await waSend(cfg, waTemplate(link.phone, cfg.templates[spec.kind], lang, spec.params));
+    // 131026: el número no tiene WhatsApp o no puede recibir mensajes → se pausa para no seguir intentando.
+    if (!r.ok && r.code === 131026) await supabase.from("whatsapp_links").update({ enabled: false }).eq("user_id", userId);
+    if (!r.ok) console.error("whatsapp:", r.code ?? r.status, r.error ?? "");
+  } catch (e) {
+    console.error("whatsapp:", e instanceof Error ? e.message : e);
+  }
+}
+
+// Señales por WhatsApp (API oficial de Meta).
+//
+// 1) Pedidos de la app (POST con la sesión de la persona):
+//    · status  → { configured, link }   (si no está configurado, la app no muestra nada)
+//    · start   → { phone }  manda un código de 6 dígitos por WhatsApp a ese número
+//    · verify  → { code }   si coincide, vincula el número a la cuenta
+//    · toggle  → { enabled } pausa o reanuda los avisos
+//    · unlink  → desvincula
+// 2) Webhook de Meta:
+//    · GET  → verificación (hub.verify_token == WHATSAPP_VERIFY_TOKEN)
+//    · POST → mensajes que la gente escribe al número de VELTRIX. «BAJA» pausa los avisos y «ALTA» los reanuda.
+//
+// Secretos: WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_VERIFY_TOKEN, WHATSAPP_APP_SECRET.
+// Desactivar «Verify JWT»: Meta no manda sesión; el webhook se protege con la firma y los pedidos de la app validan la sesión acá.
+
+
+const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+const CODE_MINUTES = 10;
+const MAX_ATTEMPTS = 5;
+const COOLDOWN_SECONDS = 60;
+const DAILY_CAP = 5; // códigos por día, por persona y por número
+
+const today = () => new Date().toISOString().slice(0, 10);
+const encoder = new TextEncoder();
+const hex = (buf: ArrayBuffer) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const sha256 = async (text: string) => hex(await crypto.subtle.digest("SHA-256", encoder.encode(text)));
+async function hmac(secret: string, text: string) {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", key, encoder.encode(text)));
+}
+/** Comparación de tiempo constante. */
+const same = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+};
+
+async function langOfUser(userId: string): Promise<Lang> {
+  const { data } = await admin.from("profiles").select("lang").eq("id", userId).maybeSingle();
+  return (data as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+}
+
+// ─── Pedidos de la app ──────────────────────────────────────────────────────
+
+async function handleClient(req: Request, body: Record<string, unknown>) {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: auth } = await admin.auth.getUser(token);
+  const user = auth?.user;
+  if (!user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
+  const cfg = waConfig();
+  const action = String(body.action ?? "");
+
+  if (action === "status") {
+    const { data: link } = await admin.from("whatsapp_links").select("phone, enabled").eq("user_id", user.id).maybeSingle();
+    return json({ ok: true, configured: !!cfg, link: link ? { phone: waMask(String(link.phone)), enabled: link.enabled !== false } : null });
+  }
+  if (!cfg) return json({ ok: false, code: "not_configured", error: "Las señales por WhatsApp todavía no están disponibles." }, 503);
+
+  if (action === "start") {
+    const phone = waDigits(String(body.phone ?? ""));
+    if (!waValidPhone(phone)) return json({ ok: false, error: "Escribí tu número con el código de país, por ejemplo +54 9 11 5555 5555." }, 400);
+    const { data: prev } = await admin.from("whatsapp_codes").select("*").eq("user_id", user.id).maybeSingle();
+    if (prev && Date.now() - new Date(prev.last_sent_at).getTime() < COOLDOWN_SECONDS * 1000) {
+      return json({ ok: false, error: "Esperá un minuto antes de pedir otro código." }, 429);
+    }
+    const sentToday = prev && prev.day === today() ? Number(prev.sent_today) : 0;
+    const { data: samePhone } = await admin.from("whatsapp_codes").select("sent_today").eq("phone", phone).eq("day", today());
+    const phoneToday = ((samePhone ?? []) as Array<{ sent_today: number }>).reduce((a, r) => a + Number(r.sent_today), 0);
+    if (sentToday >= DAILY_CAP || phoneToday >= DAILY_CAP) return json({ ok: false, error: "Pediste demasiados códigos hoy. Probá mañana." }, 429);
+
+    const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    const { error } = await admin.from("whatsapp_codes").upsert(
+      {
+        user_id: user.id,
+        phone,
+        code_hash: await sha256(`${code}:${user.id}:${phone}`),
+        expires_at: new Date(Date.now() + CODE_MINUTES * 60_000).toISOString(),
+        attempts: 0,
+        last_sent_at: new Date().toISOString(),
+        day: today(),
+        sent_today: sentToday + 1,
+      },
+      { onConflict: "user_id" },
+    );
+    if (error) return json({ ok: false, error: "No se pudo generar el código." }, 500);
+    const sent = await waSendCode(cfg, phone, code, await langOfUser(user.id));
+    if (!sent.ok) {
+      const msg = sent.code === 131030 ? "Ese número todavía no está autorizado en el modo de prueba de WhatsApp." : "No se pudo enviar el código por WhatsApp. Revisá el número e intentá de nuevo.";
+      return json({ ok: false, error: msg }, 502);
+    }
+    return json({ ok: true, minutes: CODE_MINUTES });
+  }
+
+  if (action === "verify") {
+    const code = String(body.code ?? "").replace(/\D/g, "");
+    const { data: row } = await admin.from("whatsapp_codes").select("*").eq("user_id", user.id).maybeSingle();
+    if (!row) return json({ ok: false, error: "Primero pedí un código." }, 400);
+    if (new Date(row.expires_at).getTime() < Date.now()) return json({ ok: false, error: "El código venció. Pedí uno nuevo." }, 400);
+    if (Number(row.attempts) >= MAX_ATTEMPTS) return json({ ok: false, error: "Demasiados intentos. Pedí un código nuevo." }, 429);
+    const expected = String(row.code_hash);
+    if (!code || !same(await sha256(`${code}:${user.id}:${row.phone}`), expected)) {
+      await admin.from("whatsapp_codes").update({ attempts: Number(row.attempts) + 1 }).eq("user_id", user.id);
+      return json({ ok: false, error: "Código incorrecto." }, 400);
+    }
+    await admin.from("whatsapp_links").delete().eq("phone", row.phone).neq("user_id", user.id); // un número, una cuenta
+    const { error } = await admin.from("whatsapp_links").upsert({ user_id: user.id, phone: row.phone, enabled: true, verified_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (error) return json({ ok: false, error: "No se pudo vincular el número." }, 500);
+    await admin.from("whatsapp_codes").delete().eq("user_id", user.id);
+    return json({ ok: true, link: { phone: waMask(String(row.phone)), enabled: true } });
+  }
+
+  if (action === "toggle") {
+    const { error } = await admin.from("whatsapp_links").update({ enabled: body.enabled !== false }).eq("user_id", user.id);
+    return error ? json({ ok: false, error: "No se pudo guardar el cambio." }, 500) : json({ ok: true });
+  }
+
+  if (action === "unlink") {
+    await admin.from("whatsapp_links").delete().eq("user_id", user.id);
+    await admin.from("whatsapp_codes").delete().eq("user_id", user.id);
+    return json({ ok: true });
+  }
+
+  return json({ ok: false, error: "Acción desconocida." }, 400);
+}
+
+// ─── Webhook de Meta ────────────────────────────────────────────────────────
+
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+const STOP = new Set(["baja", "stop", "parar", "pausar", "cancelar", "unsubscribe"]);
+const START = new Set(["alta", "start", "activar", "reanudar", "subscribe"]);
+
+const REPLIES = {
+  es: {
+    stop: "Listo, no vas a recibir más avisos de VELTRIX por WhatsApp. Para volver a activarlos, escribí ALTA.",
+    start: "Listo, volvés a recibir los avisos de VELTRIX por WhatsApp. Para pausarlos, escribí BAJA.",
+  },
+  en: {
+    stop: "Done, you will no longer get VELTRIX alerts on WhatsApp. To turn them back on, write ALTA.",
+    start: "Done, you will get VELTRIX alerts on WhatsApp again. To pause them, write BAJA.",
+  },
+};
+
+async function handleMeta(req: Request, raw: string) {
+  const secret = Deno.env.get("WHATSAPP_APP_SECRET");
+  if (!secret) return new Response("not configured", { status: 503 });
+  const given = req.headers.get("x-hub-signature-256") ?? "";
+  if (!same(given, `sha256=${await hmac(secret, raw)}`)) return new Response("bad signature", { status: 403 });
+  const cfg = waConfig();
+  let body: any;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    return new Response("ok");
+  }
+  for (const entry of body?.entry ?? []) {
+    for (const change of entry?.changes ?? []) {
+      for (const msg of change?.value?.messages ?? []) {
+        const from = waDigits(msg?.from ?? "");
+        const word = norm(String(msg?.text?.body ?? ""));
+        const stop = STOP.has(word);
+        if (!from || msg?.type !== "text" || (!stop && !START.has(word))) continue;
+        const { data: link } = await admin.from("whatsapp_links").select("user_id").eq("phone", from).maybeSingle();
+        if (!link) continue;
+        await admin.from("whatsapp_links").update({ enabled: !stop }).eq("phone", from);
+        if (cfg) {
+          const lang = await langOfUser(String(link.user_id));
+          await waSendText(cfg, from, REPLIES[lang][stop ? "stop" : "start"]);
+        }
+      }
+    }
+  }
+  return new Response("ok");
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method === "GET") {
+    const q = new URL(req.url).searchParams;
+    const verify = Deno.env.get("WHATSAPP_VERIFY_TOKEN");
+    if (verify && q.get("hub.mode") === "subscribe" && q.get("hub.verify_token") === verify) return new Response(q.get("hub.challenge") ?? "", { status: 200 });
+    return new Response("forbidden", { status: 403 });
+  }
+  if (req.method !== "POST") return json({ ok: false, error: "Método no permitido." }, 405);
+  const raw = await req.text();
+  if (req.headers.get("x-hub-signature-256")) return handleMeta(req, raw);
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(raw || "{}");
+  } catch {
+    return json({ ok: false, error: "Pedido inválido." }, 400);
+  }
+  return handleClient(req, body);
+});

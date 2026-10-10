@@ -116,7 +116,7 @@ export default function ShareCardModal({ visible, trades, onClose }: { visible: 
             </View>
 
             <Text allowFontScaling={false} style={st.cta}>{t("Llevá tu diario de trading con VELTRIX")}</Text>
-            <Text allowFontScaling={false} style={st.addr}>{code ? `veltrix-trading.vercel.app · ${t("Código")} ${code}` : "veltrix-trading.vercel.app"}</Text>
+            <Text allowFontScaling={false} style={st.addr}>{code ? `www.veltrix-trading.com.ar · ${t("Código")} ${code}` : "www.veltrix-trading.com.ar"}</Text>
             <View style={st.badge}>
               <Svg width={16} height={18} viewBox="0 0 42 48">
                 <Path d="M0 0 L23 24 L0 48 Z" fill="#00a0ff" />

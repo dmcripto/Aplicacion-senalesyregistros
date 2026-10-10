@@ -155,7 +155,7 @@ function draw(canvas: HTMLCanvasElement, s: ResultSummary, logo: HTMLImageElemen
   c.fillText(t("Llevá tu diario de trading con VELTRIX"), W / 2, 1146);
   c.fillStyle = "#2ec4f1";
   c.font = font(700, 28);
-  c.fillText(code ? `veltrix-trading.vercel.app  ·  ${t("Código")} ${code}` : "veltrix-trading.vercel.app", W / 2, 1190);
+  c.fillText(code ? `www.veltrix-trading.com.ar  ·  ${t("Código")} ${code}` : "www.veltrix-trading.com.ar", W / 2, 1190);
   playBadge(c, W / 2, 1208);
   c.textAlign = "center";
   c.fillStyle = "#5f7389";

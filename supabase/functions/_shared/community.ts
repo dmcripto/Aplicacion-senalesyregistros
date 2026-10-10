@@ -21,7 +21,7 @@ const DISCLAIMER = {
   en: "⚠️ For personal record-keeping: not financial advice.",
 };
 
-const SITE = "https://veltrix-trading.vercel.app";
+const SITE = "https://www.veltrix-trading.com.ar";
 const R_OF = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
 const PCT = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(2)}%`;
 

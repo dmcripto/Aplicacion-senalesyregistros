@@ -251,5 +251,5 @@ export async function chartImage(req: ChartRequest, lang: "es" | "en"): Promise<
   const png = await svgToPng(chartSvg(req, data.bars, data.source, lang, spots));
   if (!png) return null;
   const last = data.bars[data.bars.length - 1];
-  return { png, caption: `<b>${esc(req.symbol)}</b> · ${req.interval} · ${esc(fmtChartPrice(last.c))}\n<a href="https://veltrix-trading.vercel.app">VELTRIX</a>` };
+  return { png, caption: `<b>${esc(req.symbol)}</b> · ${req.interval} · ${esc(fmtChartPrice(last.c))}\n<a href="https://www.veltrix-trading.com.ar">VELTRIX</a>` };
 }
