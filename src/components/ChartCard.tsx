@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtUsdShort, locale, t } from "../lib";
 import type { ChartCandle, IndicatorKind, LiquidationMap, Trade } from "../lib";
-import { fetchAlerts, fetchLiquidationMap } from "../tradesApi";
+import { createAlert, fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
 import AlertsSection from "./AlertsSection";
 import ChartDrawings from "./ChartDrawings";
@@ -423,7 +423,30 @@ function ChartBody({ trades, userId, notify }: { trades: Trade[]; userId: string
 
       <div className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
         <div ref={boxRef} className="ml-10 h-[460px]" />
-        <ChartDrawings api={apiRef.current} ready={ready} candles={candles} tfSec={TF_SEC[prefs.tf]} symbol={symbolKey} />
+        <ChartDrawings
+          api={apiRef.current}
+          ready={ready}
+          candles={candles}
+          tfSec={TF_SEC[prefs.tf]}
+          symbol={symbolKey}
+          alertMaker={
+            alerts
+              ? {
+                  lastPrice: last?.close ?? null,
+                  tf: prefs.tf,
+                  create: async (d) => {
+                    try {
+                      await createAlert(userId, d);
+                      notify(t("Alerta creada: te aviso por la app y por Telegram."), "ok");
+                      reloadAlerts();
+                    } catch (e) {
+                      notify(e instanceof Error ? e.message : t("No se pudo crear la alerta."), "err");
+                    }
+                  },
+                }
+              : undefined
+          }
+        />
         {state !== "ok" && (
           <div className="absolute inset-0 grid place-items-center bg-ink/70 px-6 text-center text-[12.5px] text-dim">
             {state === "loading" ? t("Cargando velas…") : t("No se pudieron cargar las velas de este activo. Probá con otro (por ejemplo BTCUSDT).")}
