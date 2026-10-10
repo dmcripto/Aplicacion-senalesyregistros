@@ -1520,6 +1520,8 @@ import type { BotAction } from "./strategy";
 
 /** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
 export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide";
+/** El perfil que se recomienda a quien recién empieza. */
+export const STARTER_PROFILE: BotProfileId = "balanced";
 export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide"];
 export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number; tf: "1h" | "4h" }> = {
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "1h" },
@@ -1545,6 +1547,47 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
     default:
       return { name: tr("Equilibrado"), blurb: tr("El punto medio: ni muchas ni pocas señales.") };
   }
+}
+
+/** Ficha de cada perfil para mostrar al pasar el mouse (o tocar): cuántas operaciones hace, sus números y para quién sirve. */
+export interface BotProfileCard {
+  /** De 1 (pocas operaciones) a 5 (muchísimas). También es una pista del costo en comisiones. */
+  activity: 1 | 2 | 3 | 4 | 5;
+  activityLabel: string;
+  /** Los números del perfil, en frases cortas (salen de BOT_PROFILES, así nunca quedan desactualizados). */
+  facts: string[];
+  forWho: string;
+}
+
+export function botProfileCard(id: BotProfileId): BotProfileCard {
+  const p = BOT_PROFILES[id];
+  const n = (x: number) => String(x).replace(".", getLang() === "es" ? "," : ".");
+  const activity = ({ conservative: 1, slow: 1, slowwide: 1, balanced: 2, dynamic: 3, intense: 5 } as const)[id];
+  const activityLabel = [tr("Pocas operaciones"), tr("Algunas operaciones"), tr("Bastantes operaciones"), tr("Muchas operaciones"), tr("Muchísimas operaciones")][activity - 1];
+  const forWho =
+    id === "conservative"
+      ? tr("Si preferís pocas señales y más espacio antes de que salte el stop.")
+      : id === "dynamic"
+        ? tr("Si querés más movimiento con un objetivo más cercano: más operaciones, también más comisiones.")
+        : id === "intense"
+          ? tr("Para probar el bot con mucha actividad y ver qué se puede mejorar. Todavía sin resultados confirmados.")
+          : id === "slow"
+            ? tr("Si querés pocas operaciones y menos comisiones. Con el costo real ya no salió positivo en el laboratorio.")
+            : id === "slowwide"
+              ? tr("Si aceptás acertar menos veces a cambio de ganar el triple de lo que arriesgás. Pocas operaciones: todavía sin confirmar en vivo.")
+              : tr("Para empezar: el punto medio y el perfil de referencia.");
+  return {
+    activity,
+    activityLabel,
+    forWho,
+    facts: [
+      tr("Velas de {tf}", { tf: p.tf === "4h" ? tr("4 horas") : tr("1 hora") }),
+      tr("Canal de {n} velas", { n: p.lookback }),
+      tr("Tendencia EMA {a}/{b}", { a: p.emaFast, b: p.emaSlow }),
+      tr("Stop {x} ATR", { x: n(p.atrMult) }),
+      tr("Objetivo {r}R", { r: n(p.rr) }),
+    ],
+  };
 }
 
 /** Cómo decide el bot con ese perfil, en frases (los números salen del perfil, así nunca quedan desactualizados). */
