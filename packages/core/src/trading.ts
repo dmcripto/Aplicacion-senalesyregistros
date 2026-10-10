@@ -1519,12 +1519,13 @@ import type { BotAction } from "./strategy";
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
 /** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "slow" | "slowwide";
-export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "slow", "slowwide"];
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide";
+export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide"];
 export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number; tf: "1h" | "4h" }> = {
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "1h" },
   balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "1h" },
   dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 1.2, rr: 1.5, tf: "1h" },
+  intense: { lookback: 6, emaFast: 20, emaSlow: 50, atrMult: 1, rr: 1.5, tf: "1h" },
   slow: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "4h" },
   slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrMult: 2.5, rr: 3, tf: "4h" },
 };
@@ -1535,6 +1536,8 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
       return { name: tr("Conservador"), blurb: tr("Menos señales: espera rupturas más grandes y deja más espacio al stop.") };
     case "dynamic":
       return { name: tr("Dinámico"), blurb: tr("Más señales: reacciona antes y busca un objetivo más cercano.") };
+    case "intense":
+      return { name: tr("Intensivo"), blurb: tr("El que más operaciones hace: canal muy corto, tendencia rápida y stop ajustado. Más señales para probar el bot en vivo y mejorarlo, pero también más comisiones: sin resultados confirmados todavía.") };
     case "slow":
       return { name: tr("Lento (4 horas)"), blurb: tr("Velas de 4 horas: pocas operaciones y menos comisiones. Con el costo real de Bitunix ya no salió positiva en el laboratorio.") };
     case "slowwide":

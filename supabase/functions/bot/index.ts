@@ -38,7 +38,7 @@ const MAX_USERS = 2000; // personas con el bot encendido que se leen por corrida
 const BUDGET_MS = 100_000; // si la corrida se alarga, lo que falte se atiende en la siguiente (primero los que hace más que no se revisan)
 const MAX_WARMUP = Math.max(...BOT_PROFILE_IDS.map((id) => WARMUP(BOT_PROFILES[id])));
 const TICK_BARS = MAX_WARMUP + 80; // lo justo para calcular los indicadores de cualquier perfil y resolver operaciones recientes
-const PROFILE_LABEL: Record<BotProfileId, string> = { conservative: "perfil conservador", dynamic: "perfil dinámico", balanced: "perfil equilibrado", slow: "perfil lento, velas de 4 horas", slowwide: "perfil lento con objetivo amplio, velas de 4 horas" };
+const PROFILE_LABEL: Record<BotProfileId, string> = { conservative: "perfil conservador", dynamic: "perfil dinámico", intense: "perfil intensivo, más operaciones", balanced: "perfil equilibrado", slow: "perfil lento, velas de 4 horas", slowwide: "perfil lento con objetivo amplio, velas de 4 horas" };
 const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${PROFILE_LABEL[id]}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
 const TAG = "Bot simulado";
 
@@ -50,6 +50,7 @@ const PROFILE_NAME: Record<BotProfileId, { es: string; en: string }> = {
   conservative: { es: "conservador", en: "conservative" },
   balanced: { es: "equilibrado", en: "balanced" },
   dynamic: { es: "dinámico", en: "dynamic" },
+  intense: { es: "intensivo", en: "intensive" },
   slow: { es: "lento (4 horas)", en: "slow (4 hours)" },
   slowwide: { es: "lento · objetivo amplio", en: "slow · wide target" },
 };

@@ -37,14 +37,16 @@ export const ROUND_TRIP_COST_PCT = 0.14;
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: ROUND_TRIP_COST_PCT };
 
 /** Perfiles de estrategia que cada persona puede elegir (no se dejan los números libres: se sobreajustan con facilidad). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "slow" | "slowwide";
-export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "slow", "slowwide"];
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide";
+export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide"];
 export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   // menos señales: canal más largo y stop más holgado
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT },
   balanced: DEFAULT_PARAMS,
   // más señales: canal corto, tendencia más rápida y objetivo más cercano
   dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrLen: 14, atrMult: 1.2, rr: 1.5, feePct: ROUND_TRIP_COST_PCT },
+  // el que más operaciones hace: canal muy corto, tendencia rápida y stop ajustado (más señales, y también más comisiones)
+  intense: { lookback: 6, emaFast: 20, emaSlow: 50, atrLen: 14, atrMult: 1, rr: 1.5, feePct: ROUND_TRIP_COST_PCT },
   // los mismos números del equilibrado, con velas de 4 horas: menos operaciones y menos comisiones
   slow: { ...DEFAULT_PARAMS, tf: "4h" },
   // velas de 4 horas, stop más ancho (2,5 ATR) y objetivo de 3R: acierta menos veces, pero gana el triple de lo que arriesga

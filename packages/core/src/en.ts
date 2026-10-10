@@ -1410,5 +1410,7 @@ export const EN: Record<string, string> = {
   "Cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.": "Every time an open trade hits a target (TP1, TP2…; if the signal has no targets, when it moves 1R in your favor), we alert you (and your community) to take partial profits and secure the SL.",
   "Velas de 4 horas: pocas operaciones y menos comisiones. Con el costo real de Bitunix ya no salió positiva en el laboratorio.": "4-hour candles: few trades and fewer fees. With Bitunix's real cost it no longer came out positive in the lab.",
   "Lento · objetivo amplio": "Slow · wide target",
+  "Intensivo": "Intensive",
+  "El que más operaciones hace: canal muy corto, tendencia rápida y stop ajustado. Más señales para probar el bot en vivo y mejorarlo, pero también más comisiones: sin resultados confirmados todavía.": "The one that makes the most trades: very short channel, fast trend and a tight stop. More signals to test the bot live and improve it, but also more fees: no confirmed results yet.",
   "Velas de 4 horas, stop ancho y objetivo del triple de lo arriesgado. Acierta menos veces. Fue la única que pasó la vara del laboratorio con costos reales (pocas operaciones: todavía sin confirmar en vivo).": "4-hour candles, wide stop and a target of three times the amount risked. It wins less often. It was the only one that passed the lab's bar with real costs (few trades: not yet confirmed live).",
 };
