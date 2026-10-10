@@ -1,0 +1,360 @@
+//@version=6
+// ─────────────────────────────────────────────────────────────────────────────
+// DMC Smart OB · FVG · Estructura
+//
+// Réplica del indicador que se ve en el video https://youtu.be/QIMEy48CGS0:
+//
+//   · Order Blocks alcistas / bajistas con etiqueta:
+//       OB ALCISTA | FUERTE
+//       VOL 603.88M USDT | RVOL 1.07X
+//       Δ +39.7% | DISP. 100%
+//     Los OB que se solapan se fusionan en "ZONA OB ×N".
+//   · Fair Value Gaps con el porcentaje del hueco aún disponible (100%, 81%, 49%…).
+//   · Estructura: iCHoCH / iBOS (interna) y CHoCH / BOS (swing) con línea discontinua.
+//   · Premium / Equilibrio / Discount sobre el rango swing, con "Máximo Débil / Fuerte"
+//     y "Mínimo Fuerte / Débil".
+//   · Tres medias móviles configurables.
+//
+// Definiciones:
+//   VOL   = volumen de la vela del OB en moneda cotizada (volumen × precio típico).
+//   RVOL  = volumen de la vela del OB / media de volumen de 20 velas.
+//   Δ     = delta de volumen (compras − ventas) / total, desde la vela del OB hasta la
+//           ruptura de estructura. Aproximado por la posición del cierre en el rango.
+//   DISP. = porcentaje de la zona que el precio todavía no ha recorrido.
+//   Fuerza = puntuación con RVOL, Δ alineado con la dirección, zona fusionada y OB swing.
+// ─────────────────────────────────────────────────────────────────────────────
+indicator("DMC Smart OB · FVG · Estructura", "DMC OB/FVG", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ═══════════════════════════ INPUTS ═══════════════════════════
+gS = "1) Estructura"
+intLen   = input.int(5, "Longitud estructura interna (iCHoCH)", minval = 2, group = gS)
+swLen    = input.int(50, "Longitud estructura swing (CHoCH)", minval = 5, group = gS)
+showInt  = input.bool(true, "Mostrar iCHoCH", group = gS)
+showIBos = input.bool(false, "Mostrar también iBOS", group = gS)
+showSw   = input.bool(true, "Mostrar CHoCH / BOS swing", group = gS)
+colBull  = input.color(#26a69a, "Color alcista", group = gS)
+colBear  = input.color(#ef5350, "Color bajista", group = gS)
+
+gOB = "2) Order Blocks"
+showOB    = input.bool(true, "Mostrar Order Blocks", group = gOB)
+obFromSw  = input.bool(true, "Crear OB también en rupturas swing", group = gOB)
+obBody    = input.bool(false, "Usar cuerpo de la vela (sin mechas)", group = gOB)
+obMaxLook = input.int(60, "Máximo de velas hacia atrás", minval = 5, group = gOB)
+obMax     = input.int(20, "Máximo de OB activos", minval = 2, maxval = 60, group = gOB)
+obDelMit  = input.bool(true, "Eliminar OB al mitigar por cierre", group = gOB)
+lblOff    = input.int(3, "Desplazamiento de la etiqueta (velas)", minval = 0, group = gOB)
+colOBBull = input.color(color.new(#26a69a, 85), "Fondo OB alcista", group = gOB)
+colOBBear = input.color(color.new(#ef5350, 85), "Fondo OB bajista", group = gOB)
+
+gF = "3) Fuerza del OB"
+rvolMod    = input.float(1.0, "RVOL moderado ≥", minval = 0, step = 0.1, group = gF)
+rvolStrong = input.float(1.5, "RVOL fuerte ≥", minval = 0, step = 0.1, group = gF)
+deltaStr   = input.float(30, "Δ fuerte ≥ (%)", minval = 0, step = 5, group = gF)
+scoreMod   = input.int(2, "Puntos para MODERADO", minval = 1, group = gF)
+scoreStr   = input.int(4, "Puntos para FUERTE", minval = 1, group = gF)
+
+gFVG = "4) Fair Value Gaps"
+showFVG    = input.bool(true, "Mostrar FVG con % disponible", group = gFVG)
+fvgMinAtr  = input.float(0.0, "Tamaño mínimo (x ATR)", minval = 0, step = 0.1, group = gFVG)
+fvgMax     = input.int(20, "Máximo de FVG activos", minval = 2, maxval = 80, group = gFVG)
+fvgDelMit  = input.bool(true, "Eliminar FVG al llenarse (0%)", group = gFVG)
+colFVGBull = input.color(color.new(#1f3b73, 25), "Fondo FVG alcista", group = gFVG)
+colFVGBear = input.color(color.new(#5a1f3b, 25), "Fondo FVG bajista", group = gFVG)
+
+gPD = "5) Premium / Equilibrio / Discount"
+showPD = input.bool(true, "Mostrar zonas y Máximo / Mínimo fuerte-débil", group = gPD)
+
+gMA = "6) Medias móviles"
+showMA = input.bool(true, "Mostrar medias", group = gMA)
+maType = input.string("EMA", "Tipo", options = ["EMA", "SMA"], group = gMA)
+ma1Len = input.int(21, "Media 1 (cian)", minval = 1, group = gMA)
+ma2Len = input.int(55, "Media 2 (naranja)", minval = 1, group = gMA)
+ma3Len = input.int(200, "Media 3 (blanca)", minval = 1, group = gMA)
+
+// ═══════════════════════════ BASE ═══════════════════════════
+atr    = ta.atr(14)
+volSma = ta.sma(volume, 20)
+rng    = high - low
+upV    = rng > 0 ? volume * (close - low) / rng : volume / 2
+dnV    = volume - upV
+qVol   = volume * hlc3
+cur    = syminfo.currency
+
+ma(src, len) =>
+    maType == "EMA" ? ta.ema(src, len) : ta.sma(src, len)
+
+ma1 = ma(close, ma1Len)
+ma2 = ma(close, ma2Len)
+ma3 = ma(close, ma3Len)
+plot(showMA ? ma1 : na, "Media 1", color = #00bcd4, linewidth = 2)
+plot(showMA ? ma2 : na, "Media 2", color = color.orange, linewidth = 2)
+plot(showMA ? ma3 : na, "Media 3", color = color.new(color.white, 20), linewidth = 2)
+
+// ═══════════════════════════ TIPOS ═══════════════════════════
+type OB
+    box   bx
+    label lb
+    float top
+    float bot
+    int   dir
+    int   count
+    float vol
+    float rvol
+    float delta
+    float reach
+    int   created
+    bool  swing
+
+type FVG
+    box   bx
+    float top
+    float bot
+    int   dir
+    float reach
+    int   created
+
+var obs  = array.new<OB>()
+var fvgs = array.new<FVG>()
+
+// ═══════════════════════════ ESTRUCTURA ═══════════════════════════
+structure(int len) =>
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    var float top    = na
+    var int   topBar = na
+    var bool  topX   = true
+    var float btm    = na
+    var int   btmBar = na
+    var bool  btmX   = true
+    var int   trend  = 0
+    if not na(ph)
+        top    := ph
+        topBar := bar_index - len
+        topX   := false
+    if not na(pl)
+        btm    := pl
+        btmBar := bar_index - len
+        btmX   := false
+    bool upBreak = false
+    bool dnBreak = false
+    bool choch   = false
+    if not topX and not na(top) and close > top
+        topX    := true
+        upBreak := true
+        choch   := trend == -1
+        trend   := 1
+    if not btmX and not na(btm) and close < btm
+        btmX    := true
+        dnBreak := true
+        choch   := trend == 1
+        trend   := -1
+    [upBreak, dnBreak, choch, top, topBar, btm, btmBar, trend]
+
+[iUp, iDn, iChoch, iTop, iTopBar, iBtm, iBtmBar, iTrend] = structure(intLen)
+[sUp, sDn, sChoch, sTop, sTopBar, sBtm, sBtmBar, sTrend] = structure(swLen)
+
+drawBreak(int x1, float y, bool bull, string txt) =>
+    color c = bull ? colBull : colBear
+    line.new(x1, y, bar_index, y, color = c, style = line.style_dashed, width = 1)
+    label.new(math.round((x1 + bar_index) / 2.0), y, txt, style = bull ? label.style_label_down : label.style_label_up, color = color.new(c, 100), textcolor = c, size = size.small)
+
+if showInt and iUp and (iChoch or showIBos)
+    drawBreak(iTopBar, iTop, true, iChoch ? "iCHoCH" : "iBOS")
+if showInt and iDn and (iChoch or showIBos)
+    drawBreak(iBtmBar, iBtm, false, iChoch ? "iCHoCH" : "iBOS")
+if showSw and sUp
+    drawBreak(sTopBar, sTop, true, sChoch ? "CHoCH" : "BOS")
+if showSw and sDn
+    drawBreak(sBtmBar, sBtm, false, sChoch ? "CHoCH" : "BOS")
+
+// ═══════════════════════════ ORDER BLOCKS ═══════════════════════════
+fmtPct(float x, bool sign) =>
+    (sign and x >= 0 ? "+" : "") + str.tostring(x, "0.0") + "%"
+
+obStrength(OB o) =>
+    bool aligned = o.dir == 1 ? o.delta > 0 : o.delta < 0
+    int score = (aligned ? (math.abs(o.delta) >= deltaStr ? 2 : 1) : 0) + (o.rvol >= rvolStrong ? 2 : o.rvol >= rvolMod ? 1 : 0) + (o.count > 1 ? 1 : 0) + (o.swing ? 1 : 0)
+    score >= scoreStr ? "FUERTE" : score >= scoreMod ? "MODERADO" : "DÉBIL"
+
+obDisp(OB o) =>
+    float h = o.top - o.bot
+    float d = h > 0 ? (o.dir == 1 ? (o.reach - o.bot) / h : (o.top - o.reach) / h) * 100 : 0.0
+    math.max(0.0, math.min(100.0, d))
+
+obText(OB o) =>
+    string s = obStrength(o)
+    string head = (o.count > 1 ? "ZONA OB " : "OB ") + (o.dir == 1 ? "ALCISTA" : "BAJISTA") + (o.count > 1 ? " ×" + str.tostring(o.count) : "") + " | " + s
+    head + "\nVOL " + str.tostring(o.vol, format.volume) + " " + cur + " | RVOL " + str.tostring(o.rvol, "0.00") + "X" + "\nΔ " + fmtPct(o.delta, true) + " | DISP. " + str.tostring(obDisp(o), "0") + "%"
+
+obColor(OB o) =>
+    string s = obStrength(o)
+    o.dir == 1 ? (s == "FUERTE" ? #1b8a3a : #1e4f9c) : (s == "FUERTE" ? #b71c1c : #c62828)
+
+obRefresh(OB o) =>
+    box.set_lefttop(o.bx, box.get_left(o.bx), o.top)
+    box.set_rightbottom(o.bx, bar_index, o.bot)
+    label.set_xy(o.lb, bar_index + lblOff, (o.top + o.bot) / 2)
+    label.set_text(o.lb, obText(o))
+    label.set_color(o.lb, obColor(o))
+
+// Mantenimiento de OB existentes
+if array.size(obs) > 0
+    for i = array.size(obs) - 1 to 0
+        OB o = array.get(obs, i)
+        bool mit = o.created < bar_index and (o.dir == 1 ? close < o.bot : close > o.top)
+        if mit and obDelMit
+            box.delete(o.bx)
+            label.delete(o.lb)
+            array.remove(obs, i)
+        else
+            if o.created < bar_index
+                o.reach := o.dir == 1 ? math.min(o.reach, low) : math.max(o.reach, high)
+            obRefresh(o)
+
+newOB(int dir, int lookback, bool swing) =>
+    int n = math.min(math.max(lookback, 1), obMaxLook)
+    int idx = -1
+    float ext = na
+    for i = 1 to n
+        if dir == 1
+            if na(ext) or low[i] < ext
+                ext := low[i]
+                idx := i
+        else
+            if na(ext) or high[i] > ext
+                ext := high[i]
+                idx := i
+    if idx > 0 and not na(ext)
+        float t = obBody ? math.max(open[idx], close[idx]) : high[idx]
+        float b = obBody ? math.min(open[idx], close[idx]) : low[idx]
+        float sumD = 0.0
+        float sumV = 0.0
+        for i = 0 to idx
+            sumD += upV[i] - dnV[i]
+            sumV += volume[i]
+        float dlt = sumV > 0 ? sumD / sumV * 100 : 0.0
+        float rv  = volSma[idx] > 0 ? volume[idx] / volSma[idx] : 0.0
+        float qv  = qVol[idx]
+        bool merged = false
+        if array.size(obs) > 0
+            for j = 0 to array.size(obs) - 1
+                OB o = array.get(obs, j)
+                if o.dir == dir and t >= o.bot and b <= o.top
+                    if t == o.top and b == o.bot
+                        o.swing := o.swing or swing
+                    else
+                        o.top   := math.max(o.top, t)
+                        o.bot   := math.min(o.bot, b)
+                        o.count := o.count + 1
+                        o.delta := (o.delta * o.vol + dlt * qv) / (o.vol + qv)
+                        o.vol   := o.vol + qv
+                        o.rvol  := math.max(o.rvol, rv)
+                        o.swing := o.swing or swing
+                    obRefresh(o)
+                    merged := true
+                    break
+        if not merged
+            color bg = dir == 1 ? colOBBull : colOBBear
+            box bx = box.new(bar_index - idx, t, bar_index, b, border_color = color.new(bg, 40), bgcolor = bg)
+            label lb = label.new(bar_index + lblOff, (t + b) / 2, "", style = label.style_label_left, textcolor = color.white, size = size.small, textalign = text.align_left)
+            OB o = OB.new(bx, lb, t, b, dir, 1, qv, rv, dlt, dir == 1 ? t : b, bar_index, swing)
+            obRefresh(o)
+            array.push(obs, o)
+            if array.size(obs) > obMax
+                OB old = array.shift(obs)
+                box.delete(old.bx)
+                label.delete(old.lb)
+
+if showOB and iUp
+    newOB(1, bar_index - nz(iBtmBar, bar_index - intLen * 2), false)
+if showOB and iDn
+    newOB(-1, bar_index - nz(iTopBar, bar_index - intLen * 2), false)
+if showOB and obFromSw and sUp
+    newOB(1, bar_index - nz(sBtmBar, bar_index - swLen), true)
+if showOB and obFromSw and sDn
+    newOB(-1, bar_index - nz(sTopBar, bar_index - swLen), true)
+
+// ═══════════════════════════ FAIR VALUE GAPS ═══════════════════════════
+fvgDisp(FVG f) =>
+    float h = f.top - f.bot
+    float d = h > 0 ? (f.dir == 1 ? (f.reach - f.bot) / h : (f.top - f.reach) / h) * 100 : 0.0
+    math.max(0.0, math.min(100.0, d))
+
+if array.size(fvgs) > 0
+    for i = array.size(fvgs) - 1 to 0
+        FVG f = array.get(fvgs, i)
+        if f.created < bar_index
+            f.reach := f.dir == 1 ? math.min(f.reach, low) : math.max(f.reach, high)
+        float d = fvgDisp(f)
+        if d <= 0 and fvgDelMit
+            box.delete(f.bx)
+            array.remove(fvgs, i)
+        else
+            box.set_right(f.bx, bar_index)
+            box.set_text(f.bx, str.tostring(d, "0") + "%")
+
+newFVG(int dir, float t, float b) =>
+    color bg = dir == 1 ? colFVGBull : colFVGBear
+    box bx = box.new(bar_index - 1, t, bar_index, b, border_color = color.new(bg, 30), bgcolor = bg, text = "100%", text_size = size.small, text_color = color.white, text_halign = text.align_center)
+    array.push(fvgs, FVG.new(bx, t, b, dir, dir == 1 ? t : b, bar_index))
+    if array.size(fvgs) > fvgMax
+        FVG old = array.shift(fvgs)
+        box.delete(old.bx)
+
+fvgBull = low > high[2] and (low - high[2]) >= atr * fvgMinAtr
+fvgBear = high < low[2] and (low[2] - high) >= atr * fvgMinAtr
+if showFVG and fvgBull
+    newFVG(1, low, high[2])
+if showFVG and fvgBear
+    newFVG(-1, low[2], high)
+
+// ═══════════════════ PREMIUM / EQUILIBRIO / DISCOUNT ═══════════════════
+var line  lnP = na
+var line  lnE = na
+var line  lnD = na
+var label lbP = na
+var label lbE = na
+var label lbD = na
+var label lbH = na
+var label lbL = na
+if showPD and barstate.islast and not na(sTop) and not na(sBtm)
+    line.delete(lnP)
+    line.delete(lnE)
+    line.delete(lnD)
+    label.delete(lbP)
+    label.delete(lbE)
+    label.delete(lbD)
+    label.delete(lbH)
+    label.delete(lbL)
+    int   x1 = math.min(sTopBar, sBtmBar)
+    int   x2 = bar_index + 10
+    float eq = (sTop + sBtm) / 2
+    lnP := line.new(x1, sTop, x2, sTop, color = color.new(colBear, 30), style = line.style_dotted)
+    lnE := line.new(x1, eq, x2, eq, color = color.new(color.gray, 30), style = line.style_dotted)
+    lnD := line.new(x1, sBtm, x2, sBtm, color = color.new(colBull, 30), style = line.style_dotted)
+    lbP := label.new(x2, sTop, "Premium", style = label.style_label_left, color = color.new(colBear, 100), textcolor = colBear, size = size.small)
+    lbE := label.new(x2, eq, "Equilibrio", style = label.style_label_left, color = color.new(color.gray, 100), textcolor = color.gray, size = size.small)
+    lbD := label.new(x2, sBtm, "Discount", style = label.style_label_left, color = color.new(colBull, 100), textcolor = colBull, size = size.small)
+    lbH := label.new(sTopBar, sTop, sTrend == 1 ? "Máximo Débil" : "Máximo Fuerte", style = label.style_label_down, color = color.new(colBear, 100), textcolor = colBear, size = size.tiny)
+    lbL := label.new(sBtmBar, sBtm, sTrend == 1 ? "Mínimo Fuerte" : "Mínimo Débil", style = label.style_label_up, color = color.new(colBull, 100), textcolor = colBull, size = size.tiny)
+
+// ═══════════════════════════ ALERTAS ═══════════════════════════
+bool inBullOB = false
+bool inBearOB = false
+if array.size(obs) > 0
+    for i = 0 to array.size(obs) - 1
+        OB o = array.get(obs, i)
+        if o.created < bar_index
+            if o.dir == 1 and low <= o.top and close >= o.bot
+                inBullOB := true
+            if o.dir == -1 and high >= o.bot and close <= o.top
+                inBearOB := true
+
+alertcondition(iUp and iChoch, "DMC: iCHoCH alcista", "Cambio de carácter interno alcista.")
+alertcondition(iDn and iChoch, "DMC: iCHoCH bajista", "Cambio de carácter interno bajista.")
+alertcondition(sUp and sChoch, "DMC: CHoCH alcista", "Cambio de carácter swing alcista.")
+alertcondition(sDn and sChoch, "DMC: CHoCH bajista", "Cambio de carácter swing bajista.")
+alertcondition(inBullOB and not inBullOB[1], "DMC: precio en OB alcista", "El precio entró en un Order Block alcista.")
+alertcondition(inBearOB and not inBearOB[1], "DMC: precio en OB bajista", "El precio entró en un Order Block bajista.")
+alertcondition(fvgBull, "DMC: FVG alcista", "Nuevo FVG alcista.")
+alertcondition(fvgBear, "DMC: FVG bajista", "Nuevo FVG bajista.")
