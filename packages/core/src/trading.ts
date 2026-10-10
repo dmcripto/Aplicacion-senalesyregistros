@@ -1621,8 +1621,9 @@ export interface LiveSettings {
 export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
-export const LIVE_EXCHANGES = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
-export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
+// MEXC no está: bloquea el envío de órdenes de futuros por API (se puede leer el saldo, pero rechaza la orden).
+export const LIVE_EXCHANGES = ["bitunix", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
+export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number] | "mexc";
 export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
 /** Los que piden además una contraseña de la API (passphrase). */
 export const liveNeedsPass = (id: string | null | undefined) => id === "okx" || id === "bitget" || id === "kucoin";
