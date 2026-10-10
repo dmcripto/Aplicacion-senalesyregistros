@@ -1635,13 +1635,18 @@ export interface BotSettings {
 /** Filtro de desbloqueos: apagado · cuidadoso (no compra antes de un desbloqueo grande) · agresivo (además busca ventas). */
 export type BotUnlockMode = "off" | "careful" | "aggressive";
 export const BOT_UNLOCK_MODES: BotUnlockMode[] = ["off", "careful", "aggressive"];
+/** Valores sugeridos al elegir cada modo (los mismos que usa el servidor; hay una prueba que lo comprueba). */
+export const UNLOCK_MODE_DEFAULTS: Record<Exclude<BotUnlockMode, "off">, { windowDays: number; minPct: number }> = {
+  careful: { windowDays: 7, minPct: 5 },
+  aggressive: { windowDays: 3, minPct: 30 },
+};
 export const UNLOCK_LIMITS = { windowDays: { min: 1, max: 30 }, minPct: { min: 0.1, max: 50 } } as const;
 export function botUnlockInfo(mode: BotUnlockMode): { name: string; blurb: string } {
   switch (mode) {
     case "careful":
       return { name: tr("Cuidadoso"), blurb: tr("No abre compras cuando falta poco para un desbloqueo grande del activo. Las ventas siguen igual.") };
     case "aggressive":
-      return { name: tr("Agresivo"), blurb: tr("Además de evitar las compras, busca ventas antes del desbloqueo: acepta la ruptura a la baja con una condición de tendencia más relajada y la pone primera. Siempre hace falta la ruptura técnica del perfil. Más riesgo: si el precio sube de golpe, la venta pierde.") };
+      return { name: tr("Agresivo"), blurb: tr("Además de evitar las compras, busca ventas antes del desbloqueo: acepta la ruptura a la baja con una condición de tendencia más relajada y la pone primera. Solo actúa con desbloqueos muy grandes (30 % de lo que circula, por defecto) y con pocos días de margen. Siempre hace falta la ruptura técnica del perfil. Más riesgo: si el precio sube de golpe, la venta pierde.") };
     default:
       return { name: tr("Apagado"), blurb: tr("El bot no mira los desbloqueos.") };
   }

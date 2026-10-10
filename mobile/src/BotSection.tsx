@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
 import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
@@ -172,7 +172,7 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
           <Text style={st.label}>{t("Filtro de desbloqueos")}</Text>
           <View style={st.wrap}>
             {BOT_UNLOCK_MODES.map((m) => (
-              <TouchableOpacity key={m} style={[st.chip, s.unlockMode === m && st.chipOn]} onPress={() => update({ unlockMode: m })}>
+              <TouchableOpacity key={m} style={[st.chip, s.unlockMode === m && st.chipOn]} onPress={() => update(m === "off" ? { unlockMode: m } : { unlockMode: m, unlockWindowDays: UNLOCK_MODE_DEFAULTS[m].windowDays, unlockMinPct: UNLOCK_MODE_DEFAULTS[m].minPct })}>
                 <Text style={[st.chipText, s.unlockMode === m && { color: colors.ink }]}>{botUnlockInfo(m).name}</Text>
               </TouchableOpacity>
             ))}
@@ -190,7 +190,7 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
               </View>
               <Text style={st.label}>{t("Tamaño mínimo (% de lo que circula)")}</Text>
               <View style={st.wrap}>
-                {[1, 2, 5, 10].map((n) => (
+                {[2, 5, 10, 30, 50].map((n) => (
                   <TouchableOpacity key={n} style={[st.chip, s.unlockMinPct === n && st.chipOn]} onPress={() => update({ unlockMinPct: n })}>
                     <Text style={[st.chipText, s.unlockMinPct === n && { color: colors.ink }]}>{n} %</Text>
                   </TouchableOpacity>

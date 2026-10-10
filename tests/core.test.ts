@@ -354,6 +354,8 @@ describe("filtro de desbloqueos: ajustes del bot", () => {
     const srv = await import("../supabase/functions/_shared/unlockFilter");
     expect(core.UNLOCK_LIMITS).toEqual(srv.UNLOCK_LIMITS);
     expect(core.BOT_UNLOCK_MODES).toEqual(srv.UNLOCK_MODES);
+    expect(core.UNLOCK_MODE_DEFAULTS).toEqual(srv.UNLOCK_MODE_DEFAULTS);
+    expect(core.UNLOCK_MODE_DEFAULTS).toEqual({ careful: { windowDays: 7, minPct: 5 }, aggressive: { windowDays: 3, minPct: 30 } });
     expect({ unlockMode: core.DEFAULT_BOT.unlockMode, unlockWindowDays: core.DEFAULT_BOT.unlockWindowDays, unlockMinPct: core.DEFAULT_BOT.unlockMinPct }).toEqual({ unlockMode: srv.DEFAULT_UNLOCK.mode, unlockWindowDays: srv.DEFAULT_UNLOCK.windowDays, unlockMinPct: srv.DEFAULT_UNLOCK.minPct });
   });
 });
