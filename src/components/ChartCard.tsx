@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, binanceSymbol, computeIndicator, cx, fmtPrice, fmtR, fmtUsdShort, locale, resultR, t, tradeMarks } from "../lib";
-import type { ChartCandle, IndicatorKind, LiquidationMap, NewTrade, Trade, TradeMark } from "../lib";
+import { DEFAULT_MAS, INDICATOR_DEFAULT_PERIOD, INDICATOR_KINDS, INDICATOR_NO_PERIOD, MA_COLORS, MA_WIDTHS, binanceSymbol, cleanMAs, computeIndicator, ema, sma, maLabel, cx, fmtPrice, fmtR, fmtUsdShort, locale, resultR, t, tradeMarks } from "../lib";
+import type { ChartCandle, IndicatorKind, LiquidationMap, MovingAverage, NewTrade, Trade, TradeMark } from "../lib";
 import { useMoney } from "../money";
 import { createAlert, fetchAlerts, fetchLiquidationMap } from "../tradesApi";
 import type { UserAlert } from "../lib";
@@ -26,6 +26,7 @@ interface Prefs {
   symbol: string;
   tf: Tf;
   slots: [Slot, Slot];
+  mas: MovingAverage[];
 }
 const DEFAULTS: Prefs = {
   symbol: "BTCUSDT",
@@ -34,6 +35,7 @@ const DEFAULTS: Prefs = {
     { kind: "ema", period: 50 },
     { kind: "rsi", period: 14 },
   ],
+  mas: DEFAULT_MAS,
 };
 
 const SIZE_KEY = "veltrix_chart_size_v1";
@@ -52,6 +54,7 @@ const loadPrefs = (): Prefs => {
       symbol: typeof v.symbol === "string" && binanceSymbol(v.symbol) ? v.symbol : DEFAULTS.symbol,
       tf: TFS.includes(v.tf) ? v.tf : DEFAULTS.tf,
       slots: [slot(v.slots?.[0], DEFAULTS.slots[0]), slot(v.slots?.[1], DEFAULTS.slots[1])],
+      mas: cleanMAs(v.mas),
     };
   } catch {
     return DEFAULTS;
@@ -158,6 +161,14 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
       return n;
     });
 
+  const setMA = (i: number, m: Partial<MovingAverage>) =>
+    setPrefs((p) => {
+      const mas = p.mas.map((x, k) => (k === i ? { ...x, ...m } : x));
+      const n = { ...p, mas };
+      savePrefs(n);
+      return n;
+    });
+
   // Velas: al cambiar de activo o de temporalidad, y cada 30 segundos.
   useEffect(() => {
     const ctl = new AbortController();
@@ -257,6 +268,15 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
               extra.push({ remove: () => chart.removeSeries(series) });
             });
           });
+          // Medias móviles propias (hasta 3): sobre las velas, con el color y grosor elegidos.
+          const closes = c.map((x) => x.close);
+          for (const m of p.mas) {
+            if (!m.on || m.period > c.length) continue;
+            const vals = m.type === "ema" ? ema(closes, m.period) : sma(closes, m.period);
+            const line = chart.addSeries(lc.LineSeries, { color: m.color, lineWidth: m.width, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, title: maLabel(m) }, 0);
+            line.setData(vals.flatMap((v, k) => (v == null ? [] : [{ time: c[k].time as any, value: v }])));
+            extra.push({ remove: () => chart.removeSeries(line) });
+          }
           // Altura: las velas ocupan lo principal; cada panel de abajo, una franja.
           const panes = chart.panes();
           panes.forEach((pn, i) => i > 0 && pn.setHeight(SUB_PANE));
@@ -493,6 +513,35 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
             </label>
           );
         })}
+      </div>
+
+      <div className={cx("rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-[11.5px] text-[#787b86]", tv && "hidden")}>
+        <div className="mb-1.5 font-semibold text-fog">{t("Medias móviles")}</div>
+        <div className="grid gap-2 lg:grid-cols-3">
+          {prefs.mas.map((m, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-1.5">
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={m.on} onChange={(e) => setMA(i, { on: e.target.checked })} className="accent-gold" aria-label={`${t("Media móvil")} ${i + 1}`} />
+              </label>
+              <select value={m.type} onChange={(e) => setMA(i, { type: e.target.value as MovingAverage["type"] })} className={cx(field, "w-[72px]")} aria-label={t("Tipo")}>
+                <option value="ema">EMA</option>
+                <option value="sma">SMA</option>
+              </select>
+              <input type="number" min={2} max={500} value={m.period} onChange={(e) => setMA(i, { period: Math.max(2, Math.min(500, Math.round(Number(e.target.value)) || 2)) })} className={cx(field, "num w-16")} aria-label={t("Período")} />
+              <input type="color" value={m.color} onChange={(e) => setMA(i, { color: e.target.value })} className="h-8 w-8 cursor-pointer rounded border border-[#363a45] bg-transparent p-0.5" aria-label={t("Color")} list={`ma-colors-${i}`} />
+              <datalist id={`ma-colors-${i}`}>
+                {MA_COLORS.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <select value={m.width} onChange={(e) => setMA(i, { width: Number(e.target.value) as MovingAverage["width"] })} className={cx(field, "w-[112px]")} aria-label={t("Grosor")}>
+                {MA_WIDTHS.map((w) => (
+                  <option key={w} value={w}>{`${t("Grosor")} ${w}`}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
       </div>
 
       {liqOn && !tv && (

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_MAS, cleanMAs, maLabel } from "../packages/core/src/movingAverages";
 import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, positionLevels, timeToLogical, candleTimeAt, tradeMarks } from "../packages/core/src/drawings";
 
 const times = [1000, 1060, 1120, 1180, 1240]; // velas de 60 s
@@ -144,5 +145,26 @@ describe("marcas de tus operaciones en el gráfico", () => {
     expect(m[1].bot).toBe(true);
     expect(m[2].r).toBe(2);
     expect(m[0].bot).toBe(false);
+  });
+});
+
+describe("medias móviles del gráfico", () => {
+  it("sin datos guardados arranca con EMA 50 y EMA 200 apagadas", () => {
+    const d = cleanMAs(undefined);
+    expect(d).toHaveLength(3);
+    expect(d.map(maLabel)).toEqual(["EMA 50", "EMA 200", "SMA 20"]);
+    expect(d.every((m) => !m.on)).toBe(true);
+    expect(d).not.toBe(DEFAULT_MAS);
+  });
+  it("respeta lo válido y corrige lo roto", () => {
+    const c = cleanMAs([
+      { on: true, type: "ema", period: 100.4, color: "#FFAA00", width: 3 },
+      { on: "si", type: "wma", period: 1, color: "rojo", width: 9 },
+      null,
+    ]);
+    expect(c[0]).toEqual({ on: true, type: "ema", period: 100, color: "#FFAA00", width: 3 });
+    expect(c[1]).toEqual({ on: false, type: "ema", period: 200, color: "#2962ff", width: 2 });
+    expect(c[2]).toEqual(DEFAULT_MAS[2]);
+    expect(cleanMAs([{ period: 99999 }])[0].period).toBe(500);
   });
 });
