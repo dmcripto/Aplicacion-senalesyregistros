@@ -2,6 +2,7 @@ import { Component } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { t } from "../lib";
 import { reportError } from "../errorReport";
+import { isStaleChunkError, reloadOnceForNewVersion } from "../staleChunk";
 
 /** Si algo falla al dibujar la pantalla, muestra un mensaje amable en vez de dejarla en blanco. */
 export default class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -12,6 +13,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    if (isStaleChunkError(error) && reloadOnceForNewVersion()) return; // versión vieja: se recarga sola
     void reportError(error, (info.componentStack ?? "").slice(0, 280));
   }
 
