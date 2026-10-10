@@ -256,6 +256,13 @@ describe("simulación del bot completo", () => {
   const data = { BTCUSDT: market(7), ETHUSDT: market(11) };
   const free = { symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 10, dailyLossR: 20, rules: [], timeZone: "UTC" };
 
+  it("el perfil Intensivo hace más operaciones que el Dinámico y el Equilibrado", () => {
+    const n = (id: keyof typeof BOT_PROFILES) => simulate(data, free, BOT_PROFILES[id]).trades.length;
+    expect(n("intense")).toBeGreaterThan(n("dynamic"));
+    expect(n("dynamic")).toBeGreaterThan(n("balanced"));
+    expect(n("intense")).toBeGreaterThan(n("conservative"));
+  });
+
   it("con un solo activo y sin límites da lo mismo que la prueba simple", () => {
     const one = simulate({ BTCUSDT: data.BTCUSDT }, { ...free, symbols: ["BTCUSDT"] });
     const plain = backtest(data.BTCUSDT);
@@ -304,11 +311,11 @@ describe("simulación del bot completo", () => {
 });
 
 describe("perfiles de estrategia", () => {
-  it("hay cinco perfiles distintos y el equilibrado es el de siempre", () => {
-    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "slow", "slowwide"]);
+  it("hay seis perfiles distintos y el equilibrado es el de siempre", () => {
+    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "intense", "slow", "slowwide"]);
     expect(BOT_PROFILES.balanced).toEqual(DEFAULT_PARAMS);
     const keys = BOT_PROFILE_IDS.map((id) => JSON.stringify(BOT_PROFILES[id]));
-    expect(new Set(keys).size).toBe(5);
+    expect(new Set(keys).size).toBe(6);
   });
 
   it("el perfil lento es el equilibrado con velas de 4 horas", () => {
