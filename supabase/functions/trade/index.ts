@@ -31,7 +31,9 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const MAX_ERRORS = 3; // errores seguidos: el bot real se apaga solo
-const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, max_open, daily_loss_usdt, errors, last_error";
+const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, max_open, daily_loss_usdt, errors, last_error";
+// Si todavía no se corrió el SQL del piso de apalancamiento, se lee sin esa columna (queda en 1x).
+const LIVE_COLUMNS_OLD = LIVE_COLUMNS.replace(" min_leverage,", "");
 
 interface Live {
   user_id: string;
@@ -42,13 +44,14 @@ interface Live {
   max_margin_usdt: number;
   risk_usdt: number;
   max_leverage: number;
+  min_leverage?: number | null;
   max_open: number;
   daily_loss_usdt: number;
   errors: number;
   last_error: string | null;
 }
 
-const cfgOf = (l: Live): BxCfg => ({ risk_usdt: Number(l.risk_usdt), max_margin_usdt: Number(l.max_margin_usdt), max_leverage: Number(l.max_leverage) });
+const cfgOf = (l: Live): BxCfg => ({ risk_usdt: Number(l.risk_usdt), max_margin_usdt: Number(l.max_margin_usdt), max_leverage: Number(l.max_leverage), min_leverage: Number(l.min_leverage ?? 1) });
 
 function same(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -95,7 +98,8 @@ async function isBeta(userId: string): Promise<boolean> {
 }
 
 async function loadLive(userId: string): Promise<Live | null> {
-  const { data } = await admin.from("bot_live").select(LIVE_COLUMNS).eq("user_id", userId).maybeSingle();
+  let { data, error } = await admin.from("bot_live").select(LIVE_COLUMNS).eq("user_id", userId).maybeSingle();
+  if (error) ({ data } = await admin.from("bot_live").select(LIVE_COLUMNS_OLD).eq("user_id", userId).maybeSingle());
   return (data as Live | null) ?? null;
 }
 

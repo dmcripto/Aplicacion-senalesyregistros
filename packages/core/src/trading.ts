@@ -1665,13 +1665,40 @@ export interface LiveSettings {
   maxMarginUsdt: number;
   riskUsdt: number;
   maxLeverage: number;
+  /** Piso de apalancamiento: el bot nunca usa menos (1 = sin piso). */
+  minLeverage: number;
   maxOpen: number;
   dailyLossUsdt: number;
   errors: number;
   lastError: string | null;
 }
 
-export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 20, maxOpen: 2, dailyLossUsdt: 2 } as const;
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 2, dailyLossUsdt: 2 } as const;
+
+/**
+ * Rangos de apalancamiento sugeridos para el bot real, uno por perfil: se tocan y rellenan el piso y el tope (después se pueden ajustar a mano).
+ * Conservador 1–20x · Equilibrado 1–40x · Dinámico 40–100x.
+ */
+export const LEVERAGE_PRESETS = [
+  { id: "conservative", min: 1, max: 20 },
+  { id: "balanced", min: 1, max: 40 },
+  { id: "dynamic", min: 40, max: 100 },
+] as const;
+export type LeveragePresetId = (typeof LEVERAGE_PRESETS)[number]["id"];
+export const leveragePresetName = (id: LeveragePresetId) => (id === "conservative" ? tr("Conservador") : id === "balanced" ? tr("Equilibrado") : tr("Dinámico"));
+
+/** Ajusta el par piso/tope a lo permitido: enteros de 1 a 100, y el piso nunca por encima del tope. */
+export function normalizeLeverage(min: number, max: number): { min: number; max: number } {
+  const hi = Math.round(clampLive(max, 1, LIVE_LIMITS.maxLeverage, DEFAULT_LIVE.maxLeverage));
+  const lo = Math.round(clampLive(min, 1, LIVE_LIMITS.maxLeverage, 1));
+  return { min: Math.min(lo, hi), max: hi };
+}
+
+/** El rango en una frase: «hasta 20x», «desde 40x hasta 100x» o «exactamente 25x». */
+export const leverageRangeText = (min: number, max: number) => (min >= max ? tr("exactamente {x}x", { x: max }) : min <= 1 ? tr("hasta {x}x", { x: max }) : tr("desde {a}x hasta {b}x", { a: min, b: max }));
+
+/** A partir de este apalancamiento una variación chica del precio liquida la posición: se avisa con un texto de cuidado. */
+export const HIGH_LEVERAGE = 40;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
 // MEXC no está: bloquea el envío de órdenes de futuros por API (se puede leer el saldo, pero rechaza la orden).
@@ -1707,7 +1734,7 @@ export function liveKeyGuide(id: string | null | undefined): string {
   }
 }
 
-export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
+export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
 
 export interface LiveOrder {
   id: string;

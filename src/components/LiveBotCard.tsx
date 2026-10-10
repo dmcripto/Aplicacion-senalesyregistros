@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_LIVE, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, t } from "../lib";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
 import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "../tradesApi";
@@ -154,7 +154,8 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
       {
         maxMarginUsdt: clampLive(limits.maxMarginUsdt, 1, LIVE_LIMITS.maxMarginUsdt, DEFAULT_LIVE.maxMarginUsdt),
         riskUsdt: clampLive(limits.riskUsdt, 0.01, LIVE_LIMITS.riskUsdt, DEFAULT_LIVE.riskUsdt),
-        maxLeverage: Math.round(clampLive(limits.maxLeverage, 1, LIVE_LIMITS.maxLeverage, DEFAULT_LIVE.maxLeverage)),
+        maxLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).max,
+        minLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).min,
         dailyLossUsdt: clampLive(limits.dailyLossUsdt, 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
       },
       t("Topes guardados."),
@@ -257,8 +258,25 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
               <div className="grid grid-cols-2 gap-3">
                 <NumField name={t("Margen máximo (USDT)")} value={limits.maxMarginUsdt} min={1} max={LIVE_LIMITS.maxMarginUsdt} step={0.5} onChange={(v) => setLimits({ ...limits, maxMarginUsdt: v })} />
                 <NumField name={t("Riesgo por operación (USDT)")} value={limits.riskUsdt} min={0.01} max={LIVE_LIMITS.riskUsdt} step={0.01} onChange={(v) => setLimits({ ...limits, riskUsdt: v })} />
+                <NumField name={t("Apalancamiento mínimo")} value={limits.minLeverage} min={1} max={LIVE_LIMITS.maxLeverage} step={1} onChange={(v) => setLimits({ ...limits, minLeverage: v })} />
                 <NumField name={t("Apalancamiento máximo")} value={limits.maxLeverage} min={1} max={LIVE_LIMITS.maxLeverage} step={1} onChange={(v) => setLimits({ ...limits, maxLeverage: v })} />
                 <NumField name={t("Pérdida máxima por día (USDT)")} value={limits.dailyLossUsdt} min={0.05} max={LIVE_LIMITS.dailyLossUsdt} step={0.05} onChange={(v) => setLimits({ ...limits, dailyLossUsdt: v })} />
+              </div>
+              <div className="space-y-2 rounded-md border border-line/70 p-2.5">
+                <p className={label}>{t("Rango de apalancamiento")}</p>
+                <p className="text-[11px] leading-relaxed text-dim">{t("Rangos sugeridos por perfil (tocá uno y se rellena; después lo podés ajustar a mano):")}</p>
+                <div className="flex flex-wrap gap-2">
+                  {LEVERAGE_PRESETS.map((p) => {
+                    const on = limits.minLeverage === p.min && limits.maxLeverage === p.max;
+                    return (
+                      <button key={p.id} type="button" onClick={() => setLimits({ ...limits, minLeverage: p.min, maxLeverage: p.max })} className={cx("rounded-md border px-2.5 py-1.5 text-[11.5px] font-bold", on ? "border-gold/60 bg-gold/15 text-gold" : "border-line text-snow hover:border-line2 hover:bg-white/5")}>
+                        {leveragePresetName(p.id)} · {leverageRangeText(p.min, p.max)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-relaxed text-dim">{t("El bot usa el menor apalancamiento que entre en tu margen, pero nunca menos que el mínimo ni más que el máximo.")}</p>
+                {Math.max(limits.minLeverage, limits.maxLeverage) >= HIGH_LEVERAGE && <p className="text-[11px] leading-relaxed text-amber-300">⚠️ {t("Con {x}x o más, una variación chica del precio liquida la posición. El bot solo opera si el stop queda bien antes de la liquidación (a 40x, a menos de 1,5 % del precio); si no, omite la operación. El riesgo por operación sigue siendo el tope que fijaste.", { x: HIGH_LEVERAGE })}</p>}
               </div>
               <p className="text-[11px] leading-relaxed text-dim">{t("Una sola posición abierta a la vez. Si hay 3 errores seguidos, el bot real se apaga solo.")}</p>
               <button onClick={saveLimits} disabled={busy != null} className="w-full rounded-md border border-line px-3 py-2 text-[12px] font-bold text-snow hover:border-line2 hover:bg-white/5 disabled:opacity-40">

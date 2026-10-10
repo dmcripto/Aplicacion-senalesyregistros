@@ -204,6 +204,21 @@ describe("función trade: órdenes del bot", () => {
     expect(orders("bot")[0].request).toMatchObject({ qty: "0.0001", slPrice: "84150", tpPrice: "86700" });
   });
 
+  it("con piso de 40x (perfil Dinámico) la orden usa al menos 40x", async () => {
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: true, max_leverage: 100, min_leverage: 40 });
+    const r = await exec();
+    expect(r.body.status).toBe("dry_run");
+    expect(orders("bot")[0].leverage).toBe(40);
+  });
+
+  it("si todavía no se corrió el SQL del piso de apalancamiento, sigue funcionando (sin piso)", async () => {
+    db.missingSelect = ["min_leverage"];
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: true });
+    const r = await exec();
+    expect(r.body.status).toBe("dry_run");
+    expect(orders("bot")[0].leverage).toBeLessThan(40);
+  });
+
   it("real: prepara margen y apalancamiento, envía la orden con stop y objetivo y la anota", async () => {
     db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true });
     const r = await exec();

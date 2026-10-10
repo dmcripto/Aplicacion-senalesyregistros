@@ -136,3 +136,39 @@ describe("pedidos firmados a Bitunix", () => {
     expect(await bxSetup(fetchFn, key, secret, "BTCUSDT", 5)).toEqual(["margen aislado: has position"]);
   });
 });
+
+
+describe("rango de apalancamiento (piso y tope)", () => {
+  const cfg = (min: number | undefined, max: number): BxCfg => ({ risk_usdt: 0.1, max_margin_usdt: 4, max_leverage: max, ...(min === undefined ? {} : { min_leverage: min }) });
+  const near = () => ({ symbol: "BTCUSDT", direction: "LONG" as const, entry: 85000, sl: 84700, tp: 85600 }); // stop a 0,35 %
+
+  it("sin piso usa el menor apalancamiento que entre en el margen (como siempre)", () => {
+    const p = planOrder(near(), 85000, BTC, cfg(undefined, 100));
+    expect(p.ok).toBe(true);
+    if (p.ok) expect(p.leverage).toBeLessThan(10);
+  });
+  it("con piso de 40x usa al menos 40x, y el margen baja", () => {
+    const base = planOrder(near(), 85000, BTC, cfg(1, 100));
+    const p = planOrder(near(), 85000, BTC, cfg(40, 100));
+    expect(p.ok && base.ok).toBe(true);
+    if (p.ok && base.ok) {
+      expect(p.leverage).toBe(40);
+      expect(p.margin).toBeLessThan(base.margin);
+      expect(p.risk).toBeCloseTo(base.risk, 8); // el riesgo no cambia
+    }
+  });
+  it("nunca pasa el tope, ni el máximo que acepta el exchange", () => {
+    const p = planOrder(near(), 85000, BTC, cfg(40, 60));
+    expect(p.ok && p.leverage <= 60).toBe(true);
+    const capped = planOrder(near(), 85000, { ...BTC, maxLeverage: 25 }, cfg(40, 100));
+    expect(capped.ok && capped.leverage).toBe(25); // el piso se achica al tope del exchange
+  });
+  it("a 100x el stop lejano se rechaza por quedar cerca de la liquidación", () => {
+    const far = { symbol: "BTCUSDT", direction: "LONG" as const, entry: 85000, sl: 83300, tp: 88400 }; // stop a 2 %
+    const big = (min: number, max: number): BxCfg => ({ risk_usdt: 1, max_margin_usdt: 10, max_leverage: max, min_leverage: min });
+    const p = planOrder(far, 85000, BTC, big(100, 100));
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.reason).toMatch(/liquidación/);
+    expect(planOrder(far, 85000, BTC, big(1, 20)).ok).toBe(true); // con el rango conservador sí entra
+  });
+});
