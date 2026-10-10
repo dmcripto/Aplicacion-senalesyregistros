@@ -1566,12 +1566,12 @@ export interface BotAssetGroup {
 const coins = (list: string[]) => list.map((c) => ({ sym: `${c}USDT`, name: c }));
 // Los textos se traducen al armar la lista (no al cargar el módulo), para que respeten el idioma elegido.
 const assetGroups = (): BotAssetGroup[] => [
-  { id: "main", label: tr("Cripto principales"), items: coins(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "TRX", "TON", "DOT", "LTC", "BCH", "NEAR", "SUI", "APT", "ARB", "OP", "INJ", "ATOM", "UNI", "AAVE", "ETC", "FIL", "HBAR"]) },
+  { id: "main", label: tr("Cripto principales"), items: coins(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "TRX", "DOT", "LTC", "BCH", "NEAR", "SUI", "APT", "ARB", "OP", "INJ", "ATOM", "UNI", "AAVE", "ETC", "FIL", "HBAR"]) },
   {
     id: "more",
     label: tr("Más cripto"),
     items: [
-      ...coins(["ENA", "WLD", "TAO", "ONDO", "JUP", "SEI", "TIA", "RENDER", "FET", "WIF", "PENDLE", "HYPE", "EIGEN", "STX", "RUNE", "MKR", "CRV", "LDO", "GALA", "SAND"]),
+      ...coins(["ENA", "WLD", "TAO", "ONDO", "JUP", "SEI", "TIA", "RENDER", "FET", "WIF", "PENDLE", "HYPE", "EIGEN", "STX", "RUNE", "CRV", "LDO", "GALA", "SAND"]),
       { sym: "1000PEPEUSDT", name: "PEPE" },
       { sym: "1000SHIBUSDT", name: "SHIB" },
       { sym: "1000BONKUSDT", name: "BONK" },
@@ -1586,8 +1586,8 @@ const assetGroups = (): BotAssetGroup[] => [
       { sym: "XAGUSDT", name: tr("Plata") },
       { sym: "CLUSDT", name: tr("Petróleo (WTI)") },
       { sym: "BZUSDT", name: tr("Petróleo (Brent)") },
-      { sym: "NGUSDT", name: tr("Gas natural") },
-      { sym: "HGUSDT", name: tr("Cobre") },
+      { sym: "NATGASUSDT", name: tr("Gas natural") },
+      { sym: "COPPERUSDT", name: tr("Cobre") },
       { sym: "XPTUSDT", name: tr("Platino") },
       { sym: "XPDUSDT", name: tr("Paladio") },
     ],
