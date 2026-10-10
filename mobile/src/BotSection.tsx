@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
-import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "@dmcripto/core";
+import { BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow } from "@dmcripto/core";
 import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
 import NewsPauseRow from "./NewsPauseRow";
@@ -23,6 +23,35 @@ function Line({ s }: { s: BotStatsRow }) {
 }
 
 /** Bot automático en modo simulado: interruptor, activos, límites y prueba con el historial. */
+/** Ficha del perfil elegido: qué hace, cuántas operaciones, sus números y para quién sirve. */
+function ProfileCard({ id }: { id: BotProfileId }) {
+  const info = botProfileInfo(id);
+  const card = botProfileCard(id);
+  return (
+    <View style={{ borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, gap: 8, backgroundColor: colors.ink }}>
+      <Text style={{ color: colors.snow, fontWeight: "800", fontSize: 13 }}>{info.name}</Text>
+      <Text style={st.dim}>{info.blurb}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", gap: 3 }}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <View key={n} style={{ height: 8, width: 16, borderRadius: 2, backgroundColor: n <= card.activity ? (card.activity >= 4 ? colors.bear : colors.gold) : colors.line }} />
+          ))}
+        </View>
+        <Text style={{ color: colors.snow, fontWeight: "800", fontSize: 11 }}>{card.activityLabel}</Text>
+      </View>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {card.facts.map((f) => (
+          <Text key={f} style={{ color: colors.fog, fontSize: 10.5, borderWidth: 1, borderColor: colors.line, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>{f}</Text>
+        ))}
+      </View>
+      <Text style={st.dim}>
+        <Text style={{ color: colors.fog, fontWeight: "800" }}>{t("Ideal para")}: </Text>
+        {card.forWho}
+      </Text>
+    </View>
+  );
+}
+
 export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleProp<TextStyle>; userId?: string }) {
   const { status, settings: s, store, profileSupported, notifySupported, scanSupported, unlockSupported } = useBot();
   const ready = status === "ready";
@@ -138,11 +167,12 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
           <View style={st.wrap}>
             {BOT_PROFILE_LIST.map((id) => (
               <TouchableOpacity key={id} style={[st.chip, s.profile === id && st.chipOn]} onPress={() => update({ profile: id })}>
-                <Text style={[st.chipText, s.profile === id && { color: colors.ink }]}>{botProfileInfo(id).name}</Text>
+                <Text style={[st.chipText, s.profile === id && { color: colors.ink }]}>{botProfileInfo(id).name}{id === STARTER_PROFILE ? " ★" : ""}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={st.dim}>{botProfileInfo(s.profile).blurb}</Text>
+          <Text style={[st.hint, { color: colors.snow }]}>💡 {t("¿Primera vez? Empezá con «Equilibrado» (el punto medio) y usá «Probar con los últimos 4 meses» para comparar cómo le habría ido a cada perfil. Tocá cada uno para ver qué hace.")}</Text>
+          <ProfileCard id={s.profile} />
         </>
       )}
 

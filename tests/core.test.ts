@@ -359,3 +359,21 @@ describe("filtro de desbloqueos: ajustes del bot", () => {
     expect({ unlockMode: core.DEFAULT_BOT.unlockMode, unlockWindowDays: core.DEFAULT_BOT.unlockWindowDays, unlockMinPct: core.DEFAULT_BOT.unlockMinPct }).toEqual({ unlockMode: srv.DEFAULT_UNLOCK.mode, unlockWindowDays: srv.DEFAULT_UNLOCK.windowDays, unlockMinPct: srv.DEFAULT_UNLOCK.minPct });
   });
 });
+
+describe("ficha de cada perfil del bot", () => {
+  it("sale de los números del perfil y ordena las operaciones de menos a más", async () => {
+    const { botProfileCard, BOT_PROFILE_LIST } = await import("../packages/core/src/trading");
+    const dyn = botProfileCard("dynamic");
+    expect(dyn.facts).toEqual(["Velas de 1 hora", "Canal de 10 velas", "Tendencia EMA 20/100", "Stop 1,2 ATR", "Objetivo 1,5R"]);
+    expect(botProfileCard("slowwide").facts[0]).toBe("Velas de 4 horas");
+    const act = (id: any) => botProfileCard(id).activity;
+    expect(act("intense")).toBeGreaterThan(act("dynamic"));
+    expect(act("dynamic")).toBeGreaterThan(act("balanced"));
+    expect(act("balanced")).toBeGreaterThan(act("conservative"));
+    for (const id of BOT_PROFILE_LIST) {
+      const c = botProfileCard(id);
+      expect(c.forWho.length).toBeGreaterThan(20);
+      expect(c.activityLabel).toMatch(/operaciones/);
+    }
+  });
+});

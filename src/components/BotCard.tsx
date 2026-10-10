@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { BOT_PROFILE_LIST, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
-import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
+import { BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
 import AssetPicker from "./AssetPicker";
@@ -29,10 +29,40 @@ function StatsLine({ s }: { s: BotStatsRow }) {
   );
 }
 
+/** Ficha del perfil sobre el que está el mouse (o del elegido): qué hace, cuántas operaciones, sus números y para quién sirve. Altura estable para que nada salte. */
+function ProfileCard({ id, chosen }: { id: BotProfileId; chosen: boolean }) {
+  const info = botProfileInfo(id);
+  const card = botProfileCard(id);
+  return (
+    <div className="mt-2 min-h-[11.5rem] space-y-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-relaxed" aria-live="polite">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[13px] font-bold text-snow">{info.name}</p>
+        <span className={cx("rounded-full border px-2 py-px text-[10px] font-bold", chosen ? "border-gold/60 text-gold" : "border-line text-dim")}>{chosen ? t("Perfil elegido") : t("Tocá para elegirlo")}</span>
+      </div>
+      <p className="text-fog">{info.blurb}</p>
+      <div className="flex items-center gap-2.5">
+        <span className="flex gap-0.5" aria-hidden>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <i key={n} className={cx("h-2 w-4 rounded-sm", n <= card.activity ? (card.activity >= 4 ? "bg-bear" : "bg-gold") : "bg-line")} />
+          ))}
+        </span>
+        <span className="text-[11px] font-bold text-snow">{card.activityLabel}</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {card.facts.map((f) => (
+          <span key={f} className="rounded border border-line px-1.5 py-0.5 text-[10.5px] text-fog">{f}</span>
+        ))}
+      </div>
+      <p className="text-[11px] text-dim"><b className="text-fog">{t("Ideal para")}:</b> {card.forWho}</p>
+    </div>
+  );
+}
+
 export default function BotCard({ userId, notify }: { userId: string; notify: Notify }) {
   const { status, settings: s, store, profileSupported, notifySupported, scanSupported, unlockSupported } = useBot();
   const ready = status === "ready";
   const [busy, setBusy] = useState(false);
+  const [peek, setPeek] = useState<BotProfileId | null>(null); // perfil sobre el que está el mouse (muestra su ficha sin elegirlo)
   const [test, setTest] = useState<BotBacktest | null>(null);
   const [labBusy, setLabBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -162,18 +192,24 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
         {profileSupported && (
           <div>
             <span className={label}>{t("Perfil de estrategia")}</span>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6" onMouseLeave={() => setPeek(null)}>
               {BOT_PROFILE_LIST.map((id) => (
                 <button
                   key={id}
                   onClick={() => update({ profile: id })}
-                  className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.profile === id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
+                  onMouseEnter={() => setPeek(id)}
+                  onFocus={() => setPeek(id)}
+                  onBlur={() => setPeek(null)}
+                  aria-pressed={s.profile === id}
+                  className={cx("rounded-md border px-2 py-2 text-[12px] font-bold transition-colors", s.profile === id ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow", peek === id && s.profile !== id && "border-line2 text-snow")}
                 >
                   {botProfileInfo(id).name}
+                  {id === STARTER_PROFILE && <span className={cx("mt-0.5 block text-[9px] font-bold uppercase tracking-wider", s.profile === id ? "text-ink/70" : "text-gold")}>★ {t("Recomendado para empezar")}</span>}
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-dim">{botProfileInfo(s.profile).blurb}</p>
+            <p className="mt-2 rounded-md border border-gold/30 bg-golddeep/20 px-3 py-2 text-[11.5px] leading-relaxed text-snow">💡 {t("¿Primera vez? Empezá con «Equilibrado» (el punto medio) y usá «Probar con los últimos 4 meses» para comparar cómo le habría ido a cada perfil. Pasá el mouse sobre cada uno para ver qué hace.")}</p>
+            <ProfileCard id={peek ?? s.profile} chosen={(peek ?? s.profile) === s.profile} />
           </div>
         )}
 
