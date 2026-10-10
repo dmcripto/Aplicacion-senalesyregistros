@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ALERT_TFS, MAX_ACTIVE_ALERTS, checkAlertDraft, fmtPrice, t } from "@dmcripto/core";
+import { ALERT_TFS, MAX_ACTIVE_ALERTS, checkAlertDraft, fmtPrice, levelLooksOff, parseAlertLevel, t } from "@dmcripto/core";
 import type { AlertKind, AlertSide, AlertTf, UserAlert } from "@dmcripto/core";
 import { createAlert, deleteAlert, setAlertActive } from "./tradesApi";
 import { colors } from "./theme";
@@ -39,7 +39,8 @@ export default function AlertsPanel({ userId, symbol, tf: chartTf, lastPrice, al
   const active = alerts.filter((a) => a.active).length;
 
   const num = (v: string) => Number(v.trim().replace(",", "."));
-  const draft = { symbol, kind, tf, dir, level: kind === "ema" ? null : num(level), period: kind === "price" ? null : num(period), once };
+  const lvl = (v: string) => (kind === "price" ? parseAlertLevel(v, lastPrice) : num(v));
+  const draft = { symbol, kind, tf, dir, level: kind === "ema" ? null : lvl(level), period: kind === "price" ? null : num(period), once };
   const check = checkAlertDraft(draft);
   const suggestion = kind === "price" ? (lastPrice ? String(Number(lastPrice.toPrecision(7))) : "") : kind === "rsi" ? "30" : "";
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function AlertsPanel({ userId, symbol, tf: chartTf, lastPrice, al
 
   const create = async () => {
     if (!check.ok) return Alert.alert(t("Error"), check.error === "level" ? (kind === "rsi" ? t("El nivel del RSI tiene que estar entre 1 y 99.") : t("Poné un precio mayor a 0.")) : t("Revisá el período."));
+    if (kind === "price" && draft.level != null && levelLooksOff(draft.level, lastPrice)) return Alert.alert(t("Error"), t("Ese precio está muy lejos del actual ({n}). Escribilo completo y sin puntos de miles, por ejemplo {e}.", { n: fmtPrice(lastPrice ?? 0), e: String(Math.round(lastPrice ?? 0)) }));
     setBusy(true);
     try {
       await createAlert(userId, draft);

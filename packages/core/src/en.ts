@@ -11,6 +11,7 @@ export const EN: Record<string, string> = {
   "Cierre vs EMA": "Close vs EMA",
   "El nivel del RSI tiene que estar entre 1 y 99.": "The RSI level must be between 1 and 99.",
   "Poné un precio mayor a 0.": "Enter a price greater than 0.",
+  "Ese precio está muy lejos del actual ({n}). Escribilo completo y sin puntos de miles, por ejemplo {e}.": "That price is far from the current one ({n}). Type it in full without thousands separators, for example {e}.",
   "Revisá el período.": "Check the period.",
   "Alerta creada: te aviso por la app y por Telegram.": "Alert created: I'll notify you in the app and on Telegram.",
   "No se pudo crear la alerta.": "Couldn't create the alert.",
