@@ -1557,7 +1557,60 @@ export function botHowItDecides(id: BotProfileId): string[] {
   ];
 }
 
-export const BOT_ASSETS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"] as const;
+/** Activos que se pueden elegir para el bot, por grupo. El bot los pide a Binance (y, si falla, a Bybit): si el exchange no lista alguno, lo omite. */
+export interface BotAssetGroup {
+  id: "main" | "more" | "commodities" | "stocks";
+  label: string;
+  items: Array<{ sym: string; name: string }>;
+}
+const coins = (list: string[]) => list.map((c) => ({ sym: `${c}USDT`, name: c }));
+// Los textos se traducen al armar la lista (no al cargar el módulo), para que respeten el idioma elegido.
+const assetGroups = (): BotAssetGroup[] => [
+  { id: "main", label: tr("Cripto principales"), items: coins(["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "TRX", "TON", "DOT", "LTC", "BCH", "NEAR", "SUI", "APT", "ARB", "OP", "INJ", "ATOM", "UNI", "AAVE", "ETC", "FIL", "HBAR"]) },
+  {
+    id: "more",
+    label: tr("Más cripto"),
+    items: [
+      ...coins(["ENA", "WLD", "TAO", "ONDO", "JUP", "SEI", "TIA", "RENDER", "FET", "WIF", "PENDLE", "HYPE", "EIGEN", "STX", "RUNE", "MKR", "CRV", "LDO", "GALA", "SAND"]),
+      { sym: "1000PEPEUSDT", name: "PEPE" },
+      { sym: "1000SHIBUSDT", name: "SHIB" },
+      { sym: "1000BONKUSDT", name: "BONK" },
+      { sym: "1000FLOKIUSDT", name: "FLOKI" },
+    ],
+  },
+  {
+    id: "commodities",
+    label: tr("Materias primas"),
+    items: [
+      { sym: "XAUUSDT", name: tr("Oro") },
+      { sym: "XAGUSDT", name: tr("Plata") },
+      { sym: "CLUSDT", name: tr("Petróleo (WTI)") },
+      { sym: "BZUSDT", name: tr("Petróleo (Brent)") },
+      { sym: "NGUSDT", name: tr("Gas natural") },
+      { sym: "HGUSDT", name: tr("Cobre") },
+      { sym: "XPTUSDT", name: tr("Platino") },
+      { sym: "XPDUSDT", name: tr("Paladio") },
+    ],
+  },
+  {
+    id: "stocks",
+    label: tr("Acciones y ETF"),
+    items: [
+      ...["MSTR", "COIN", "NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "PLTR", "HOOD", "CRCL"].map((c) => ({ sym: `${c}USDT`, name: c })),
+      { sym: "QQQUSDT", name: tr("QQQ (Nasdaq 100)") },
+      { sym: "SPYUSDT", name: tr("SPY (S&P 500)") },
+    ],
+  },
+];
+export const botAssetGroups = assetGroups;
+export const BOT_ASSETS: readonly string[] = assetGroups().flatMap((g) => g.items.map((i) => i.sym));
+/** Máximo de activos que puede elegir cada persona (cada uno es un pedido de velas por revisión). */
+export const BOT_MAX_SYMBOLS = 10;
+/** Nombre para mostrar: «Oro», «BTC»… (si no está en la lista, el símbolo sin «USDT»). */
+export const botAssetName = (sym: string): string => {
+  for (const g of assetGroups()) for (const i of g.items) if (i.sym === sym) return i.name;
+  return sym.replace(/USDT$/, "");
+};
 
 /** Ajustes del bot de cada persona. Hoy solo opera en modo simulado: anota operaciones en el diario, sin tocar ningún exchange. */
 export interface BotSettings {

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { BOT_ASSETS, BOT_PROFILE_LIST, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import { BOT_PROFILE_LIST, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotSettings, BotStatsRow } from "../lib";
 import { useBot } from "../botStore";
 import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
+import AssetPicker from "./AssetPicker";
 import Panel from "./Panel";
 import NewsPauseRow from "./NewsPauseRow";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 const label = "mb-1 block text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog";
-const short = (s: string) => s.replace("USDT", "");
+const short = (s: string) => botAssetName(s);
 
 function Tile({ name, value, tone }: { name: string; value: string; tone?: "bull" | "bear" }) {
   return (
@@ -60,7 +61,6 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
     }
   };
 
-  const toggleSymbol = (sym: string) => update({ symbols: s.symbols.includes(sym) ? s.symbols.filter((x) => x !== sym) : [...s.symbols, sym] });
 
   const mandarPrueba = async () => {
     setTesting(true);
@@ -179,17 +179,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
 
         <div>
           <span className={label}>{t("Activos")}</span>
-          <div className="flex flex-wrap gap-1.5">
-            {BOT_ASSETS.map((a) => (
-              <button
-                key={a}
-                onClick={() => toggleSymbol(a)}
-                className={cx("rounded-md border px-3 py-1.5 text-[12px] font-bold transition-colors", s.symbols.includes(a) ? "border-gold bg-gold text-ink" : "border-line text-fog hover:border-line2 hover:text-snow")}
-              >
-                {short(a)}
-              </button>
-            ))}
-          </div>
+          <AssetPicker selected={s.symbols} onChange={(symbols) => update({ symbols })} />
         </div>
 
         {scanSupported && (

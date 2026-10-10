@@ -490,7 +490,7 @@ describe("función bot · prueba con historial", () => {
   });
 
   it("valida los activos", async () => {
-    expect((await call({ action: "backtest", symbols: ["DOGEUSDT"] })).status).toBe(400);
+    expect((await call({ action: "backtest", symbols: ["doge-usd"] })).status).toBe(400);
     expect((await call({ action: "otra" })).status).toBe(400);
   });
 
@@ -529,7 +529,7 @@ describe("función bot · laboratorio de variantes", () => {
 
   it("pide sesión y valida los activos", async () => {
     expect((await call({ action: "lab" }, "malo")).status).toBe(401);
-    expect((await call({ action: "lab", symbols: ["DOGEUSDT"] })).status).toBe(400);
+    expect((await call({ action: "lab", symbols: ["doge-usd"] })).status).toBe(400);
   });
 
   it("devuelve las siete variantes (las de 15 minutos con 90 días) con el período completo y las mitades", async () => {

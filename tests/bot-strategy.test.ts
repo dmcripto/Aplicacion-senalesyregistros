@@ -176,7 +176,7 @@ describe("reglas elegidas por la persona", () => {
   it("se queda solo con reglas bien formadas", () => {
     const raw = [
       { op: "skip", dim: "symbol", key: "ETHUSDT" },
-      { op: "skip", dim: "symbol", key: "DOGEUSDT" }, // activo que el bot no opera
+      { op: "skip", dim: "symbol", key: "doge-usd" }, // no parece un futuro USDT
       { op: "only", dim: "weekday", key: "3" },
       { op: "only", dim: "weekday", key: "9" }, // día inexistente
       { op: "skip", dim: "hour", key: "7" },

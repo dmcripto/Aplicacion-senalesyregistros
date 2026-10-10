@@ -566,7 +566,7 @@ Deno.serve(async (req) => {
     return json(r.body, r.status);
   }
   if (body.action !== "backtest" && body.action !== "lab") return json({ ok: false, error: "Acción no válida" }, 400);
-  const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 5);
+  const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 10);
   if (!symbols.length) return json({ ok: false, error: "Elegí al menos un activo." }, 400);
   if (body.action === "lab") return json(await runLabTest(auth.user.id, symbols));
   const days = Math.min(120, Math.max(30, Number(body.days) || 120));
