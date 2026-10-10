@@ -883,7 +883,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {view === "chart" && (
           <>
             <PageHead view="chart" />
-            <ChartCard trades={trades} userId={userId} notify={notify} />
+            <ChartCard trades={trades} userId={userId} notify={notify} onAdd={addTrades} />
           </>
         )}
 

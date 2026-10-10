@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, timeToLogical } from "../packages/core/src/drawings";
+import { MAX_DRAWINGS, MAX_TEXT, cleanDrawings, fibPrices, logicalToTime, measure, positionLevels, timeToLogical } from "../packages/core/src/drawings";
 
 const times = [1000, 1060, 1120, 1180, 1240]; // velas de 60 s
 
@@ -89,5 +89,31 @@ describe("herramientas nuevas: línea vertical, rayo, regla y nota", () => {
     expect(m.pct).toBeCloseTo(2.5, 10);
     expect(m.seconds).toBe(3600);
     expect(measure({ t: 5, p: 100 }, { t: 1, p: 90 }).pct).toBeCloseTo(-10, 10);
+  });
+});
+
+describe("herramienta de posición (compra / venta)", () => {
+  it("compra: stop abajo y TP arriba según el R:R (por defecto 2)", () => {
+    const l = positionLevels({ kind: "long", a: { t: 1, p: 100 }, b: { t: 1, p: 98 } });
+    expect(l).toMatchObject({ direction: "LONG", entry: 100, sl: 98, tp: 104, rr: 2 });
+    expect(l.stopPct).toBeCloseTo(2, 10);
+    expect(l.tpPct).toBeCloseTo(4, 10);
+  });
+  it("venta: stop arriba y TP abajo", () => {
+    expect(positionLevels({ kind: "short", a: { t: 1, p: 100 }, b: { t: 1, p: 103 }, rr: 3 })).toMatchObject({ direction: "SHORT", sl: 103, tp: 91, rr: 3 });
+  });
+  it("si se toca el stop del lado equivocado, se refleja", () => {
+    expect(positionLevels({ kind: "long", a: { t: 1, p: 100 }, b: { t: 1, p: 105 } })).toMatchObject({ sl: 95, tp: 110 });
+    expect(positionLevels({ kind: "short", a: { t: 1, p: 100 }, b: { t: 1, p: 95 } })).toMatchObject({ sl: 105, tp: 90 });
+  });
+  it("se guarda con su R:R, y uno absurdo se descarta", () => {
+    const c = cleanDrawings([
+      { id: "a", kind: "long", a: { t: 1, p: 100 }, b: { t: 1, p: 98 }, rr: 3 },
+      { id: "b", kind: "short", a: { t: 1, p: 100 }, b: { t: 1, p: 102 }, rr: 99 },
+      { id: "c", kind: "long", a: { t: 1, p: 100 } }, // sin stop
+    ]);
+    expect(c.map((d) => d.id)).toEqual(["a", "b"]);
+    expect(c[0].rr).toBe(3);
+    expect(c[1].rr).toBeUndefined();
   });
 });
