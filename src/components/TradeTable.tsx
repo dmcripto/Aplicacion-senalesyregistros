@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, locale, resultR, rrOf, signalShareMessage, whatsappShareUrl } from "../lib";
+import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, locale, resultR, rrOf } from "../lib";
 import type { Trade } from "../lib";
 import {
   DirBadge,
@@ -120,16 +120,6 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
     const btn = cx(iconBtn, big && "h-9 px-3 text-[11px]");
     return (
       <div className={cx("flex gap-1.5", big ? "flex-wrap" : "justify-end")}>
-        <a
-          href={whatsappShareUrl(signalShareMessage(tr))}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={t("Enviar esta señal por WhatsApp")}
-          aria-label={t("Enviar esta señal por WhatsApp")}
-          className={cx(btn, "hover:border-bull/50 hover:bg-bull/10 hover:text-bull")}
-        >
-          WhatsApp
-        </a>
         <button
           onClick={() => onNotes(tr)}
           title={t("Notas y etiquetas")}

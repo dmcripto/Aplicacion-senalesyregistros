@@ -271,7 +271,7 @@ function tradeFromFields(fields: Record<string, unknown>, label: string): { valu
 }
 
 
-// ─── Texto libre (Telegram, WhatsApp, Discord…) ─────────────────────────────
+// ─── Texto libre (Telegram, Discord…) ─────────────────────────────
 
 const LONG_WORDS = ["LONG", "BUY", "COMPRA", "COMPRAR", "LARGO", "ALCISTA", "BULLISH"];
 const SHORT_WORDS = ["SHORT", "SELL", "VENTA", "VENDER", "CORTO", "BAJISTA", "BEARISH"];
@@ -1309,7 +1309,7 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
   }
 }
 
-// ─── Compartir una señal (WhatsApp, etc.) ───────────────────────────────────
+// ─── Compartir una señal ───────────────────────────────────
 
 // ─── Pantalla de bienvenida (login): qué es VELTRIX ─────────────────────────
 
@@ -1424,8 +1424,6 @@ export function signalShareMessage(t: Trade): string {
   ].join("\n");
 }
 
-/** Enlace que abre WhatsApp con el texto ya escrito, para elegir el contacto o grupo. */
-export const whatsappShareUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 
 // ─── Panel «Tu día» y avance hacia TP/SL ────────────────────────────────────
 
@@ -1910,15 +1908,6 @@ export function labVerdict(rows: BotLabRow[]): string {
  * Mientras esté en false, la tarjeta no se muestra en la web ni en la app. Para prenderlo, cambiar a true.
  */
 export const FEATURES = { coach: false } as const;
-
-// ─── Señales por WhatsApp (API oficial) ─────────────────────────────────────
-
-/** Estado de WhatsApp de la cuenta: `configured` es false mientras el servidor no tenga la conexión con Meta. */
-export interface WhatsAppState {
-  configured: boolean;
-  /** El número viene enmascarado (+54 ••••••• 0000). */
-  link: { phone: string; enabled: boolean } | null;
-}
 
 
 // ─── Enlaces con seguimiento (?ref=) ────────────────────────────────────────

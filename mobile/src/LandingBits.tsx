@@ -52,7 +52,7 @@ export function Highlights() {
 /** Cómo funciona, en tres pasos. */
 export function Steps() {
   const steps: Array<[IconName, Tone, string, string]> = [
-    ["link", "cyan", t("Conectá"), t("Copiá tu enlace personal en la alerta de TradingView, o pegá cualquier señal de Telegram, WhatsApp o Discord.")],
+    ["link", "cyan", t("Conectá"), t("Copiá tu enlace personal en la alerta de TradingView, o pegá cualquier señal de Telegram o Discord.")],
     ["bell", "green", t("Recibí"), t("Cada señal y cada target te llega a la app y a Telegram, con una tarjeta lista para compartir.")],
     ["trend", "violet", t("Mejorá"), t("Tu diario calcula R, acierto y racha solo, y el análisis te muestra qué corregir.")],
   ];

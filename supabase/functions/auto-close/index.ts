@@ -8,7 +8,6 @@ import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targ
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { partialCardImage, resultCardImage } from "../_shared/card.ts";
-import { notifyWhatsApp, waResultParams } from "../_shared/waCloud.ts";
 import { communityResultMessage, partialCardHtml, publishToCommunities, resultCardHtml, resultNote } from "../_shared/community.ts";
 import { sendDailySummaries } from "../_shared/dailySummary.ts";
 import { postEconomyNews, refreshEvents } from "../_shared/economy.ts";
@@ -17,7 +16,6 @@ import { postMarketAlerts, postMarketMorning, postWeeklyRanking } from "../_shar
 import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { pinReplace } from "../_shared/groupTools.ts";
-import { waResultText } from "../_shared/whatsapp.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -226,10 +224,9 @@ Deno.serve(async () => {
     const note = (lang: "es" | "en") => resultNote(hit.outcome, reached, totalTargets, lang);
     const test = isTestSignal(trade); // la señal de prueba se avisa como «(prueba)» también al cerrarse
     const closeLabel = (lang: "es" | "en") => (lang === "en" ? "Auto-close" : "Cierre automático") + (test ? (lang === "en" ? " (test)" : " (prueba)") : "");
-    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: closeLabel(lang), note: note(lang) }), (lang) => waResultText(trade.symbol, hit.outcome, r, lang));
+    await notifyTelegram(supabase, trade.user_id, (lang) => resultCardHtml(trade.symbol, hit.outcome, r, lang, { label: closeLabel(lang), note: note(lang) }));
     if (!keepsOutOfCommunity(trade)) {
       await publishToCommunities(supabase, botToken(), trade.user_id, (lang) => communityResultMessage(trade.symbol, hit.outcome, r, lang, note(lang)), (lang) => resultCardImage(trade.symbol, hit.outcome, r, lang, { note: note(lang) }));
-      await notifyWhatsApp(supabase, trade.user_id, (lang) => ({ kind: "result", params: waResultParams(trade.symbol, hit.outcome, r, lang) }));
     }
     const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
     if (tokens?.length) {

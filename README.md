@@ -10,7 +10,7 @@ Diario de trading con señales: web (React + Vite), app Android (Expo) y backend
 | `mobile/` | App Android/iOS con Expo (builds con EAS, workflow `eas-build.yml`) |
 | `packages/core/` | Lógica compartida por web y app: parser de señales, estadísticas, traducciones ES/EN |
 | `supabase/migrations/` | Tablas y permisos (correr en orden en el SQL Editor) |
-| `supabase/functions/` | Funciones del servidor: `tradingview-webhook` (alertas de TradingView), `telegram-bot`, `auto-close` (cierre automático, resumen diario, agenda económica y alertas propias, cada minuto), `exchanges`, `bot` (bot automático), `trade` (bot con dinero real, Bitunix), `whatsapp`, `liquidation-map`, `coach` |
+| `supabase/functions/` | Funciones del servidor: `tradingview-webhook` (alertas de TradingView), `telegram-bot`, `auto-close` (cierre automático, resumen diario, agenda económica y alertas propias, cada minuto), `exchanges`, `bot` (bot automático), `trade` (bot con dinero real, Bitunix), `liquidation-map`, `coach` |
 | `tests/` | Pruebas automáticas (`npm test`) |
 
 ## Direcciones de la web

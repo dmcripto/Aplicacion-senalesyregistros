@@ -7,7 +7,6 @@ import { sendExpoPush } from "./expoPush.ts";
 import type { PushMessage } from "./expoPush.ts";
 import { signalCardHtml } from "./community.ts";
 import { notifyTelegram } from "./telegram.ts";
-import { waSignalText } from "./whatsapp.ts";
 import { wantsSymbol } from "./communityTools.ts";
 
 export const FEED_SOURCE = "veltrix";
@@ -87,7 +86,7 @@ export async function fanOutSignal(
         for (let i = 0; i < ids.length; i += TELEGRAM_PARALLEL) {
           await Promise.all(
             ids.slice(i, i + TELEGRAM_PARALLEL).map((id) =>
-              notifyTelegram(supabase, id, (lang) => signalCardHtml(sig, lang, { header: "🔔" }), (lang) => waSignalText(sig, lang)),
+              notifyTelegram(supabase, id, (lang) => signalCardHtml(sig, lang, { header: "🔔" }),),
             ),
           );
         }

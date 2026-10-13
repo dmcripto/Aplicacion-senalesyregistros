@@ -41,9 +41,6 @@ verify_jwt = false
 [functions.bot]
 verify_jwt = false
 
-[functions.whatsapp]
-verify_jwt = false
-
 # Verificación en dos pasos (Google Authenticator): opcional, la activa cada persona.
 [auth.mfa.totp]
 enroll_enabled = true

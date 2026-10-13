@@ -34,7 +34,7 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
   bot: { view: "bot", panel: "bot", icon: "bot", tone: "green", title: "Bot automático", desc: "Opera en simulado y anota todo en tu diario." },
   botreal: { view: "bot", panel: "live", icon: "coin", tone: "amber", title: "Bot con dinero real", desc: "Prueba mínima en Bitunix, con topes de seguridad." },
   botfeed: { view: "bot", panel: "feed", icon: "radio", tone: "violet", title: "Señales de VELTRIX", desc: "Las que publica el equipo, en tu diario y por aviso." },
-  connections: { view: "connections", icon: "link", tone: "cyan", title: "Conexiones", desc: "Tu fuente de señales, Telegram, WhatsApp y exchanges." },
+  connections: { view: "connections", icon: "link", tone: "cyan", title: "Conexiones", desc: "Tu fuente de señales, Telegram y exchanges." },
   download: { view: "download", icon: "download", tone: "green", title: "Descargar la app", desc: "App para Android: señales, diario y bot en tu celular." },
   account: { view: "account", icon: "user", tone: "violet", title: "Cuenta", desc: "Capital, invitados y seguridad." },
 };

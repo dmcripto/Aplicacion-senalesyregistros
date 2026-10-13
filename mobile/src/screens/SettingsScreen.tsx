@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { balanceInfo, fmtCurrency, tradesToCsv } from "@dmcripto/core";
 import type { DailyLimits, DailyStatus, MoneySettings, Trade } from "@dmcripto/core";
 import { supabase } from "../supabaseClient";
-import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchPartialAlerts, setPartialAlerts, fetchWebhookUrl, fetchWhatsappButton, setWhatsappButton, regenerateWebhookUrl, sendTestSignal, setAutoClose, setDailySummary } from "../tradesApi";
+import { deleteAllTrades, deleteMyAccount, fetchAutoClose, fetchDailySummary, fetchPartialAlerts, setPartialAlerts, fetchWebhookUrl, regenerateWebhookUrl, sendTestSignal, setAutoClose, setDailySummary } from "../tradesApi";
 import AlertBuilder from "../AlertBuilder";
 import { CommunityCard } from "../components";
 import { sendTestPush, setupPush } from "../push";
@@ -19,7 +19,6 @@ import SignalFeedSection from "../SignalFeedSection";
 import MfaSection, { mfaErrorText, useMfa } from "../MfaSection";
 import InviteSection from "../InviteSection";
 import TelegramSection from "../TelegramSection";
-import WhatsAppSection from "../WhatsAppSection";
 import { useBot } from "../botStore";
 import { useMoney } from "../money";
 import { t } from "@dmcripto/core";
@@ -48,7 +47,6 @@ export default function SettingsScreen({
   const [copied, setCopied] = useState(false);
   const [autoClose, setAutoCloseState] = useState(true);
   const [dailySummary, setDailySummaryState] = useState(true);
-  const [waButton, setWaButtonState] = useState(false);
   const [partialAlerts, setPartialAlertsState] = useState(true);
   const [lossStr, setLossStr] = useState("");
   const [tradesStr, setTradesStr] = useState("");
@@ -149,7 +147,6 @@ export default function SettingsScreen({
   useEffect(() => {
     fetchAutoClose(userId).then(setAutoCloseState).catch(() => {});
     fetchDailySummary(userId).then(setDailySummaryState).catch(() => {});
-    fetchWhatsappButton(userId).then(setWaButtonState).catch(() => {});
     fetchPartialAlerts(userId).then(setPartialAlertsState).catch(() => {});
   }, [userId]);
 
@@ -165,14 +162,6 @@ export default function SettingsScreen({
     setPartialAlertsState(value);
     setPartialAlerts(userId, value).catch((e) => {
       setPartialAlertsState(!value);
-      Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
-    });
-  };
-
-  const toggleWaButton = (value: boolean) => {
-    setWaButtonState(value);
-    setWhatsappButton(userId, value).catch((e) => {
-      setWaButtonState(!value);
       Alert.alert(t("Error"), e instanceof Error ? e.message : t("No se pudo guardar el cambio."));
     });
   };
@@ -301,7 +290,6 @@ export default function SettingsScreen({
       <View {...mark("telegram")} />
       <Text style={styles.sectionTitle}>{t("BOT DE TELEGRAM")}</Text>
       <TelegramSection userId={userId} />
-      <WhatsAppSection />
 
       <View {...mark("exchange")} />
       <Text style={styles.sectionTitle}>{t("CONECTAR EXCHANGE")}</Text>
@@ -427,21 +415,6 @@ export default function SettingsScreen({
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>{t("BOTÓN DE WHATSAPP")}</Text>
-      <View style={styles.card}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Text style={[styles.hint, { flex: 1 }]}>
-            {t("Cada aviso del bot de Telegram trae un botón «Enviar a WhatsApp». Lo tocás y se abre WhatsApp con el mensaje armado para elegir a quién mandarlo.")}
-          </Text>
-          <Switch
-            value={waButton}
-            onValueChange={toggleWaButton}
-            trackColor={{ false: colors.line2, true: colors.gold }}
-            thumbColor={colors.snow}
-          />
-        </View>
-      </View>
-
       <Text style={styles.sectionTitle}>{t("DATOS")}</Text>
       <View style={styles.card}>
         <TouchableOpacity style={styles.signOut} onPress={exportCsv} disabled={!trades.length}>
@@ -454,7 +427,7 @@ export default function SettingsScreen({
 
       <Text style={styles.sectionTitle}>{t("CONECTÁ TU FUENTE DE SEÑALES")}</Text>
       <View style={styles.card}>
-        <Text style={styles.hint}>{t("Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram o WhatsApp, pegá el mensaje en Registrar → Pegar señal.")}</Text>
+        <Text style={styles.hint}>{t("Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram, pegá el mensaje en Registrar → Pegar señal.")}</Text>
         {error && <Text style={styles.error}>{error}</Text>}
         {url && (
           <>

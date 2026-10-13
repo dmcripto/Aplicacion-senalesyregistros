@@ -98,7 +98,7 @@ export default function SignalFeedCard({ userId, notify }: { userId: string; not
             </div>
             <label className="flex items-start gap-2 text-[11.5px] leading-snug text-fog">
               <input type="checkbox" checked={community} onChange={(e) => setCommunity(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#2ec4f1]" />
-              <span>{t("También publicarla en mi comunidad de Telegram y avisar por WhatsApp (si no, llega solo a quienes siguen las señales de VELTRIX).")}</span>
+              <span>{t("También publicarla en mi comunidad de Telegram (si no, llega solo a quienes siguen las señales de VELTRIX).")}</span>
             </label>
             {form.entry && form.tp && form.sl && !check.ok && <p className="text-[11.5px] text-bear">{check.error}</p>}
             {armed ? (

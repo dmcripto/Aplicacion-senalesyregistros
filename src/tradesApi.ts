@@ -5,7 +5,7 @@
 
 import { BOT_PROFILE_LIST, BOT_SCAN_LIST, BOT_UNLOCK_MODES, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, UNLOCK_LIMITS, clampLive, t } from "./lib";
 import { supabase } from "./supabaseClient";
-import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, BotUnlockMode, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, WhatsAppState, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
+import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, BotUnlockMode, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "./lib";
 
 interface TradeRow {
   id: string;
@@ -426,17 +426,6 @@ export async function setDailySummary(userId: string, enabled: boolean) {
   if (error) throw error;
 }
 
-export async function fetchWhatsappButton(userId: string): Promise<boolean> {
-  const { data, error } = await supabase.from("profiles").select("whatsapp_button").eq("id", userId).single();
-  if (error) throw error;
-  return data.whatsapp_button === true;
-}
-
-export async function setWhatsappButton(userId: string, enabled: boolean) {
-  const { error } = await supabase.from("profiles").update({ whatsapp_button: enabled }).eq("id", userId);
-  if (error) throw error;
-}
-
 export async function fetchPartialAlerts(userId: string): Promise<boolean> {
   const { data, error } = await supabase.from("profiles").select("partial_alerts").eq("id", userId).single();
   if (error) throw error;
@@ -481,20 +470,6 @@ export async function removeCommunity(id: string) {
   const { error } = await supabase.from("telegram_communities").delete().eq("id", id);
   if (error) throw error;
 }
-
-// ─── Señales por WhatsApp (API oficial: la persona vincula su número con un código) ─
-
-type WaReply = { ok: boolean; error?: string };
-
-/** Si el servidor todavía no tiene WhatsApp (o no responde), se devuelve «no configurado» y la pantalla no muestra nada. */
-export async function fetchWhatsApp(): Promise<WhatsAppState> {
-  const r = await callFunction<WaReply & Partial<WhatsAppState>>("whatsapp", { action: "status" });
-  return r.ok ? { configured: !!r.configured, link: r.link ?? null } : { configured: false, link: null };
-}
-export const startWhatsApp = (phone: string) => callFunction<WaReply & { minutes?: number }>("whatsapp", { action: "start", phone });
-export const verifyWhatsApp = (code: string) => callFunction<WaReply & { link?: { phone: string; enabled: boolean } }>("whatsapp", { action: "verify", code });
-export const toggleWhatsApp = (enabled: boolean) => callFunction<WaReply>("whatsapp", { action: "toggle", enabled });
-export const unlinkWhatsApp = () => callFunction<WaReply>("whatsapp", { action: "unlink" });
 
 // ─── Bot con dinero real (prueba mínima, solo Bitunix) ──────────────────────
 
@@ -590,7 +565,7 @@ export async function setFollowSignals(userId: string, follow: boolean) {
 
 /**
  * Publica una señal manual por el propio webhook de la cuenta emisora (la misma ruta que una alerta de TradingView):
- * se anota en su diario y se reparte a quienes activaron «Señales de VELTRIX». Por defecto NO va a su comunidad de Telegram ni a WhatsApp.
+ * se anota en su diario y se reparte a quienes activaron «Señales de VELTRIX». Por defecto NO va a su comunidad de Telegram.
  */
 export async function publishManualSignal(userId: string, text: string, opts: { community?: boolean } = {}): Promise<{ ok: boolean; duplicate?: boolean; error?: string }> {
   const url = await fetchWebhookUrl(userId);
