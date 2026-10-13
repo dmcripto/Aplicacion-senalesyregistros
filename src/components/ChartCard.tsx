@@ -619,7 +619,7 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
       </div>
 
       <div ref={wrapRef} className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
-        {tv && <TradingViewEmbed symbol={symbolKey} tf={prefs.tf} height={fs ? "100vh" : size === "large" ? "clamp(520px, 86vh, 960px)" : "clamp(420px, 72vh, 720px)"} />}
+        {tv && <TradingViewEmbed symbol={symbolKey} tf={prefs.tf} height={fs ? "full" : size === "large" ? { vh: 86, min: 520, max: 960 } : { vh: 72, min: 420, max: 720 }} />}
         <div ref={boxRef} className={cx("ml-10", tv && "hidden")} style={{ height: fs ? "100vh" : `calc(${size === "large" ? "clamp(460px, 82vh, 900px)" : "clamp(360px, 62vh, 640px)"} + ${subCount * SUB_PANE}px)` }} />
         <div className={tv ? "hidden" : undefined}>
         <ChartDrawings

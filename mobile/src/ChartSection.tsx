@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, PanResponder, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { LayoutChangeEvent } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Svg, { G, Line, Polyline, Rect, Text as SvgText } from "react-native-svg";
@@ -78,6 +78,8 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
   const [draft, setDraft] = useState(DEFAULTS.symbol);
   const [candles, setCandles] = useState<ChartCandle[] | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "error">("loading");
+  const [visible, setVisible] = useState(VISIBLE);
+  const [endOff, setEndOff] = useState(0);
   const [width, setWidth] = useState(340);
   const [alerts, setAlerts] = useState<UserAlert[] | null>(null);
   const [liq, setLiq] = useState<LiquidationMap | null>(null);
@@ -98,12 +100,14 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, []);
-  const change = (next: Partial<Prefs>) =>
+  const change = (next: Partial<Prefs>) => {
+    if (next.symbol || next.tf) setEndOff(0);
     setPrefs((p) => {
       const n = { ...p, ...next };
       void AsyncStorage.setItem(KEY, JSON.stringify(n)).catch(() => {});
       return n;
     });
+  };
   const setSlot = (i: 0 | 1, s: Partial<Slot>) =>
     setPrefs((p) => {
       const slots: [Slot, Slot] = [{ ...p.slots[0] }, { ...p.slots[1] }];
@@ -205,9 +209,56 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
   const onLayout = (e: LayoutChangeEvent) => setWidth(Math.max(240, Math.round(e.nativeEvent.layout.width)));
 
   // ─── Dibujo ───
-  const view = candles ? candles.slice(-VISIBLE) : [];
-  const off = candles ? candles.length - view.length : 0;
+  const total = candles?.length ?? 0;
+  const count = Math.min(Math.max(10, visible), Math.max(10, total));
+  const endIdx = Math.max(count, total - Math.max(0, Math.min(endOff, Math.max(0, total - count)))); // índice (exclusivo) de la última vela mostrada
+  const view = candles ? candles.slice(Math.max(0, endIdx - count), endIdx) : [];
+  const off = candles ? Math.max(0, endIdx - count) : 0;
   const plotW = width - AXIS_W;
+  // Gestos: arrastrar con un dedo mueve el gráfico; pellizcar con dos dedos acerca o aleja; doble toque vuelve al inicio.
+  const live = useRef({ visible, endOff, total, plotW, count });
+  live.current = { visible, endOff, total, plotW, count };
+  const g = useRef<{ x: number; end: number; dist: number; vis: number; tap: number }>({ x: 0, end: 0, dist: 0, vis: VISIBLE, tap: 0 });
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (e) => {
+          const c = live.current;
+          const ts = e.nativeEvent.touches;
+          g.current.x = e.nativeEvent.pageX;
+          g.current.end = c.endOff;
+          g.current.vis = c.count;
+          g.current.dist = ts.length > 1 ? Math.hypot(ts[0].pageX - ts[1].pageX, ts[0].pageY - ts[1].pageY) : 0;
+          const now = Date.now();
+          if (now - g.current.tap < 300) {
+            setVisible(VISIBLE);
+            setEndOff(0);
+          }
+          g.current.tap = now;
+        },
+        onPanResponderMove: (e) => {
+          const c = live.current;
+          const ts = e.nativeEvent.touches;
+          if (ts.length > 1) {
+            const d = Math.hypot(ts[0].pageX - ts[1].pageX, ts[0].pageY - ts[1].pageY);
+            if (!g.current.dist) {
+              g.current.dist = d;
+              g.current.vis = c.count;
+              return;
+            }
+            setVisible(Math.round(Math.min(Math.max(15, g.current.vis * (g.current.dist / d)), Math.max(15, c.total))));
+          } else {
+            const perCandle = c.plotW / Math.max(1, c.count);
+            const moved = Math.round((e.nativeEvent.pageX - g.current.x) / perCandle);
+            setEndOff(Math.max(0, Math.min(c.total - c.count, g.current.end + moved)));
+          }
+        },
+      }),
+    [],
+  );
   const step = view.length ? plotW / view.length : 1;
   const x = (i: number) => (i + 0.5) * step;
   const priceLines = results.flatMap((r) => (r && r.pane === "price" ? r.lines.filter((l) => l.kind === "line") : []));
@@ -311,9 +362,16 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
         {levels.length > 0 && <Text style={st.levels}>{t("Se muestran tus señales abiertas de este activo: entrada, TP y SL.")}</Text>}
       </View>
 
+      <View style={st.wrap}>
+        <Chip on={false} label="＋" onPress={() => setVisible((v) => Math.max(15, Math.round(v * 0.75)))} />
+        <Chip on={false} label="－" onPress={() => setVisible((v) => Math.min(Math.max(15, total), Math.round(v / 0.75)))} />
+        <Chip on={false} label={t("Última vela")} onPress={() => (setVisible(VISIBLE), setEndOff(0))} />
+        <Text style={st.dim}>{t("Arrastrá para mover el gráfico y pellizcá para acercar o alejar.")}</Text>
+      </View>
       <View style={st.chart} onLayout={onLayout}>
         {state === "ok" && view.length > 0 ? (
           <View>
+            <View {...pan.panHandlers}>
             <Svg width={width} height={PRICE_H}>
               <Rect x={0} y={0} width={width} height={PRICE_H} fill={BG} />
               {gridPrices.map((p) => (
@@ -364,6 +422,7 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
                 </>
               )}
             </Svg>
+            </View>
             {subs.map((r, si) => {
               const vals = r.lines.flatMap((l) => l.values.slice(off).filter((v): v is number => v != null));
               const isRsi = r.guides.length > 0 && r.guides.every((g) => g >= 0 && g <= 100);

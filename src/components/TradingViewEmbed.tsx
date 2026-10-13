@@ -1,11 +1,21 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { binanceSymbol, locale } from "../lib";
 
 const TV_INTERVAL: Record<string, string> = { "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D" };
 
 /** Gráfico oficial de TradingView (widget gratuito): todas sus herramientas e indicadores. Solo se carga cuando la persona lo elige. */
-export default function TradingViewEmbed({ symbol, tf, height }: { symbol: string; tf: string; height: number | string }) {
+export default function TradingViewEmbed({ symbol, tf, height }: { symbol: string; tf: string; height: { vh: number; min: number; max: number } | "full" }) {
   const box = useRef<HTMLDivElement>(null);
+  // Alto en píxeles reales: el widget mide su caja al cargar y con alturas CSS relativas (vh/clamp) quedaba chico.
+  const calc = () => (height === "full" ? window.innerHeight : Math.round(Math.min(height.max, Math.max(height.min, (window.innerHeight * height.vh) / 100))));
+  const [px, setPx] = useState(calc);
+  useEffect(() => {
+    const on = () => setPx(calc());
+    on();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [height === "full" ? "full" : `${height.vh}-${height.min}-${height.max}`]);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -15,6 +25,7 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
     const inner = document.createElement("div");
     inner.className = "tradingview-widget-container__widget";
     inner.style.height = "100%";
+    inner.style.minHeight = "300px";
     inner.style.width = "100%";
     el.appendChild(inner);
     const script = document.createElement("script");
@@ -41,5 +52,5 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
       el.innerHTML = "";
     };
   }, [symbol, tf]);
-  return <div ref={box} className="tradingview-widget-container w-full" style={{ height }} />;
+  return <div ref={box} className="tradingview-widget-container w-full" style={{ height: px, minHeight: 300 }} />;
 }
