@@ -1281,6 +1281,37 @@ export const fmtUsdShort = (n: number) =>
   n >= 1e9 ? `$${(n / 1e9).toFixed(2)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${Math.round(n)}`;
 
 /** Colores de cada apalancamiento (de menor a mayor). */
+/**
+ * Resumen del mapa para leerlo de un vistazo: cuánto dinero hay por encima y por debajo del precio, las zonas más fuertes de cada lado
+ * y cuál es la más grande de todas («imán»). No es una señal: son estimaciones de dónde hay liquidaciones pendientes.
+ */
+export interface LiquidationSummary {
+  aboveUsd: number; // cortos que se liquidarían si el precio sube
+  belowUsd: number; // largos que se liquidarían si el precio baja
+  abovePct: number; // parte de «arriba» sobre el total (0–100)
+  topAbove: LiquidationHotspot | null;
+  topBelow: LiquidationHotspot | null;
+  magnet: LiquidationHotspot | null;
+  /** Del lado que tiene más dinero: «above» (arriba), «below» (abajo) o «even» si están parejos (menos de 15 % de diferencia). */
+  heavier: "above" | "below" | "even";
+}
+
+export function liquidationSummary(map: LiquidationMap): LiquidationSummary {
+  let above = 0;
+  let below = 0;
+  for (const b of map.buckets) {
+    if (b.price > map.price) above += sumArr(b.shorts);
+    else if (b.price < map.price) below += sumArr(b.longs);
+  }
+  const total = above + below;
+  const best = (side: "long" | "short") => map.hotspots.filter((h) => h.side === side).sort((a, b) => b.usd - a.usd)[0] ?? null;
+  const topAbove = best("short");
+  const topBelow = best("long");
+  const magnet = [topAbove, topBelow].filter(Boolean).sort((a, b) => b!.usd - a!.usd)[0] ?? null;
+  const abovePct = total > 0 ? (above / total) * 100 : 50;
+  return { aboveUsd: above, belowUsd: below, abovePct, topAbove, topBelow, magnet, heavier: Math.abs(abovePct - 50) < 7.5 ? "even" : abovePct > 50 ? "above" : "below" };
+}
+
 export const LEVERAGE_COLORS = ["#3b82f6", "#06b6d4", "#22c55e", "#f59e0b", "#ef4444"];
 
 // ─── Coach con IA ───────────────────────────────────────────────────────────
