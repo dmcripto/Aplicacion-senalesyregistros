@@ -1549,15 +1549,16 @@ import type { BotAction } from "./strategy";
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
 /** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide";
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "max";
 /** El perfil que se recomienda a quien recién empieza. */
 export const STARTER_PROFILE: BotProfileId = "balanced";
-export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide"];
+export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "max"];
 export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number; tf: "1h" | "4h" }> = {
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "1h" },
   balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "1h" },
   dynamic: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 1.2, rr: 1.5, tf: "1h" },
   intense: { lookback: 6, emaFast: 20, emaSlow: 50, atrMult: 1, rr: 1.5, tf: "1h" },
+  max: { lookback: 4, emaFast: 9, emaSlow: 21, atrMult: 0.8, rr: 1.2, tf: "1h" },
   slow: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "4h" },
   slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrMult: 2.5, rr: 3, tf: "4h" },
 };
@@ -1570,6 +1571,8 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
       return { name: tr("Dinámico"), blurb: tr("Más señales: reacciona antes y busca un objetivo más cercano.") };
     case "intense":
       return { name: tr("Intensivo"), blurb: tr("El que más operaciones hace: canal muy corto, tendencia rápida y stop ajustado. Más señales para probar el bot en vivo y mejorarlo, pero también más comisiones: sin resultados confirmados todavía.") };
+    case "max":
+      return { name: tr("Máxima actividad"), blurb: tr("Todas las señales posibles, aunque sean chicas: canal de 4 velas, tendencia 9/21, stop ajustado y objetivo corto. Es la que más operaciones hace (y más comisiones): sin resultados confirmados todavía.") };
     case "slow":
       return { name: tr("Lento (4 horas)"), blurb: tr("Velas de 4 horas: pocas operaciones y menos comisiones. Con el costo real de Bitunix ya no salió positiva en el laboratorio.") };
     case "slowwide":
@@ -1592,13 +1595,15 @@ export interface BotProfileCard {
 export function botProfileCard(id: BotProfileId): BotProfileCard {
   const p = BOT_PROFILES[id];
   const n = (x: number) => String(x).replace(".", getLang() === "es" ? "," : ".");
-  const activity = ({ conservative: 1, slow: 1, slowwide: 1, balanced: 2, dynamic: 3, intense: 5 } as const)[id];
+  const activity = ({ conservative: 1, slow: 1, slowwide: 1, balanced: 2, dynamic: 3, intense: 5, max: 5 } as const)[id];
   const activityLabel = [tr("Pocas operaciones"), tr("Algunas operaciones"), tr("Bastantes operaciones"), tr("Muchas operaciones"), tr("Muchísimas operaciones")][activity - 1];
   const forWho =
     id === "conservative"
       ? tr("Si preferís pocas señales y más espacio antes de que salte el stop.")
       : id === "dynamic"
         ? tr("Si querés más movimiento con un objetivo más cercano: más operaciones, también más comisiones.")
+        : id === "max"
+          ? tr("Si querés ver señales seguido, aunque sean pequeñas. Más comisiones y sin resultados confirmados: usala con montos chicos.")
         : id === "intense"
           ? tr("Para probar el bot con mucha actividad y ver qué se puede mejorar. Todavía sin resultados confirmados.")
           : id === "slow"
