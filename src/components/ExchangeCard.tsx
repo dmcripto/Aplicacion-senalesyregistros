@@ -196,7 +196,10 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
       if (!r.ok) return notify(r.error ?? t("No se pudo sincronizar."), "err");
       const total = (r.results ?? []).reduce((a, x) => a + x.imported, 0);
       const failed = (r.results ?? []).find((x) => x.error);
+      const warn = (r.results ?? []).find((x) => x.warning);
       if (failed?.error) notify(failed.error, "err");
+      else if (warn?.warning) notify(warn.warning, "err");
+      else if ((r.results ?? []).some((x) => (x.open ?? 0) > 0)) notify(t("Sincronizado. Posiciones abiertas en el exchange: {n}. Las ves en el Diario como «abiertas».", { n: (r.results ?? []).reduce((a, x) => a + (x.open ?? 0), 0) }), "info");
       else notify(total ? t("Sincronizado: {n} operaciones nuevas.", { n: total }) : t("Todo al día: no hay operaciones nuevas."), "info");
       await reload();
     } finally {

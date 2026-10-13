@@ -49,7 +49,7 @@ async function unitOf(userId: string): Promise<number | null> {
 }
 
 /** Trae las operaciones cerradas del exchange y las guarda en el diario (sin duplicar). */
-async function syncOne(conn: Connection, master: string, unit: number) {
+async function syncOne(conn: Connection, master: string, unit: number): Promise<{ imported: number; warning?: string; open?: number }> {
   const { data: secret } = await admin.from("exchange_secrets").select("api_key, secret_enc, passphrase_enc").eq("connection_id", conn.id).maybeSingle();
   if (!secret) throw new ExchangeError("Falta la clave de esta conexión. Desconectala y volvé a conectarla.");
   const apiSecret = await decryptSecret(secret.secret_enc, master);
@@ -109,18 +109,25 @@ async function syncOne(conn: Connection, master: string, unit: number) {
     }
   }
   // Posiciones abiertas ahora (solo Bitunix): aparecen en el diario mientras siguen abiertas. Si falla, no afecta lo demás.
+  let warning: string | undefined;
+  let openCount: number | undefined;
   try {
     const open = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
+    openCount = open.length;
     const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...toOpenTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
     if (openRows.length) {
       let { error } = await admin.from("trades").upsert(openRows, { onConflict: "user_id,source,external_id", ignoreDuplicates: true });
       if (error && /leverage|size_usd/i.test(error.message)) ({ error } = await admin.from("trades").upsert(openRows.map(withoutManagement), { onConflict: "user_id,source,external_id", ignoreDuplicates: true }));
-      if (error) console.error("abiertas:", error.message);
+      if (error) {
+        console.error("abiertas:", error.message);
+        warning = `No se pudieron guardar las posiciones abiertas: ${error.message}`;
+      }
     }
   } catch (e) {
     console.error("abiertas:", e instanceof Error ? e.message : e);
+    warning = `No se pudieron leer las posiciones abiertas: ${e instanceof Error ? e.message : "error desconocido"}`;
   }
-  return imported;
+  return { imported, warning, open: openCount };
 }
 
 /** Anota el resultado del intento. Si la columna last_attempt_at todavía no existe, guarda igual lo demás. */
@@ -131,9 +138,9 @@ async function markConnection(id: string, fields: Record<string, unknown>) {
 
 async function runSync(conn: Connection, master: string, unit: number) {
   try {
-    const imported = await syncOne(conn, master, unit);
+    const { imported, warning, open } = await syncOne(conn, master, unit);
     await markConnection(conn.id, { status: "active", last_error: null, last_sync_at: new Date().toISOString(), last_import_count: imported });
-    return { exchange: conn.exchange, imported };
+    return { exchange: conn.exchange, imported, open, warning };
   } catch (e) {
     const message = e instanceof ExchangeError ? e.message : "No se pudo sincronizar. Probá de nuevo en unos minutos.";
     await markConnection(conn.id, { status: "error", last_error: message });

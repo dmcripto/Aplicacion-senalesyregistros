@@ -27,6 +27,7 @@ export const EN: Record<string, string> = {
   "Nivel del RSI": "RSI level",
   "Crear alerta": "Create alert",
   "Crear alerta de precio": "Create price alert",
+  "Sincronizado. Posiciones abiertas en el exchange: {n}. Las ves en el Diario como «abiertas».": "Synced. Open positions on the exchange: {n}. You'll see them in the Journal as \"open\".",
   "Arrastrá para mover el gráfico y pellizcá para acercar o alejar.": "Drag to move the chart and pinch to zoom.",
   "Máxima actividad": "Maximum activity",
   "Todas las señales posibles, aunque sean chicas: canal de 4 velas, tendencia 9/21, stop ajustado y objetivo corto. Es la que más operaciones hace (y más comisiones): sin resultados confirmados todavía.": "Every signal possible, even small ones: 4-candle channel, 9/21 trend, tight stop and short target. It trades the most (and pays the most fees): no confirmed results yet.",
