@@ -538,3 +538,22 @@ describe("apalancamiento y tamaño de las posiciones importadas", () => {
     expect(toTradeRow(bybit(undefined), "bybit", 10).leverage).toBeNull();
   });
 });
+
+import { parseBitunixOpen, toOpenTradeRow } from "../supabase/functions/_shared/exchanges";
+describe("posiciones abiertas de Bitunix", () => {
+  const raw = [{ positionId: "123", symbol: "BTCUSDT", side: "BUY", qty: "0.0007", avgOpenPrice: "83338.8", leverage: 69, ctime: "1760000000000" }];
+  it("lee la posición y usa el mismo id que tendrá al cerrarse", () => {
+    const [p] = parseBitunixOpen(raw);
+    expect(p).toMatchObject({ externalId: "BTCUSDT:123", direction: "LONG", qty: 0.0007, entry: 83338.8, leverage: 69 });
+  });
+  it("ignora datos incompletos", () => {
+    expect(parseBitunixOpen([{ positionId: "1", symbol: "BTCUSDT", side: "BUY", qty: "0", avgOpenPrice: "1" }, {}])).toEqual([]);
+  });
+  it("arma la fila abierta con stop 1R y objetivo 2R de referencia", () => {
+    const [p] = parseBitunixOpen(raw);
+    const r = toOpenTradeRow(p, "bitunix", 1);
+    expect(r.outcome).toBe("ABIERTA");
+    expect(r.sl).toBeCloseTo(83338.8 - 1 / 0.0007, 3);
+    expect(r.tp).toBeCloseTo(83338.8 + 2 / 0.0007, 3);
+  });
+});

@@ -4,6 +4,7 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { EXCHANGES } from "../_shared/exchanges.ts";
 import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, riskProgress, RISK_WARN_AT, targetLevels, isSimulated, isTestSignal, keepsOutOfCommunity } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
@@ -228,6 +229,11 @@ Deno.serve(async () => {
   for (const { trade, sym } of trades) {
     const candles = candlesByKey.get(sym.key);
     if (!candles) continue;
+    // Posición abierta importada de un exchange: el stop y el objetivo del diario son de referencia, así que no se cierra sola; solo se vigila el riesgo.
+    if (trade.source && (EXCHANGES as string[]).includes(trade.source)) {
+      if (!partialOff.has(trade.user_id)) await riskAlert(trade, candles);
+      continue;
+    }
     const hit = detectHit(trade, candles);
     if (!hit) {
       // Sigue abierta: ¿llegó a algún target? (solo si existen las columnas y la persona no apagó el aviso)
