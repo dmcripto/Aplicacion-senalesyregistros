@@ -3,7 +3,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, signalShareMessage, whatsappShareUrl , exchangeTradeUrl, signalGuide} from "@dmcripto/core";
+import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, exchangeTradeUrl, signalGuide} from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, fetchConnections, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -529,9 +529,6 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
               <Text style={s.btnText}>{t("Reabrir")}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={s.btn} onPress={() => openLink(whatsappShareUrl(signalShareMessage(trade)))} accessibilityLabel={t("Enviar esta señal por WhatsApp")}>
-            <Text style={[s.btnText, { color: colors.bull }]}>WhatsApp</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={s.btn} onPress={() => setEditingNotes(trade)}>
             <Text style={s.btnText}>{"✎ "}{t("Notas")}</Text>
           </TouchableOpacity>

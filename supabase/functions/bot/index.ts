@@ -285,7 +285,7 @@ async function livePrice(symbol: string): Promise<number | null> {
 
 /**
  * Crea una señal abierta de prueba (BTC, compra, con el precio de ahora) en la cuenta de la persona y le manda el aviso por la app
- * y por su Telegram. Sirve para ver cómo llega y cómo se ve una señal. NUNCA se publica en comunidades ni por WhatsApp.
+ * y por su Telegram. Sirve para ver cómo llega y cómo se ve una señal. NUNCA se publica en comunidades.
  */
 async function sendTestSignal(userId: string): Promise<{ status: number; body: Record<string, unknown> }> {
   const { data: prof, error } = await admin.from("profiles").select("bot_beta, lang").eq("id", userId).maybeSingle();

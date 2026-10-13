@@ -229,6 +229,15 @@ describe("MEXC", () => {
     return json({ success: true, code: 0, data: [{ ...rvn, updateTime: String(Date.now() - 36e5), createTime: String(Date.now() - 72e5) }, old] });
   }) as unknown as typeof fetch;
 
+  it("«Trading information read access is required»: explica qué permiso de lectura falta", async () => {
+    const noPerm = (async () => json({ success: false, code: 10001, message: "Trading information read access is required." })) as unknown as typeof fetch;
+    const check = await ex.checkKey("mexc", "KEY", "SECRET", noPerm);
+    expect(check.ok).toBe(false);
+    expect(check.error).toMatch(/falta un permiso de lectura/);
+    expect(check.error).toMatch(/Ver información de trading/);
+    expect(check.error).not.toMatch(/Trading information read access/);
+  });
+
   it("pide el historial, deja afuera lo anterior al período y pide el valor del contrato", async () => {
     const check = await ex.checkKey("mexc", "KEY", "SECRET", fake);
     expect(check.ok).toBe(true);

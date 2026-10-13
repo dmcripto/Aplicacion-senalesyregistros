@@ -205,7 +205,7 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
             )}
 
             <p className="text-[11px] leading-relaxed text-dim">
-              {t("Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio formato (")}<span className="num text-fog">VELTRIX|…</span>{t(", JSON). Revisá lo que entendió antes de confirmar.")}
+              {t("Funciona con mensajes de Telegram o Discord, alertas de cualquier plataforma o tu propio formato (")}<span className="num text-fog">VELTRIX|…</span>{t(", JSON). Revisá lo que entendió antes de confirmar.")}
             </p>
           </div>
         ) : (

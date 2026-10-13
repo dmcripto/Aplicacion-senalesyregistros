@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ClearableInput from "./ClearableInput";
 import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
@@ -251,16 +252,16 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
             <p className="text-[12.5px] leading-relaxed text-fog">{liveKeyGuide(shown)}</p>
             <label className="block">
               <span className={label}>{t("Clave (API key)")}</span>
-              <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" spellCheck={false} className={field} />
+              <ClearableInput value={apiKey} onValueChange={setApiKey} autoComplete="off" spellCheck={false} className={field} />
             </label>
             <label className="block">
               <span className={label}>{t("Clave secreta (secret)")}</span>
-              <input value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} type="password" autoComplete="off" spellCheck={false} className={field} />
+              <ClearableInput value={apiSecret} onValueChange={setApiSecret} type="password" autoComplete="off" spellCheck={false} className={field} />
             </label>
             {liveNeedsPass(shown) && (
               <label className="block">
                 <span className={label}>{t("Contraseña de la API (passphrase)")}</span>
-                <input value={apiPass} onChange={(e) => setApiPass(e.target.value)} type="password" autoComplete="off" spellCheck={false} className={field} />
+                <ClearableInput value={apiPass} onValueChange={setApiPass} type="password" autoComplete="off" spellCheck={false} className={field} />
               </label>
             )}
             <button onClick={connect} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())} className="w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/20 disabled:opacity-40">

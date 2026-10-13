@@ -190,7 +190,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
               </TouchableOpacity>
             )}
             <Text style={s.hint}>
-              {t("Funciona con mensajes de Telegram, WhatsApp o Discord, alertas de cualquier plataforma o tu propio formato. Revisá lo que entendió antes de confirmar.")}
+              {t("Funciona con mensajes de Telegram o Discord, alertas de cualquier plataforma o tu propio formato. Revisá lo que entendió antes de confirmar.")}
             </Text>
           </View>
         ) : (

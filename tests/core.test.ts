@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   analyze, balanceInfo, binanceSymbol, levelProgress, todayOverview, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
-  demoFrame, parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv, whatsappShareUrl,
+  demoFrame, parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv,
 } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
 
@@ -29,7 +29,7 @@ describe("intérprete de señales", () => {
     expect(one("symbol=ETHUSDT side=sell entry=3000 tp=2900 sl=3050")).toMatchObject({ symbol: "ETHUSDT", direction: "SHORT" });
   });
 
-  it("texto libre de Telegram/WhatsApp", () => {
+  it("texto libre de Telegram", () => {
     expect(one("#BTC/USDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500")).toMatchObject({ symbol: "BTCUSDT", direction: "LONG", tp: 66500, sl: 64500 });
     expect(one("XRP/USDT SHORT\nEntry zone: 0.5200-0.5250\nTP: 0.50\nSL: 0.53")).toMatchObject({ symbol: "XRPUSDT", entry: 0.5225 });
   });
@@ -192,13 +192,6 @@ describe("compartir una señal", () => {
     expect(m).toContain("New signal");
     expect(m).toContain("BTCUSDT BUY");
     expect(m).toContain("Entry 100");
-  });
-
-  it("el enlace de WhatsApp codifica el texto (saltos de línea, símbolos y emojis)", () => {
-    const url = whatsappShareUrl("a b\n& c ▲");
-    expect(url.startsWith("https://wa.me/?text=")).toBe(true);
-    expect(decodeURIComponent(url.split("?text=")[1])).toBe("a b\n& c ▲");
-    expect(url).not.toMatch(/\s/);
   });
 });
 

@@ -1,7 +1,6 @@
 // ─── VELTRIX · Telegram (API de bots) ───────────────────────────────────────
 // Funciones comunes para hablar con Telegram y avisar al usuario desde cualquier función del servidor.
 
-import { waKeyboard } from "./whatsapp.ts";
 
 export type Lang = "es" | "en";
 
@@ -54,8 +53,6 @@ export async function notifyTelegram(
   supabase: any,
   userId: string,
   build: (lang: Lang) => string,
-  /** Texto plano para el botón «Enviar a WhatsApp». Solo se agrega si la persona activó el interruptor. */
-  whatsappText?: (lang: Lang) => string,
 ): Promise<void> {
   try {
     const token = botToken();
@@ -64,13 +61,7 @@ export async function notifyTelegram(
     if (!link) return;
     const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
     const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
-    let extra: Record<string, unknown> = {};
-    if (whatsappText) {
-      // Columna opcional: si todavía no existe (falta correr el SQL), simplemente no hay botón.
-      const { data: wa } = await supabase.from("profiles").select("whatsapp_button").eq("id", userId).maybeSingle();
-      if ((wa as { whatsapp_button?: boolean } | null)?.whatsapp_button === true) extra = { reply_markup: waKeyboard(whatsappText(lang), lang) };
-    }
-    const r = await sendMessage(token, Number(link.chat_id), build(lang), extra);
+    const r = await sendMessage(token, Number(link.chat_id), build(lang));
     if (!r?.ok && r?.error_code === 403) await supabase.from("telegram_links").delete().eq("user_id", userId);
   } catch {
     /* sin aviso por Telegram */

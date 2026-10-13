@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ClearableInput from "./ClearableInput";
 import { EXCHANGE_LIST, cx, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, rValueMoney, t } from "../lib";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "../lib";
 import { mfaErrorText, useMfa } from "./Mfa";
@@ -294,16 +295,16 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
 
             <label className="block">
               <span className={label}>API Key</span>
-              <input value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} className="field num" />
+              <ClearableInput value={apiKey} onValueChange={setApiKey} autoComplete="off" autoCapitalize="off" spellCheck={false} className="field num" />
             </label>
             <label className="block">
               <span className={label}>{t("Clave secreta (Secret)")}</span>
-              <input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} autoComplete="new-password" spellCheck={false} className="field num" />
+              <ClearableInput type="password" value={apiSecret} onValueChange={setApiSecret} autoComplete="new-password" spellCheck={false} className="field num" />
             </label>
             {needsPassphrase(exchange) && (
               <label className="block">
                 <span className={label}>{t("Contraseña de la API (passphrase)")}</span>
-                <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoComplete="new-password" spellCheck={false} className="field num" />
+                <ClearableInput type="password" value={passphrase} onValueChange={setPassphrase} autoComplete="new-password" spellCheck={false} className="field num" />
               </label>
             )}
             <button

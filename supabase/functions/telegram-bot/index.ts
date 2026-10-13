@@ -62,16 +62,13 @@ const T = {
   es: {
     help:
       "<b>VELTRIX</b> 👋\n\nPegá acá una señal (o reenviá el mensaje de un canal) y la registro en tu diario.\n\n" +
-      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» o «liq» para ver medias o liquidaciones)\n/resumen — tus resultados en R\n/semana — tu semana · /racha — tus rachas\n/niveles BTC — precio, RSI y tendencia · /calc — tamaño de la posición\n/activos btc eth — solo señales de esos activos · /riesgo off — apagar el aviso de exposición\n/whatsapp on — botón para pasar cada aviso a WhatsApp\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
+      "/abiertas — tus señales abiertas\n/grafico BTCUSDT 4h — gráfico de velas (agregá «ema» o «liq» para ver medias o liquidaciones)\n/resumen — tus resultados en R\n/semana — tu semana · /racha — tus rachas\n/niveles BTC — precio, RSI y tendencia · /calc — tamaño de la posición\n/activos btc eth — solo señales de esos activos · /riesgo off — apagar el aviso de exposición\n/idioma en — cambiar a inglés\n/desvincular — desconectar este chat\n\n" +
       "Ejemplo:\n<code>BTCUSDT LONG\nEntrada: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "Este chat todavía no está conectado a una cuenta de VELTRIX.\n\nEntrá a la app o la web → «Conectar Telegram» y tocá el botón: te trae de vuelta acá ya vinculado.",
     badCode: "Ese código no es válido o venció. Volvé a la app o la web y tocá «Conectar Telegram» de nuevo.",
     linked: "✅ <b>Telegram conectado</b>. Ya podés pegar señales acá y te aviso cuando llegue una alerta o se toque un TP/SL.",
     unlinked: "Listo, desconecté este chat de tu cuenta. Podés volver a conectarlo cuando quieras desde la app.",
-    waOn: "📲 Listo: cada aviso trae un botón «Enviar a WhatsApp». Lo tocás y se abre WhatsApp con el mensaje armado para que elijas a quién mandarlo.",
-    waOff: "Listo, saqué el botón de WhatsApp de los avisos.",
-    waUsage: "Usá /whatsapp on o /whatsapp off.",
     langSet: "Idioma cambiado a español 🇪🇸",
     langUsage: "Usá /idioma es o /idioma en.",
     understood: (n: number) => (n === 1 ? "Entendí esta señal:" : `Entendí ${n} señales:`),
@@ -108,16 +105,13 @@ const T = {
   en: {
     help:
       "<b>VELTRIX</b> 👋\n\nPaste a signal here (or forward a channel message) and I'll log it in your journal.\n\n" +
-      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” or “liq” for averages or liquidations)\n/summary — your results in R\n/week — your week · /streak — your streaks\n/levels BTC — price, RSI and trend · /calc — position size\n/assets btc eth — only signals for those assets · /risk off — turn off the exposure warning\n/whatsapp on — button to pass each alert to WhatsApp\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
+      "/open — your open signals\n/chart BTCUSDT 4h — candlestick chart (add “ema” or “liq” for averages or liquidations)\n/summary — your results in R\n/week — your week · /streak — your streaks\n/levels BTC — price, RSI and trend · /calc — position size\n/assets btc eth — only signals for those assets · /risk off — turn off the exposure warning\n/language es — switch to Spanish\n/unlink — disconnect this chat\n\n" +
       "Example:\n<code>BTCUSDT LONG\nEntry: 65000\nTP: 66500\nSL: 64500</code>",
     notLinked:
       "This chat isn't connected to a VELTRIX account yet.\n\nOpen the app or the web → “Connect Telegram” and tap the button: it brings you back here already linked.",
     badCode: "That code isn't valid or has expired. Go back to the app or the web and tap “Connect Telegram” again.",
     linked: "✅ <b>Telegram connected</b>. You can now paste signals here, and I'll notify you when an alert arrives or a TP/SL is hit.",
     unlinked: "Done, I disconnected this chat from your account. You can reconnect anytime from the app.",
-    waOn: "📲 Done: every alert now has a «Send to WhatsApp» button. Tap it and WhatsApp opens with the message ready so you pick who gets it.",
-    waOff: "Done, I removed the WhatsApp button from alerts.",
-    waUsage: "Use /whatsapp on or /whatsapp off.",
     langSet: "Language changed to English 🇬🇧",
     langUsage: "Use /language en or /language es.",
     understood: (n: number) => (n === 1 ? "I understood this signal:" : `I understood ${n} signals:`),
@@ -818,13 +812,6 @@ async function handleMessage(msg: any) {
     case "/unlink":
       await admin.from("telegram_links").delete().eq("user_id", link.user_id);
       return say(chatId, T[lang].unlinked);
-    case "/whatsapp": {
-      const want = (rest[0] ?? "").toLowerCase();
-      const on = ["on", "si", "sí", "activar", "yes"].includes(want);
-      if (!on && !["off", "no", "desactivar"].includes(want)) return say(chatId, T[lang].waUsage);
-      await admin.from("profiles").update({ whatsapp_button: on }).eq("id", link.user_id);
-      return say(chatId, on ? T[lang].waOn : T[lang].waOff);
-    }
     case "/anunciar":
     case "/announce":
       return announce(chatId, link, lang, rest);

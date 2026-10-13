@@ -82,7 +82,6 @@ import { HomeApp, HomeHero, HomeStatus, RecentTrades } from "./components/HomeEx
 import { NavBar, useView } from "./nav";
 import type { View } from "./nav";
 const CoachCard = lazy(() => import("./components/CoachCard"));
-const WhatsAppCard = lazy(() => import("./components/WhatsAppCard"));
 import TodayCard from "./components/TodayCard";
 import EconomyCard from "./components/EconomyCard";
 import { RiskTips, SessionCard } from "./components/SideCards";
@@ -391,7 +390,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
           </summary>
           <ul className="space-y-2 border-t border-line px-3 py-3">
             <li><b className="text-snow">TradingView</b> {t("(plan con webhooks): pegá la URL en \"Webhook URL\" de la alerta.")}</li>
-            <li><b className="text-snow">{t("Telegram, WhatsApp o Discord:")}</b> {t("copiá el mensaje de la señal y pegalo en \"Registrar → Pegar señal\". Lo interpreta solo.")}</li>
+            <li><b className="text-snow">{t("Telegram o Discord:")}</b> {t("copiá el mensaje de la señal y pegalo en \"Registrar → Pegar señal\". Lo interpreta solo.")}</li>
             <li><b className="text-snow">{t("Zapier, Make o n8n:")}</b> {t("usá la acción \"Webhooks → POST\" hacia esta URL con el texto de la señal como cuerpo.")}</li>
             <li><b className="text-snow">{t("Bots y plataformas propias:")}</b> {t("un POST con JSON, por ejemplo")} <span className="num text-gold">{"{"}"symbol":"BTCUSDT","side":"buy","entry":65000,"tp":66500,"sl":64500{"}"}</span>.</li>
             <li><b className="text-snow">{t("A mano:")}</b> {t("\"Registrar → Manual\".")}</li>
@@ -423,7 +422,7 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
 function WelcomeCard({ onLoadSample }: { onLoadSample?: () => void }) {
   const steps = [
-    ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram o WhatsApp en \"Registrar operación\", o cargala a mano.")],
+    ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram en \"Registrar operación\", o cargala a mano.")],
     ["2", t("Conectá tu fuente"), t("Abajo, en \"Conectá tu fuente de señales\", copiá tu URL personal para TradingView u otras herramientas.")],
     ["3", t("Mirá tus resultados"), t("VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático.")],
   ];
@@ -916,7 +915,6 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-2">
               <div className="min-w-0 space-y-5">
                 <WebhookCard userId={userId} notify={notify} />
-                <WhatsAppCard notify={notify} />
               </div>
               <div className="min-w-0 space-y-5">
                 <TelegramCard userId={userId} notify={notify} />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fmtDateTime, t } from "../lib";
 import type { TelegramCommunity, TelegramLink } from "../lib";
 import Panel from "./Panel";
-import { fetchCommunities, fetchDailySummary, fetchPartialAlerts, fetchTelegramLink, fetchWhatsappButton, removeCommunity, setDailySummary, setPartialAlerts, setWhatsappButton, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
+import { fetchCommunities, fetchDailySummary, fetchPartialAlerts, fetchTelegramLink, removeCommunity, setDailySummary, setPartialAlerts, startCommunityLink, startTelegramLink, unlinkTelegram } from "../tradesApi";
 import type { CommunityStart, TelegramStart } from "../tradesApi";
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -16,7 +16,6 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   const [busy, setBusy] = useState(false);
   const [armed, setArmed] = useState(false);
   const [daily, setDaily] = useState(true);
-  const [wa, setWa] = useState(false);
   const [partial, setPartial] = useState(true);
   const [communities, setCommunities] = useState<TelegramCommunity[]>([]);
   const [cStart, setCStart] = useState<CommunityStart | null>(null);
@@ -39,7 +38,6 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
   useEffect(() => {
     void reload();
     fetchDailySummary(userId).then(setDaily).catch(() => {});
-    fetchWhatsappButton(userId).then(setWa).catch(() => {});
     fetchPartialAlerts(userId).then(setPartial).catch(() => {});
     void fetchCommunities().then(setCommunities);
     return () => {
@@ -118,18 +116,6 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
     }
   };
 
-  const toggleWa = async () => {
-    const next = !wa;
-    setWa(next);
-    try {
-      await setWhatsappButton(userId, next);
-      notify(next ? t("Botón de WhatsApp activado.") : t("Botón de WhatsApp desactivado."));
-    } catch (err) {
-      setWa(!next);
-      notify(err instanceof Error ? err.message : t("No se pudo guardar el cambio."), "err");
-    }
-  };
-
   useEffect(() => {
     if (!armed) return;
     const id = window.setTimeout(() => setArmed(false), 4000);
@@ -199,7 +185,7 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
             <ul className="space-y-1 text-[11.5px] leading-relaxed text-fog">
               <li>{t("• Pegá o reenviá una señal al bot y confirmá con un toque.")}</li>
               <li>{t("• Te avisa cuando llega una alerta o se toca un TP/SL.")}</li>
-              <li>{t("• Comandos: /abiertas, /resumen, /whatsapp, /idioma, /desvincular.")}</li>
+              <li>{t("• Comandos: /abiertas, /resumen, /idioma, /desvincular.")}</li>
             </ul>
             <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
               <input type="checkbox" checked={daily} onChange={toggleDaily} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
@@ -213,13 +199,6 @@ export default function TelegramCard({ userId, notify }: { userId: string; notif
               <span>
                 <b className="text-snow">{t("Avisos de targets:")}</b>{" "}
                 {t("cada vez que una operación abierta toca un target (TP1, TP2…; si la señal no trae targets, al avanzar 1R a favor), te avisamos (y a tu comunidad) para tomar beneficios parciales y asegurar el SL.")}
-              </span>
-            </label>
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-line bg-ink/40 p-3 text-[12px] leading-snug text-fog">
-              <input type="checkbox" checked={wa} onChange={toggleWa} className="mt-0.5 h-4 w-4 accent-[var(--color-gold)]" />
-              <span>
-                <b className="text-snow">{t("Botón de WhatsApp:")}</b>{" "}
-                {t("cada aviso del bot trae un botón «Enviar a WhatsApp». Lo tocás y se abre WhatsApp con el mensaje armado para elegir a quién mandarlo.")}
               </span>
             </label>
             <div className="space-y-2 rounded-md border border-line bg-ink/40 p-3">

@@ -111,7 +111,7 @@ function tradeFromFields(fields: Record<string, unknown>, label: string): { valu
 }
 
 
-// ─── Texto libre (Telegram, WhatsApp, Discord…) ─────────────────────────────
+// ─── Texto libre (Telegram, Discord…) ─────────────────────────────
 
 const LONG_WORDS = ["LONG", "BUY", "COMPRA", "COMPRAR", "LARGO", "ALCISTA", "BULLISH"];
 const SHORT_WORDS = ["SHORT", "SELL", "VENTA", "VENDER", "CORTO", "BAJISTA", "BEARISH"];

@@ -7,7 +7,7 @@ import { t } from "../lib";
 /** Cómo funciona, en tres pasos. */
 export function HowItWorks() {
   const steps: Array<[IconName, Tone, string, string]> = [
-    ["link", "cyan", t("Conectá"), t("Copiá tu enlace personal en la alerta de TradingView, o pegá cualquier señal de Telegram, WhatsApp o Discord.")],
+    ["link", "cyan", t("Conectá"), t("Copiá tu enlace personal en la alerta de TradingView, o pegá cualquier señal de Telegram o Discord.")],
     ["bell", "green", t("Recibí"), t("Cada señal y cada target te llega a la app y a Telegram, con una tarjeta lista para compartir.")],
     ["trend", "violet", t("Mejorá"), t("Tu diario calcula R, acierto y racha solo, y el análisis te muestra qué corregir.")],
   ];
@@ -52,7 +52,7 @@ export function TrustRow() {
 /** Preguntas que frenan a quien recién llega. */
 export function Faq() {
   const qa: Array<[string, string]> = [
-    [t("¿Necesito TradingView?"), t("No es obligatorio. Podés conectar tus alertas de TradingView, pegar señales de Telegram, WhatsApp o Discord, e importar desde tu exchange.")],
+    [t("¿Necesito TradingView?"), t("No es obligatorio. Podés conectar tus alertas de TradingView, pegar señales de Telegram o Discord, e importar desde tu exchange.")],
     [t("¿VELTRIX opera con mi dinero?"), t("No. Para importar tu historial usás claves de solo lectura, sin permiso de retiro.")],
     [t("¿Es asesoramiento financiero?"), t("No. Es una herramienta para registrar y analizar tus operaciones. Operar implica riesgo de pérdida.")],
     [t("¿Dónde la uso?"), t("En la web y en la app de Android con la misma cuenta. Los avisos también llegan por Telegram.")],
@@ -99,7 +99,6 @@ export function ShareBand() {
       <h2 className="font-display text-2xl font-bold text-snow">{t("¿Conocés a alguien que opera?")}</h2>
       <p className="mx-auto mt-2 max-w-xl text-[13.5px] leading-relaxed text-fog">{t("Compartile VELTRIX: más gente en la comunidad, más señales y más análisis para todos.")}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2.5">
-        <a className={btn} href={`https://wa.me/?text=${enc(`${text} ${link}`)}`} target="_blank" rel="noopener noreferrer">WhatsApp</a>
         <a className={btn} href={`https://t.me/share/url?url=${enc(link)}&text=${enc(text)}`} target="_blank" rel="noopener noreferrer">Telegram</a>
         <a className={btn} href={`https://twitter.com/intent/tweet?text=${enc(text)}&url=${enc(link)}`} target="_blank" rel="noopener noreferrer">X</a>
         <button type="button" onClick={copy} className={btn}>{copied ? t("¡Enlace copiado!") : t("Copiar enlace")}</button>

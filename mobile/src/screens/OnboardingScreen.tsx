@@ -16,7 +16,7 @@ const SLIDES = [
     text: "No importa qué plataforma uses. VELTRIX entiende tus señales sin complicarte.",
     points: [
       "TradingView u otra herramienta: pegá tu URL personal (Ajustes)",
-      "Telegram o WhatsApp: copiá el mensaje y pegalo en Registrar",
+      "Telegram: copiá el mensaje y pegalo en Registrar",
       "O cargalas a mano en un minuto",
     ],
   },

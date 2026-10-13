@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ClearableInput from "./ClearableInput";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
 import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
@@ -204,13 +205,13 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
           <>
             <Text style={s.hint}>{liveKeyGuide(shown)}</Text>
             <Text style={s.label}>{t("Clave (API key)")}</Text>
-            <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} style={s.input} />
+            <ClearableInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} style={s.input} />
             <Text style={s.label}>{t("Clave secreta (secret)")}</Text>
-            <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
+            <ClearableInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
             {liveNeedsPass(shown) && (
               <>
                 <Text style={s.label}>{t("Contraseña de la API (passphrase)")}</Text>
-                <TextInput value={apiPass} onChangeText={setApiPass} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
+                <ClearableInput value={apiPass} onChangeText={setApiPass} autoCapitalize="none" autoCorrect={false} secureTextEntry style={s.input} />
               </>
             )}
             <TouchableOpacity style={[s.outline, (busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())) && { opacity: 0.4 }]} disabled={busy != null || apiKey.trim().length < 8 || apiSecret.trim().length < 8 || (liveNeedsPass(shown) && !apiPass.trim())} onPress={connect}>

@@ -10,10 +10,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { parseAlerts } from "../_shared/parseAlert.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { runInBackground, signalCardImage } from "../_shared/card.ts";
-import { notifyWhatsApp, waSignalParams } from "../_shared/waCloud.ts";
 import { communitySignalMessage, publishToCommunities, signalCardHtml } from "../_shared/community.ts";
 import { botToken, notifyTelegram } from "../_shared/telegram.ts";
-import { waSignalText } from "../_shared/whatsapp.ts";
 import { fanOutSignal } from "../_shared/signalFeed.ts";
 import { FEED_ONLY_NOTE } from "../_shared/autoClose.ts";
 import { sendExposureNotice } from "../_shared/communityTools.ts";
@@ -123,7 +121,7 @@ async function handle(req: Request): Promise<Response> {
     });
   }
 
-  // La web publica señales a mano con «x-veltrix-community: 0»: solo para quienes siguen las señales de VELTRIX, sin comunidad ni WhatsApp.
+  // La web publica señales a mano con «x-veltrix-community: 0»: solo para quienes siguen las señales de VELTRIX, sin comunidad.
   const noCommunity = req.headers.get("x-veltrix-community") === "0";
   const row = {
     user_id: profile.id,
@@ -172,8 +170,6 @@ async function handle(req: Request): Promise<Response> {
   await runInBackground(
     Promise.all([
       noCommunity ? Promise.resolve() : publishToCommunities(supabase, botToken(), profile.id, (lang) => communitySignalMessage(sig, lang), (lang) => signalCardImage(sig, lang), trade.id),
-      // Aviso por WhatsApp (si la persona vinculó su número).
-      noCommunity ? Promise.resolve() : notifyWhatsApp(supabase, profile.id, (lang) => ({ kind: "signal", params: waSignalParams(sig, lang) })),
       // Cuenta emisora: la señal también llega al diario y a los avisos de quienes activaron «Señales de VELTRIX».
       profile.signal_provider === true ? fanOutSignal(supabase, profile.id, trade.id, sig, row.date) : Promise.resolve(),
     ]),

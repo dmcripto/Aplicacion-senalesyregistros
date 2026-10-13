@@ -271,7 +271,7 @@ function tradeFromFields(fields: Record<string, unknown>, label: string): { valu
 }
 
 
-// ─── Texto libre (Telegram, WhatsApp, Discord…) ─────────────────────────────
+// ─── Texto libre (Telegram, Discord…) ─────────────────────────────
 
 const LONG_WORDS = ["LONG", "BUY", "COMPRA", "COMPRAR", "LARGO", "ALCISTA", "BULLISH"];
 const SHORT_WORDS = ["SHORT", "SELL", "VENTA", "VENDER", "CORTO", "BAJISTA", "BEARISH"];
@@ -1116,7 +1116,7 @@ export function exchangeSteps(id: ExchangeId): string[] {
     case "mexc":
       return [
         tr("En MEXC (desde la web): Perfil → Gestión de API → Crear Nueva Clave API."),
-        tr("Escribí una nota (por ejemplo VELTRIX). En Futuros tildá SOLO \"Ver detalles de la cuenta\" y \"Ver detalles de la orden\". No tildes \"Colocar órdenes\" ni nada de Spot, Retirar, Transferir o P2P."),
+        tr("Escribí una nota (por ejemplo VELTRIX). En Futuros tildá SOLO los de lectura: \"Ver detalles de la cuenta\", \"Ver detalles de la orden\" y \"Ver información de trading\" (sin este último MEXC avisa «Trading information read access is required»). No tildes \"Colocar órdenes\" ni nada de Spot, Retirar, Transferir o P2P."),
         tr("Sin dirección IP vinculada, MEXC la vence a los 90 días: pasado ese tiempo creá otra clave y volvé a conectarla."),
         last,
       ];
@@ -1309,7 +1309,7 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
   }
 }
 
-// ─── Compartir una señal (WhatsApp, etc.) ───────────────────────────────────
+// ─── Compartir una señal ───────────────────────────────────
 
 // ─── Pantalla de bienvenida (login): qué es VELTRIX ─────────────────────────
 
@@ -1424,8 +1424,6 @@ export function signalShareMessage(t: Trade): string {
   ].join("\n");
 }
 
-/** Enlace que abre WhatsApp con el texto ya escrito, para elegir el contacto o grupo. */
-export const whatsappShareUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 
 // ─── Panel «Tu día» y avance hacia TP/SL ────────────────────────────────────
 
@@ -1771,9 +1769,9 @@ export const leverageRangeText = (min: number, max: number) => (min >= max ? tr(
 export const HIGH_LEVERAGE = 40;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
-// MEXC no está: bloquea el envío de órdenes de futuros por API (se puede leer el saldo, pero rechaza la orden).
-export const LIVE_EXCHANGES = ["bitunix", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
-export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number] | "mexc";
+// MEXC está para una última prueba: suele bloquear el envío de órdenes de futuros por API («Access Denied»); si pasa, el bot lo avisa y se usa otro exchange.
+export const LIVE_EXCHANGES = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
+export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
 export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
 /** Los que piden además una contraseña de la API (passphrase). */
 export const liveNeedsPass = (id: string | null | undefined) => id === "okx" || id === "bitget" || id === "kucoin";
@@ -1910,15 +1908,6 @@ export function labVerdict(rows: BotLabRow[]): string {
  * Mientras esté en false, la tarjeta no se muestra en la web ni en la app. Para prenderlo, cambiar a true.
  */
 export const FEATURES = { coach: false } as const;
-
-// ─── Señales por WhatsApp (API oficial) ─────────────────────────────────────
-
-/** Estado de WhatsApp de la cuenta: `configured` es false mientras el servidor no tenga la conexión con Meta. */
-export interface WhatsAppState {
-  configured: boolean;
-  /** El número viene enmascarado (+54 ••••••• 0000). */
-  link: { phone: string; enabled: boolean } | null;
-}
 
 
 // ─── Enlaces con seguimiento (?ref=) ────────────────────────────────────────
