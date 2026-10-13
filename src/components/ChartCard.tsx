@@ -123,6 +123,14 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
     }
   });
   const [fs, setFs] = useState(false);
+  // En el celular los indicadores y las medias quedan plegados para que el gráfico se vea enseguida.
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(() => {
+    try {
+      return window.matchMedia("(min-width: 640px)").matches;
+    } catch {
+      return true;
+    }
+  });
   const [engine, setEngine] = useState<"veltrix" | "tv">(() => {
     try {
       return localStorage.getItem(ENGINE_KEY) === "tv" ? "tv" : "veltrix";
@@ -492,7 +500,16 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
         </div>
       </div>
 
-      <div className={cx("grid gap-2 sm:grid-cols-2", tv && "hidden")}>
+      <button
+        type="button"
+        onClick={() => setSettingsOpen((v) => !v)}
+        aria-expanded={settingsOpen}
+        className={cx("flex items-center justify-between rounded border border-line px-3 py-2 text-[12px] font-semibold text-fog sm:hidden", tv && "hidden")}
+      >
+        <span>⚙ {t("Indicadores y medias móviles")}</span>
+        <span aria-hidden>{settingsOpen ? "▲" : "▼"}</span>
+      </button>
+      <div className={cx("grid gap-2 sm:grid-cols-2", (tv || !settingsOpen) && "max-sm:hidden", tv && "hidden")}>
         {([0, 1] as const).map((i) => {
           const s = prefs.slots[i];
           const dot = i === 0 ? "#f5c518" : "#c084fc";
@@ -515,7 +532,7 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
         })}
       </div>
 
-      <div className={cx("rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-[11.5px] text-[#787b86]", tv && "hidden")}>
+      <div className={cx("rounded border border-[#2a2e39] bg-[#131722] px-3 py-2 text-[11.5px] text-[#787b86]", !settingsOpen && "max-sm:hidden", tv && "hidden")}>
         <div className="mb-1.5 font-semibold text-fog">{t("Medias móviles")}</div>
         <div className="grid gap-2 lg:grid-cols-3">
           {prefs.mas.map((m, i) => (
@@ -602,8 +619,8 @@ function ChartBody({ trades, userId, notify, onAdd }: { trades: Trade[]; userId:
       </div>
 
       <div ref={wrapRef} className="relative overflow-hidden rounded-sm border border-[#2a2e39] bg-[#131722]">
-        {tv && <TradingViewEmbed symbol={symbolKey} tf={prefs.tf} height={fs ? "100vh" : size === "large" ? 780 : 640} />}
-        <div ref={boxRef} className={cx("ml-10", tv && "hidden")} style={{ height: fs ? "100vh" : (size === "large" ? 680 : 520) + subCount * SUB_PANE }} />
+        {tv && <TradingViewEmbed symbol={symbolKey} tf={prefs.tf} height={fs ? "100vh" : size === "large" ? "clamp(520px, 86vh, 960px)" : "clamp(420px, 72vh, 720px)"} />}
+        <div ref={boxRef} className={cx("ml-10", tv && "hidden")} style={{ height: fs ? "100vh" : `calc(${size === "large" ? "clamp(460px, 82vh, 900px)" : "clamp(360px, 62vh, 640px)"} + ${subCount * SUB_PANE}px)` }} />
         <div className={tv ? "hidden" : undefined}>
         <ChartDrawings
           api={apiRef.current}

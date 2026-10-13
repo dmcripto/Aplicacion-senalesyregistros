@@ -27,6 +27,7 @@ export const EN: Record<string, string> = {
   "Nivel del RSI": "RSI level",
   "Crear alerta": "Create alert",
   "Crear alerta de precio": "Create price alert",
+  "Indicadores y medias móviles": "Indicators and moving averages",
   "Enviá tus señales a esta URL, vengan de donde vengan (TradingView con webhooks, Zapier, Make, n8n, bots propios). Si recibís señales por Telegram, pegá el mensaje en Registrar → Pegar señal.": "Send your signals to this URL, wherever they come from (TradingView webhooks, Zapier, Make, n8n, your own bots). If you receive signals on Telegram, paste the message in Log → Paste signal.",
   "Telegram o Discord:": "Telegram or Discord:",
   "Pegá un mensaje de Telegram en \"Registrar operación\", o cargala a mano.": "Paste a Telegram message in \"Log trade\", or enter it by hand.",
