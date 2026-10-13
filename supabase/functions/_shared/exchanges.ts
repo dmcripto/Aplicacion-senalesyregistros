@@ -1127,13 +1127,27 @@ export function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number
 // ─── Posiciones abiertas (solo Bitunix, por ahora) ──────────────────────────
 
 export interface OpenPosition {
-  externalId: string; // el mismo que tendrá al cerrarse, así el diario la convierte en cerrada sin duplicar
+  /** En Bitunix es el mismo id que tendrá al cerrarse; en los demás es «open:PAR:LADO» (provisorio: al cerrarse se importa la operación real y este se borra). */
+  externalId: string;
   symbol: string;
   direction: "LONG" | "SHORT";
   qty: number;
   entry: number;
   openedAt: number; // ms
   leverage?: number;
+  /** Objetivo y stop reales de la posición, solo si el exchange los informa y están del lado correcto. */
+  tp?: number;
+  sl?: number;
+}
+
+/** Descarta un TP/SL que no sirve (cero, o del lado equivocado de la entrada). */
+function realLevels(direction: "LONG" | "SHORT", entry: number, tpRaw: unknown, slRaw: unknown): { tp?: number; sl?: number } {
+  const tp = num(tpRaw), sl = num(slRaw);
+  const long = direction === "LONG";
+  return {
+    tp: tp > 0 && (long ? tp > entry : tp < entry) ? tp : undefined,
+    sl: sl > 0 && (long ? sl < entry : sl > entry) ? sl : undefined,
+  };
 }
 
 export function parseBitunixOpen(list: any[]): OpenPosition[] {
@@ -1150,26 +1164,99 @@ export function parseBitunixOpen(list: any[]): OpenPosition[] {
   return out;
 }
 
-/** Posiciones abiertas ahora. Solo Bitunix; en los demás exchanges devuelve vacío (se importan al cerrarse). */
-export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch): Promise<OpenPosition[]> {
-  if (ex !== "bitunix") return [];
-  const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_pending_positions", {}, key, secret);
-  return parseBitunixOpen(Array.isArray(data) ? data : data?.positionList ?? []);
+export function parseBinanceOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const amt = num(r.positionAmt);
+    const entry = num(r.entryPrice);
+    if (!r.symbol || amt === 0 || !(entry > 0)) continue;
+    const ps = String(r.positionSide ?? "BOTH").toUpperCase();
+    const direction = ps === "LONG" ? "LONG" : ps === "SHORT" ? "SHORT" : amt > 0 ? "LONG" : "SHORT";
+    const t = Number(r.updateTime);
+    out.push({ externalId: `open:${r.symbol}:${direction}`, symbol: String(r.symbol), direction, qty: Math.abs(amt), entry, openedAt: Number.isFinite(t) && t > 0 ? t : Date.now(), leverage: lev(r.leverage) });
+  }
+  return out;
 }
 
-/** Fila del diario para una posición abierta: mismos niveles de referencia que las cerradas (stop = 1R de tu riesgo por operación, objetivo = 2R). */
+export function parseBybitOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toLowerCase();
+    const direction = side === "buy" ? "LONG" : side === "sell" ? "SHORT" : null;
+    const entry = num(r.avgPrice ?? r.entryPrice);
+    const qty = num(r.size);
+    if (!direction || !r.symbol || !(entry > 0) || !(qty > 0)) continue;
+    const t = Number(r.createdTime);
+    out.push({
+      externalId: `open:${r.symbol}:${direction}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      openedAt: Number.isFinite(t) && t > 0 ? t : Date.now(),
+      leverage: lev(r.leverage),
+      ...realLevels(direction, entry, r.takeProfit, r.stopLoss),
+    });
+  }
+  return out;
+}
+
+/** Objetivo y stop reales de Bitunix (órdenes TP/SL pendientes), por posición. Si falla, se usan los de referencia. */
+async function bitunixLevels(fetchFn: FetchFn, key: string, secret: string, positions: OpenPosition[]) {
+  for (const p of positions) {
+    try {
+      const data = await bitunixGet(fetchFn, "/api/v1/futures/tpsl/get_pending_orders", { symbol: p.symbol }, key, secret);
+      const list: any[] = Array.isArray(data) ? data : data?.orderList ?? data?.list ?? [];
+      const mine = list.filter((o) => !o.positionId || String(o.positionId) === p.externalId.split(":")[1]);
+      const tp = mine.map((o) => o.tpPrice).find((v) => num(v) > 0);
+      const sl = mine.map((o) => o.slPrice).find((v) => num(v) > 0);
+      Object.assign(p, realLevels(p.direction, p.entry, tp, sl));
+    } catch {
+      /* se queda con los niveles de referencia */
+    }
+  }
+}
+
+/** Posiciones abiertas ahora (Bitunix, Binance y Bybit). Los demás exchanges devuelven vacío: sus operaciones se importan al cerrarse. */
+export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch): Promise<OpenPosition[]> {
+  if (ex === "bitunix") {
+    const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_pending_positions", {}, key, secret);
+    const list = parseBitunixOpen(Array.isArray(data) ? data : data?.positionList ?? []);
+    await bitunixLevels(fetchFn, key, secret, list);
+    return list;
+  }
+  if (ex === "binance") return parseBinanceOpen(await binanceGet(fetchFn, B_FUT, "/fapi/v2/positionRisk", {}, key, secret));
+  if (ex === "bybit") {
+    const out: OpenPosition[] = [];
+    let cursor = "";
+    for (let page = 0; page < 5; page++) {
+      const params: Record<string, string | number> = { category: "linear", settleCoin: "USDT", limit: 200 };
+      if (cursor) params.cursor = cursor;
+      const result = await bybitGet(fetchFn, "/v5/position/list", params, key, secret);
+      out.push(...parseBybitOpen(result?.list ?? []));
+      cursor = result?.nextPageCursor ?? "";
+      if (!cursor) break;
+    }
+    return out;
+  }
+  return [];
+}
+
+/** Fila del diario para una posición abierta. Con niveles reales usa esos; si no, de referencia (stop = 1R de tu riesgo por operación, objetivo = 2R). */
 export function toOpenTradeRow(p: OpenPosition, exchange: ExchangeId, unit: number) {
   const dir = p.direction === "LONG" ? 1 : -1;
   const slDist = unit / p.qty;
+  const realSl = p.sl != null, realTp = p.tp != null;
+  const what = realSl && realTp ? "stop y objetivo reales de la orden" : realSl ? "stop real de la orden; objetivo de referencia (2R)" : realTp ? "objetivo real de la orden; stop de referencia (1R)" : "stop y objetivo de referencia (1R y 2R de tu riesgo por operación), no los de la orden";
   return {
     symbol: p.symbol.toUpperCase(),
     direction: p.direction,
     entry: round(p.entry),
-    tp: round(p.entry + dir * 2 * slDist),
-    sl: round(p.entry - dir * slDist),
+    tp: round(p.tp ?? p.entry + dir * 2 * slDist),
+    sl: round(p.sl ?? p.entry - dir * slDist),
     date: new Date(p.openedAt).toISOString(),
     outcome: "ABIERTA" as const,
-    notes: `${EXCHANGE_NAMES[exchange]} · posición abierta · cantidad ${round(p.qty)} · el stop y el objetivo son de referencia (1R y 2R de tu riesgo por operación), no los de la orden`,
+    notes: `${EXCHANGE_NAMES[exchange]} · posición abierta · cantidad ${round(p.qty)} · ${what}`,
     source: exchange,
     external_id: p.externalId,
     leverage: p.leverage ?? null,

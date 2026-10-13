@@ -115,12 +115,23 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
     const open = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
     openCount = open.length;
     const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...toOpenTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
+    // Las provisorias («open:…») que ya no están abiertas se borran: al cerrarse se importó la operación real.
+    if (conn.exchange !== "bitunix") {
+      const { data: stale } = await admin.from("trades").select("id, external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").like("external_id", "open:%");
+      const live = new Set(openRows.map((r) => r.external_id));
+      const gone = (stale ?? []).filter((r: { external_id: string }) => !live.has(r.external_id)).map((r: { id: string }) => r.id);
+      if (gone.length) await admin.from("trades").delete().in("id", gone);
+    }
     if (openRows.length) {
       let { error } = await admin.from("trades").upsert(openRows, { onConflict: "user_id,source,external_id", ignoreDuplicates: true });
       if (error && /leverage|size_usd/i.test(error.message)) ({ error } = await admin.from("trades").upsert(openRows.map(withoutManagement), { onConflict: "user_id,source,external_id", ignoreDuplicates: true }));
       if (error) {
         console.error("abiertas:", error.message);
         warning = `No se pudieron guardar las posiciones abiertas: ${error.message}`;
+      }
+      // Si cambiaste el TP o el SL en el exchange, el diario se actualiza.
+      for (const r of openRows) {
+        await admin.from("trades").update({ tp: r.tp, sl: r.sl, notes: r.notes }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", r.external_id).eq("outcome", "ABIERTA");
       }
     }
   } catch (e) {

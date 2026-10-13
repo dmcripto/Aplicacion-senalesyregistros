@@ -557,3 +557,29 @@ describe("posiciones abiertas de Bitunix", () => {
     expect(r.tp).toBeCloseTo(83338.8 + 2 / 0.0007, 3);
   });
 });
+
+import { parseBinanceOpen, parseBybitOpen } from "../supabase/functions/_shared/exchanges";
+describe("posiciones abiertas de Binance y Bybit", () => {
+  it("Binance: lado según el signo y descarta las vacías", () => {
+    const r = parseBinanceOpen([
+      { symbol: "ETHUSDT", positionAmt: "-0.5", entryPrice: "3000", leverage: "10", positionSide: "BOTH", updateTime: 1760000000000 },
+      { symbol: "BTCUSDT", positionAmt: "0", entryPrice: "0" },
+    ]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ externalId: "open:ETHUSDT:SHORT", direction: "SHORT", qty: 0.5, entry: 3000, leverage: 10 });
+  });
+  it("Bybit: trae el TP y el SL reales solo si están del lado correcto", () => {
+    const [ok] = parseBybitOpen([{ symbol: "BTCUSDT", side: "Buy", size: "0.01", avgPrice: "80000", leverage: "5", takeProfit: "82000", stopLoss: "79000", createdTime: "1760000000000" }]);
+    expect(ok).toMatchObject({ direction: "LONG", tp: 82000, sl: 79000 });
+    const [bad] = parseBybitOpen([{ symbol: "BTCUSDT", side: "Buy", size: "0.01", avgPrice: "80000", takeProfit: "0", stopLoss: "81000" }]);
+    expect(bad.tp).toBeUndefined();
+    expect(bad.sl).toBeUndefined();
+  });
+  it("usa los niveles reales en la fila del diario", () => {
+    const [p] = parseBybitOpen([{ symbol: "BTCUSDT", side: "Buy", size: "0.01", avgPrice: "80000", takeProfit: "82000", stopLoss: "79000" }]);
+    const row = ex.toOpenTradeRow(p, "bybit", 1);
+    expect(row.tp).toBe(82000);
+    expect(row.sl).toBe(79000);
+    expect(row.notes).toContain("reales");
+  });
+});
