@@ -48,7 +48,10 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
       backgroundColor: "#131722",
     });
     el.appendChild(script);
+    // El widget mide su caja al cargar y a veces lo hace antes de que la página termine de acomodarse (se veía chico hasta tocar «Normal/Grande»): se le avisa del tamaño real un par de veces.
+    const nudge = [400, 1200, 2800].map((ms) => window.setTimeout(() => window.dispatchEvent(new Event("resize")), ms));
     return () => {
+      nudge.forEach((id) => window.clearTimeout(id));
       el.innerHTML = "";
     };
   }, [symbol, tf]);
