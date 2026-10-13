@@ -180,3 +180,18 @@ export async function fetchCandles(sym: MarketSymbol, sinceMs: number): Promise<
   }
   return null;
 }
+
+/** Aviso de riesgo: se dispara cuando el precio ya recorrió esta parte del camino entre la entrada y el SL. */
+export const RISK_WARN_AT = 0.7;
+
+/**
+ * Qué tan cerca del SL está la operación ahora: 0 = en la entrada (o a favor), 1 = en el SL.
+ * Usa la última vela (la más reciente) en su extremo desfavorable.
+ */
+export function riskProgress(t: Pick<OpenTrade, "direction" | "entry" | "sl">, candles: Candle[]): number {
+  const last = candles[candles.length - 1];
+  const risk = Math.abs(t.entry - t.sl);
+  if (!last || !(risk > 0)) return 0;
+  const adverse = t.direction === "LONG" ? t.entry - last.l : last.h - t.entry;
+  return Math.max(0, adverse / risk);
+}

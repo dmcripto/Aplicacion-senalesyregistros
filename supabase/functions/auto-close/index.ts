@@ -4,7 +4,7 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, targetLevels, isSimulated, isTestSignal, keepsOutOfCommunity } from "../_shared/autoClose.ts";
+import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, riskProgress, RISK_WARN_AT, targetLevels, isSimulated, isTestSignal, keepsOutOfCommunity } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { partialCardImage, resultCardImage } from "../_shared/card.ts";
@@ -58,6 +58,33 @@ async function targetAlerts(trade: OpenTrade, candles: Candle[]) {
     }
   } catch (e) {
     console.error("targets:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Vigilancia: si una operación abierta ya recorrió gran parte del camino hacia el SL, avisa una sola vez (push + Telegram)
+ * para que la persona pueda protegerla (mover el SL a la entrada, cerrar a mano). No toca el exchange: las claves son de solo lectura.
+ */
+async function riskAlert(trade: OpenTrade, candles: Candle[]) {
+  try {
+    const p = riskProgress(trade, candles);
+    if (p < RISK_WARN_AT || p >= 1) return;
+    const { data: marked, error } = await supabase.from("trades").update({ risk_warned: true }).eq("id", trade.id).eq("outcome", "ABIERTA").eq("risk_warned", false).select("id");
+    if (error || !marked?.length) return; // sin columna, o ya avisado
+    const pct = Math.round(p * 100);
+    const text = (lang: "es" | "en") =>
+      lang === "en"
+        ? `⚠️ ${trade.symbol} ${trade.direction}: price is ${pct}% of the way to your stop-loss (${trade.sl}). Consider protecting it: move the SL to entry or close by hand.`
+        : `⚠️ ${trade.symbol} ${trade.direction}: el precio ya recorrió el ${pct}% del camino hacia tu stop-loss (${trade.sl}). Pensá en protegerla: mové el SL a la entrada o cerrala a mano.`;
+    await notifyTelegram(supabase, trade.user_id, text);
+    const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", trade.user_id);
+    if (tokens?.length) {
+      const { data: langRow } = await supabase.from("profiles").select("lang").eq("id", trade.user_id).maybeSingle();
+      const en = (langRow as { lang?: string } | null)?.lang === "en";
+      await sendExpoPush(tokens.map((t) => ({ to: t.expo_push_token, title: en ? `⚠️ ${trade.symbol} near stop-loss` : `⚠️ ${trade.symbol} cerca del SL`, body: text(en ? "en" : "es"), data: { tradeId: trade.id } })));
+    }
+  } catch (e) {
+    console.error("risk:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -205,6 +232,7 @@ Deno.serve(async () => {
     if (!hit) {
       // Sigue abierta: ¿llegó a algún target? (solo si existen las columnas y la persona no apagó el aviso)
       if (trade.targets_hit != null && !partialOff.has(trade.user_id)) await targetAlerts(trade, candles);
+      if (!isTestSignal(trade) && !partialOff.has(trade.user_id)) await riskAlert(trade, candles);
       continue;
     }
 

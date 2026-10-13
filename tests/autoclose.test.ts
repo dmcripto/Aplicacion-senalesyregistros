@@ -68,3 +68,16 @@ describe("targets múltiples", () => {
     expect(detectTargets({ ...short, targets: [95, 85] }, [candle(10, 99, 94), candle(20, 100, 84)] as any)).toEqual([10, 20]);
   });
 });
+
+import { riskProgress } from "../supabase/functions/_shared/autoClose";
+describe("riskProgress", () => {
+  const long = { direction: "LONG" as const, entry: 100, sl: 90 };
+  it("mide qué parte del camino al SL recorrió el precio", () => {
+    expect(riskProgress(long, [{ t: 0, h: 101, l: 93 }])).toBeCloseTo(0.7);
+    expect(riskProgress({ direction: "SHORT", entry: 100, sl: 110 }, [{ t: 0, h: 108, l: 99 }])).toBeCloseTo(0.8);
+  });
+  it("a favor o sin velas es 0", () => {
+    expect(riskProgress(long, [{ t: 0, h: 110, l: 105 }])).toBe(0);
+    expect(riskProgress(long, [])).toBe(0);
+  });
+});
