@@ -4,7 +4,6 @@
 // afuera no tiene efecto adicional.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { EXCHANGES } from "../_shared/exchanges.ts";
 import { detectHit, detectTargets, fetchCandles, parseMarketSymbol, rOfHit, riskProgress, RISK_WARN_AT, targetLevels, isSimulated, isTestSignal, keepsOutOfCommunity } from "../_shared/autoClose.ts";
 import type { Candle, MarketSymbol, OpenTrade } from "../_shared/autoClose.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
@@ -23,6 +22,8 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
+// Exchanges cuyas operaciones se importan al diario (no se cierran solas con niveles de referencia).
+const EXCHANGE_SOURCES = ["binance", "bybit", "bitunix", "mexc", "gate", "bitget", "okx", "kucoin", "bingx"];
 const MIN_GAP_MS = 25_000;
 const PARTIAL_FRESH_MS = 45 * 60_000; // un target solo se avisa si se tocó hace menos de esto
 const MAX_TRADES = 2000;
@@ -230,7 +231,7 @@ Deno.serve(async () => {
     const candles = candlesByKey.get(sym.key);
     if (!candles) continue;
     // Posición abierta importada de un exchange: el stop y el objetivo del diario son de referencia, así que no se cierra sola; solo se vigila el riesgo.
-    if (trade.source && (EXCHANGES as string[]).includes(trade.source)) {
+    if (trade.source && EXCHANGE_SOURCES.includes(trade.source)) {
       if (!partialOff.has(trade.user_id)) await riskAlert(trade, candles);
       continue;
     }
