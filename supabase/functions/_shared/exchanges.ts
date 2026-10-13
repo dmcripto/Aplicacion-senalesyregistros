@@ -475,6 +475,10 @@ async function mexcGet(fetchFn: FetchFn, path: string, params: Record<string, st
     if (c === 602 || c === 10072) throw new ExchangeError("MEXC no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
     if (c === 10073 || c === 700003) throw new ExchangeError("El reloj del servidor no coincide con el de MEXC. Probá de nuevo.");
     if (c === 401 || c === 403 || r.status === 401) throw new ExchangeError("La clave de MEXC no tiene permiso para leer Futuros. Activá la lectura de \"Futuros\" y volvé a intentar.");
+    // «Trading information read access is required»: la clave puede ver la cuenta pero no el historial de operaciones.
+    if (/read access is required|trading information|trade information|order information/i.test(String(r.body?.message ?? r.body?.msg ?? ""))) {
+      throw new ExchangeError("A la clave de MEXC le falta un permiso de lectura. Creá una clave nueva y, en Futuros, tildá los tres de solo lectura: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Ver información de trading» (si no ves ese último, tildá todos los que digan «Ver»/«Leer» de Futuros). No tildes «Colocar órdenes» ni nada de Spot, retirar o transferir.");
+    }
     throw new ExchangeError(`MEXC respondió con un error${r.body?.message || r.body?.msg ? `: ${r.body.message ?? r.body.msg}` : ""}.`);
   }
   return r.body?.data;
