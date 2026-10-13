@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ClearableInput from "./ClearableInput";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { EXCHANGE_LIST, exchangeName, exchangeSteps, needsPassphrase, fmtCurrency, fmtDateTime, t } from "@dmcripto/core";
 import type { ExchangeConnection, ExchangeId, MoneySettings } from "@dmcripto/core";
@@ -189,14 +190,14 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
       )}
 
       <Text style={s.label}>API KEY</Text>
-      <TextInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.dim} style={s.input} />
+      <ClearableInput value={apiKey} onChangeText={setApiKey} autoCapitalize="none" autoCorrect={false} placeholderTextColor={colors.dim} style={s.input} />
       <Text style={s.label}>{t("Clave secreta (Secret)")}</Text>
-      <TextInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
+      <ClearableInput value={apiSecret} onChangeText={setApiSecret} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
 
       {needsPassphrase(exchange) && (
         <>
           <Text style={s.label}>{t("Contraseña de la API (passphrase)")}</Text>
-          <TextInput value={passphrase} onChangeText={setPassphrase} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
+          <ClearableInput value={passphrase} onChangeText={setPassphrase} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholderTextColor={colors.dim} style={s.input} />
         </>
       )}
 
