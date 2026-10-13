@@ -94,7 +94,11 @@ export default function ExchangeSection({ onSaveMoney }: { onSaveMoney: (m: Mone
       if (!r.ok) return Alert.alert("Error", r.error ?? t("No se pudo sincronizar."));
       const total = (r.results ?? []).reduce((a, x) => a + x.imported, 0);
       const failed = (r.results ?? []).find((x) => x.error);
+      const warn = (r.results ?? []).find((x) => x.warning);
+      const openN = (r.results ?? []).reduce((a, x) => a + (x.open ?? 0), 0);
       if (failed?.error) Alert.alert("Error", failed.error);
+      else if (warn?.warning) Alert.alert("Error", warn.warning);
+      else if (openN > 0) Alert.alert(t("Listo"), t("Sincronizado. Posiciones abiertas en el exchange: {n}. Las ves en el Diario como «abiertas».", { n: openN }));
       else Alert.alert(t("Listo"), total ? t("Sincronizado: {n} operaciones nuevas.", { n: total }) : t("Todo al día: no hay operaciones nuevas."));
       await reload();
     } finally {

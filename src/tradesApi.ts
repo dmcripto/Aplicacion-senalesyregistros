@@ -251,7 +251,7 @@ export interface ExchangeResult {
   code?: string;
   warning?: string;
   imported?: number;
-  results?: Array<{ exchange: ExchangeId; imported: number; error?: string; skipped?: boolean }>;
+  results?: Array<{ exchange: ExchangeId; imported: number; open?: number; warning?: string; error?: string; skipped?: boolean }>;
 }
 
 async function callFunction<T extends { ok: boolean; error?: string }>(name: string, body: Record<string, unknown>): Promise<T> {
