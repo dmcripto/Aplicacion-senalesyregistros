@@ -17,6 +17,18 @@ export default function DownloadApp() {
         <a href={APK} className="btn-shine mt-5 inline-block rounded-md bg-gold px-7 py-3 text-[13px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110">
           {t("Descargar para Android")}
         </a>
+        <ul className="mt-4 grid gap-1.5 text-[12.5px] text-fog sm:grid-cols-2">
+          {[t("Avisos de cada señal y target"), t("Tu diario siempre a mano"), t("Bot y gráficos en vivo"), t("Gratis, sin publicidad")].map((f) => (
+            <li key={f} className="flex items-center gap-2"><span className="text-bull">✓</span>{f}</li>
+          ))}
+        </ul>
+        <div className="mt-5 hidden items-center gap-4 rounded-lg border border-line bg-ink/40 p-3 sm:flex">
+          <img src="/qr-app.svg" alt={t("Código QR para descargar la app")} width={120} height={120} className="shrink-0 rounded-md bg-white p-1" style={{ imageRendering: "pixelated" }} />
+          <div>
+            <p className="text-[13px] font-bold text-snow">{t("¿Estás en la computadora?")}</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-fog">{t("Escaneá este código con la cámara de tu celular y se abre la descarga.")}</p>
+          </div>
+        </div>
         <p className="mt-3 text-[11.5px] leading-relaxed text-dim">{t("¿Tenés iPhone o preferís la computadora? Usá esta versión web: en el celular podés agregarla a la pantalla de inicio.")}</p>
       </section>
       <section className="glass rounded-xl p-6">

@@ -188,6 +188,23 @@ export function NavBar({
 
         <div className="ml-auto flex items-center gap-2">
           <span className="num hidden text-[12px] text-dim xl:inline">{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+          <div className="group relative hidden sm:block">
+            <a
+              href="#/download"
+              title={t("Descargar la app")}
+              aria-label={t("Descargar la app")}
+              className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-[12px] font-bold text-snow transition-colors hover:border-gold/60 hover:text-gold focus:border-gold/60"
+            >
+              <Icon name="download" className="h-4 w-4" />
+            </a>
+            <div className="pointer-events-none absolute right-0 top-full z-50 pt-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+              <div className="w-[190px] rounded-xl border border-line2 bg-panel p-3 text-center shadow-2xl">
+                <img src="/qr-app.svg" alt={t("Código QR para descargar la app")} width={164} height={164} className="mx-auto rounded-md bg-white p-1" style={{ imageRendering: "pixelated" }} />
+                <p className="mt-2 text-[12px] font-bold text-snow">{t("Descargá la app")}</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-dim">{t("Escaneá el código con la cámara de tu celular.")}</p>
+              </div>
+            </div>
+          </div>
           <a
             href={communityUrl}
             target="_blank"
