@@ -72,7 +72,7 @@ function Chip({ on, label, onPress }: { on: boolean; label: string; onPress: () 
 }
 
 /** Gráfico de análisis: velas, 2 indicadores, mapa de liquidaciones, tus señales abiertas y tus alertas. */
-export default function ChartSection({ userId, trades }: { userId: string; trades: Trade[] }) {
+export default function ChartSection({ userId, trades, onTouching }: { userId: string; trades: Trade[]; onTouching?: (touching: boolean) => void }) {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULTS);
   const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState(DEFAULTS.symbol);
@@ -216,8 +216,8 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
   const off = candles ? Math.max(0, endIdx - count) : 0;
   const plotW = width - AXIS_W;
   // Gestos: arrastrar con un dedo mueve el gráfico; pellizcar con dos dedos acerca o aleja; doble toque vuelve al inicio.
-  const live = useRef({ visible, endOff, total, plotW, count });
-  live.current = { visible, endOff, total, plotW, count };
+  const live = useRef<{ visible: number; endOff: number; total: number; plotW: number; count: number; touching?: (b: boolean) => void }>({ visible, endOff, total, plotW, count });
+  live.current = { visible, endOff, total, plotW, count, touching: onTouching };
   const g = useRef<{ x: number; end: number; dist: number; vis: number; tap: number }>({ x: 0, end: 0, dist: 0, vis: VISIBLE, tap: 0 });
   const pan = useMemo(
     () =>
@@ -226,6 +226,7 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
         onMoveShouldSetPanResponder: () => true,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (e) => {
+          live.current.touching?.(true); // mientras el dedo está en el gráfico, la pantalla no se desplaza
           const c = live.current;
           const ts = e.nativeEvent.touches;
           g.current.x = e.nativeEvent.pageX;
@@ -239,6 +240,8 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
           }
           g.current.tap = now;
         },
+        onPanResponderRelease: () => live.current.touching?.(false),
+        onPanResponderTerminate: () => live.current.touching?.(false),
         onPanResponderMove: (e) => {
           const c = live.current;
           const ts = e.nativeEvent.touches;
@@ -371,7 +374,7 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
       <View style={st.chart} onLayout={onLayout}>
         {state === "ok" && view.length > 0 ? (
           <View>
-            <View {...pan.panHandlers}>
+            <View>
             <Svg width={width} height={PRICE_H}>
               <Rect x={0} y={0} width={width} height={PRICE_H} fill={BG} />
               {gridPrices.map((p) => (
@@ -422,6 +425,8 @@ export default function ChartSection({ userId, trades }: { userId: string; trade
                 </>
               )}
             </Svg>
+            {/* Capa transparente que recibe los dedos (el dibujo en SVG no siempre pasa los toques). */}
+            <View {...pan.panHandlers} style={{ position: "absolute", top: 0, left: 0, width, height: PRICE_H }} />
             </View>
             {subs.map((r, si) => {
               const vals = r.lines.flatMap((l) => l.values.slice(off).filter((v): v is number => v != null));
