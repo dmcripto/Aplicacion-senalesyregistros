@@ -9,7 +9,7 @@ export default function BotVideo() {
         <span className="text-[11px] text-dim">{t("1 min 50 s")}</span>
       </div>
       <video className="mx-auto w-full max-w-3xl rounded-md border border-line bg-black" controls preload="none" poster="/bot-automatico.jpg" playsInline>
-        <source src="/bot-automatico.mp4" type="video/mp4" />
+        <source src="/bot-automatico.mp4?v=5" type="video/mp4" />
       </video>
       <p className="mt-2 text-[11px] leading-relaxed text-dim">{t("Por defecto el bot opera en modo simulado, sin dinero real; el modo real es opcional y arriesga plata de verdad. Contenido educativo, no asesoramiento financiero.")} {t("Esto no constituye un consejo de inversión ni asesoramiento financiero. Cada persona decide y opera bajo su propia responsabilidad, y puede perder todo lo que arriesga.")}</p>
     </section>
