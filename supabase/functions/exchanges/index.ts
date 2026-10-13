@@ -13,7 +13,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { EXCHANGES, NEEDS_PASSPHRASE, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, fetchOpen, toOpenTradeRow, toTradeRow } from "../_shared/exchanges.ts";
-import type { ExchangeId } from "../_shared/exchanges.ts";
+import type { ExchangeId, OpenPosition } from "../_shared/exchanges.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -60,8 +60,30 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
   const since = conn.last_sync_at ? Math.max(new Date(conn.last_sync_at).getTime() - ONE_DAY, now - 30 * ONE_DAY) : now - 14 * ONE_DAY;
   const closed = await fetchClosed(conn.exchange, secret.api_key, apiSecret, since, now, undefined, passphrase);
 
+  // Posiciones abiertas ahora (Bitunix, Binance y Bybit). Se leen antes para saber cuáles de las que el diario tiene como abiertas ya cerraron.
+  let openList: OpenPosition[] = [];
+  let openError: unknown = null;
+  try {
+    openList = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
+  } catch (e) {
+    openError = e;
+  }
+
   // Las posiciones que se importaron como abiertas y ya cerraron se completan con el resultado real (sin duplicar).
   try {
+    // Si el exchange cambió el id al cerrar, se reconoce la misma operación por par, lado y precio de entrada.
+    if (!openError && closed.length) {
+      const live = new Set(openList.map((o) => o.externalId));
+      const { data: staleRows } = await admin.from("trades").select("id, symbol, direction, entry, external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").like("notes", "%posición abierta%").limit(200);
+      const taken = new Set<string>();
+      for (const r of (staleRows ?? []) as Array<{ id: string; symbol: string; direction: string; entry: number; external_id: string }>) {
+        if (live.has(r.external_id) || closed.some((c) => c.externalId === r.external_id) || String(r.external_id).startsWith("open:")) continue;
+        const m = closed.find((c) => !taken.has(c.externalId) && c.symbol.toUpperCase() === r.symbol && c.direction === r.direction && Math.abs(c.entry - Number(r.entry)) / Number(r.entry) < 0.002);
+        if (!m) continue;
+        taken.add(m.externalId);
+        await admin.from("trades").update({ external_id: m.externalId }).eq("id", r.id);
+      }
+    }
     const { data: openRows } = await admin.from("trades").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").in("external_id", closed.map((c) => c.externalId)).limit(500);
     const wasOpen = new Set((openRows ?? []).map((r: { external_id: string }) => r.external_id));
     for (const p of closed.filter((c) => wasOpen.has(c.externalId))) {
@@ -112,7 +134,8 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
   let warning: string | undefined;
   let openCount: number | undefined;
   try {
-    const open = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
+    if (openError) throw openError;
+    const open = openList;
     openCount = open.length;
     const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...toOpenTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
     // Las provisorias («open:…») que ya no están abiertas se borran: al cerrarse se importó la operación real.
