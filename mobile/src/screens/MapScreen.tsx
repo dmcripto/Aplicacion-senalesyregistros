@@ -13,13 +13,14 @@ type Part = "chart" | "liq" | "agenda";
 /** Mercado: gráfico de análisis, mapa de liquidaciones y agenda económica. */
 export default function MapScreen({ userId, trades }: { userId: string; trades: Trade[] }) {
   const [part, setPart] = useState<Part>("chart");
+  const [chartTouch, setChartTouch] = useState(false); // dedo sobre el gráfico: la pantalla no se desplaza
   const parts: Array<{ k: Part; label: string }> = [
     { k: "chart", label: t("Gráfico") },
     { k: "liq", label: t("Liquidaciones") },
     { k: "agenda", label: t("Agenda") },
   ];
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+    <ScrollView scrollEnabled={!chartTouch} contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
       <ScreenHead icon="candles" tone="green" title={t("Mercado")} sub={t("Gráfico con indicadores, liquidaciones y agenda económica")} />
       <View style={st.seg}>
         {parts.map((p) => (
@@ -28,7 +29,7 @@ export default function MapScreen({ userId, trades }: { userId: string; trades: 
           </TouchableOpacity>
         ))}
       </View>
-      {part === "chart" && <ChartSection userId={userId} trades={trades} />}
+      {part === "chart" && <ChartSection userId={userId} trades={trades} onTouching={setChartTouch} />}
       {part === "liq" && <LiquidationMapView />}
       {part === "agenda" && <EconomySection />}
     </ScrollView>
