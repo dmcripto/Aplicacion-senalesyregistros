@@ -1124,6 +1124,59 @@ export function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number
   };
 }
 
+// ─── Posiciones abiertas (solo Bitunix, por ahora) ──────────────────────────
+
+export interface OpenPosition {
+  externalId: string; // el mismo que tendrá al cerrarse, así el diario la convierte en cerrada sin duplicar
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  qty: number;
+  entry: number;
+  openedAt: number; // ms
+  leverage?: number;
+}
+
+export function parseBitunixOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toUpperCase();
+    const direction = side === "LONG" || side === "BUY" ? "LONG" : side === "SHORT" || side === "SELL" ? "SHORT" : null;
+    const entry = num(r.avgOpenPrice ?? r.entryPrice ?? r.openPrice);
+    const qty = num(r.qty);
+    const openedAt = Number(r.ctime ?? Date.now());
+    if (!direction || !r.positionId || !r.symbol || !(entry > 0) || !(qty > 0) || !Number.isFinite(openedAt)) continue;
+    out.push({ externalId: `${r.symbol}:${r.positionId}`, symbol: String(r.symbol), direction, qty, entry, openedAt, leverage: lev(r.leverage) });
+  }
+  return out;
+}
+
+/** Posiciones abiertas ahora. Solo Bitunix; en los demás exchanges devuelve vacío (se importan al cerrarse). */
+export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch): Promise<OpenPosition[]> {
+  if (ex !== "bitunix") return [];
+  const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_pending_positions", {}, key, secret);
+  return parseBitunixOpen(Array.isArray(data) ? data : data?.positionList ?? []);
+}
+
+/** Fila del diario para una posición abierta: mismos niveles de referencia que las cerradas (stop = 1R de tu riesgo por operación, objetivo = 2R). */
+export function toOpenTradeRow(p: OpenPosition, exchange: ExchangeId, unit: number) {
+  const dir = p.direction === "LONG" ? 1 : -1;
+  const slDist = unit / p.qty;
+  return {
+    symbol: p.symbol.toUpperCase(),
+    direction: p.direction,
+    entry: round(p.entry),
+    tp: round(p.entry + dir * 2 * slDist),
+    sl: round(p.entry - dir * slDist),
+    date: new Date(p.openedAt).toISOString(),
+    outcome: "ABIERTA" as const,
+    notes: `${EXCHANGE_NAMES[exchange]} · posición abierta · cantidad ${round(p.qty)} · el stop y el objetivo son de referencia (1R y 2R de tu riesgo por operación), no los de la orden`,
+    source: exchange,
+    external_id: p.externalId,
+    leverage: p.leverage ?? null,
+    size_usd: p.qty > 0 && p.entry > 0 ? round(p.qty * p.entry) : null,
+  };
+}
+
 // ─── Cifrado de la clave secreta (AES-GCM) ──────────────────────────────────
 
 async function aesKey(master: string) {

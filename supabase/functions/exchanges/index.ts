@@ -12,7 +12,7 @@
 // Solo se hacen pedidos GET de lectura: nunca se opera ni se mueven fondos.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { EXCHANGES, NEEDS_PASSPHRASE, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, toTradeRow } from "../_shared/exchanges.ts";
+import { EXCHANGES, NEEDS_PASSPHRASE, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, fetchOpen, toOpenTradeRow, toTradeRow } from "../_shared/exchanges.ts";
 import type { ExchangeId } from "../_shared/exchanges.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -60,6 +60,18 @@ async function syncOne(conn: Connection, master: string, unit: number) {
   const since = conn.last_sync_at ? Math.max(new Date(conn.last_sync_at).getTime() - ONE_DAY, now - 30 * ONE_DAY) : now - 14 * ONE_DAY;
   const closed = await fetchClosed(conn.exchange, secret.api_key, apiSecret, since, now, undefined, passphrase);
 
+  // Las posiciones que se importaron como abiertas y ya cerraron se completan con el resultado real (sin duplicar).
+  try {
+    const { data: openRows } = await admin.from("trades").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").in("external_id", closed.map((c) => c.externalId)).limit(500);
+    const wasOpen = new Set((openRows ?? []).map((r: { external_id: string }) => r.external_id));
+    for (const p of closed.filter((c) => wasOpen.has(c.externalId))) {
+      const row = toTradeRow(p, conn.exchange, unit);
+      await admin.from("trades").update({ tp: row.tp, sl: row.sl, outcome: "MANUAL", exit: row.exit, closed_at: row.closed_at, notes: row.notes }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", p.externalId).eq("outcome", "ABIERTA");
+    }
+  } catch (e) {
+    console.error("cerrar abiertas:", e instanceof Error ? e.message : e);
+  }
+
   const { data: ignoredRows } = await admin.from("exchange_ignored").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange);
   const ignored = new Set((ignoredRows ?? []).map((r: { external_id: string }) => r.external_id));
   const seen = new Set<string>();
@@ -95,6 +107,18 @@ async function syncOne(conn: Connection, master: string, unit: number) {
     } catch (e) {
       console.error("completar apalancamiento:", e instanceof Error ? e.message : e);
     }
+  }
+  // Posiciones abiertas ahora (solo Bitunix): aparecen en el diario mientras siguen abiertas. Si falla, no afecta lo demás.
+  try {
+    const open = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
+    const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...toOpenTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
+    if (openRows.length) {
+      let { error } = await admin.from("trades").upsert(openRows, { onConflict: "user_id,source,external_id", ignoreDuplicates: true });
+      if (error && /leverage|size_usd/i.test(error.message)) ({ error } = await admin.from("trades").upsert(openRows.map(withoutManagement), { onConflict: "user_id,source,external_id", ignoreDuplicates: true }));
+      if (error) console.error("abiertas:", error.message);
+    }
+  } catch (e) {
+    console.error("abiertas:", e instanceof Error ? e.message : e);
   }
   return imported;
 }
