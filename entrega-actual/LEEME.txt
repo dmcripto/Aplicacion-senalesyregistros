@@ -1,0 +1,6 @@
+VELTRIX · archivos para pegar en Supabase (desde el celular)
+
+1) SQL-compartir-comunidad.txt  -> Supabase > SQL Editor: pegar todo y tocar Run.
+2) FUNCION-bot.txt              -> Supabase > Edge Functions > bot > Code: borrar todo, pegar todo y desplegar.
+
+En GitHub, abrí el archivo y tocá el icono de «Copy raw file» (dos cuadrados) arriba a la derecha: copia todo el texto de una vez.
