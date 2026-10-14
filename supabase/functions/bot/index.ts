@@ -18,8 +18,8 @@ import { cleanUnlock, unlockNote } from "../_shared/unlockFilter.ts";
 import type { UnlockEvent } from "../_shared/unlockFilter.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
-import { resultCardHtml, signalCardHtml } from "../_shared/community.ts";
-import { esc, notifyTelegram } from "../_shared/telegram.ts";
+import { publishToCommunities, resultCardHtml, signalCardHtml } from "../_shared/community.ts";
+import { botToken, esc, notifyTelegram } from "../_shared/telegram.ts";
 import type { Lang } from "../_shared/telegram.ts";
 import { MAX_PAUSE_MIN, activeNewsPause, pauseCfgOf, pauseLabel } from "../_shared/newsPause.ts";
 import type { NewsEvent } from "../_shared/newsPause.ts";
@@ -87,6 +87,36 @@ async function notifyOpened(userId: string, tradeId: string, t: { symbol: string
     await notifyTelegram(admin, userId, (l) => `${signalCardHtml(t, l, { header: "🤖", disclaimer: false })}\n\n<i>${esc(l === "en" ? `Simulated bot (${pn} profile): nothing was traded on any exchange.` : `Bot simulado (perfil ${pn}): no se operó en ningún exchange.`)}</i>`);
   } catch (e) {
     console.error("aviso bot:", e instanceof Error ? e.message : e);
+  }
+}
+
+/** ¿La persona pidió publicar las señales del bot en su comunidad? (columna opcional: sin ella, no.) */
+async function sharesCommunity(userId: string): Promise<boolean> {
+  const { data, error } = await admin.from("bot_settings").select("share_community").eq("user_id", userId).maybeSingle();
+  return !error && (data as { share_community?: boolean } | null)?.share_community === true;
+}
+
+/** Publica en la comunidad la señal que abrió el bot, marcada como automática y sin presentarla como recomendación. */
+async function shareOpened(userId: string, t: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }, profile: BotProfileId) {
+  try {
+    if (!(await sharesCommunity(userId))) return;
+    await publishToCommunities(admin, botToken(), userId, (l) => {
+      const pn = PROFILE_NAME[profile][l];
+      const note = l === "en" ? `Automatic signal from the VELTRIX bot (${pn} profile). Not a personal recommendation or investment advice.` : `Señal automática del bot de VELTRIX (perfil ${pn}). No es una recomendación personal ni un consejo de inversión.`;
+      return `${signalCardHtml(t, l, { header: l === "en" ? "🤖 Automatic bot signal" : "🤖 Señal automática del bot", disclaimer: true })}\n\n<i>${esc(note)}</i>`;
+    });
+  } catch (e) {
+    console.error("comunidad bot:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function shareClosed(userId: string, t: { symbol: string; entry: number; tp: number; sl: number }, outcome: "TP" | "SL") {
+  try {
+    if (!(await sharesCommunity(userId))) return;
+    const r = rOf(t, outcome);
+    await publishToCommunities(admin, botToken(), userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: l === "en" ? "Result (VELTRIX bot)" : "Resultado (bot de VELTRIX)" }));
+  } catch (e) {
+    console.error("comunidad bot:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -452,6 +482,7 @@ async function tick() {
     if (upd?.length) {
       closed++;
       await notifyClosed(t.user_id, t.id, t, hit.outcome);
+      await shareClosed(t.user_id, t, hit.outcome);
     }
   }
 
@@ -573,6 +604,7 @@ async function tick() {
       }
       await admin.from("bot_signals").update({ trade_id: trade.id }).eq("id", signal.id);
       await notifyOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl }, profile);
+      await shareOpened(s.user_id, { symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl }, profile);
       if (liveUsers.has(s.user_id)) await sendLiveOrder(s.user_id, trade.id);
       opened++;
       count++;
