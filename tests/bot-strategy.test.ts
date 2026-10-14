@@ -557,3 +557,20 @@ describe("costo de las pruebas con historial", () => {
     for (const v of m.LAB_VARIANTS) expect(v.params.feePct).toBe(m.ROUND_TRIP_COST_PCT);
   });
 });
+
+import { parseGateBars, parseOkxBars } from "../supabase/functions/_shared/botStrategy";
+describe("velas de OKX y Gate (cuando Binance y Bybit bloquean)", () => {
+  it("OKX: ordena de más vieja a más nueva", () => {
+    const bars = parseOkxBars([["2000", "2", "3", "1", "2.5", "10"], ["1000", "1", "2", "0.5", "1.5", "10"]]);
+    expect(bars.map((b) => b.t)).toEqual([1000, 2000]);
+    expect(bars[0]).toMatchObject({ o: 1, h: 2, l: 0.5, c: 1.5 });
+  });
+  it("Gate: pasa los segundos a milisegundos", () => {
+    const bars = parseGateBars([{ t: 1700000000, o: "1", h: "2", l: "0.5", c: "1.5" }]);
+    expect(bars[0]).toMatchObject({ t: 1700000000000, c: 1.5 });
+  });
+  it("descarta filas rotas", () => {
+    expect(parseOkxBars([["x", "1", "1", "1", "1"]])).toEqual([]);
+    expect(parseGateBars([])).toEqual([]);
+  });
+});
