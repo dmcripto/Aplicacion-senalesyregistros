@@ -183,6 +183,16 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           </label>
         )}
 
+        {s.shareSupported && (
+          <label className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3.5 py-3">
+            <span>
+              <span className="block text-[12.5px] font-bold text-snow">{t("Compartir las señales del bot en mi comunidad")}</span>
+              <span className="block text-[11px] leading-snug text-dim">{t("Publica cada señal que abre el bot, y su resultado, en la comunidad de Telegram que conectaste. Salen marcadas como «Señal automática del bot», con el aviso de que no es una recomendación. Con perfiles de mucha actividad pueden ser varias por día.")}</span>
+            </span>
+            <input type="checkbox" checked={s.shareCommunity} onChange={(e) => update({ shareCommunity: e.target.checked })} className="h-5 w-5 shrink-0 accent-[#2ec4f1]" />
+          </label>
+        )}
+
         <NewsPauseRow userId={userId} notify={notify} />
 
         <p className="rounded-md border border-gold/30 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-fog">

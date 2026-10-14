@@ -153,6 +153,16 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
         </View>
       )}
 
+      {s.shareSupported && (
+        <View style={st.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.name}>{t("Compartir las señales del bot en mi comunidad")}</Text>
+            <Text style={st.dim}>{t("Publica cada señal que abre el bot, y su resultado, en la comunidad de Telegram que conectaste. Salen marcadas como «Señal automática del bot», con el aviso de que no es una recomendación. Con perfiles de mucha actividad pueden ser varias por día.")}</Text>
+          </View>
+          <Switch value={s.shareCommunity} onValueChange={(v) => update({ shareCommunity: v })} trackColor={{ true: colors.bull + "88", false: colors.line }} thumbColor={s.shareCommunity ? colors.bull : colors.fog} />
+        </View>
+      )}
+
       <View style={st.notice}>
         <Text style={st.hint}>
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}

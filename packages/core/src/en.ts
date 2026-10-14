@@ -27,6 +27,8 @@ export const EN: Record<string, string> = {
   "Nivel del RSI": "RSI level",
   "Crear alerta": "Create alert",
   "Crear alerta de precio": "Create price alert",
+  "Compartir las señales del bot en mi comunidad": "Share the bot's signals in my community",
+  "Publica cada señal que abre el bot, y su resultado, en la comunidad de Telegram que conectaste. Salen marcadas como «Señal automática del bot», con el aviso de que no es una recomendación. Con perfiles de mucha actividad pueden ser varias por día.": "Publishes every signal the bot opens, and its result, in the Telegram community you connected. They are labelled \"Automatic bot signal\" with a notice that it is not a recommendation. With high-activity profiles there can be several per day.",
   "Sincronizado. Posiciones abiertas en el exchange: {n}. Las ves en el Diario como «abiertas».": "Synced. Open positions on the exchange: {n}. You'll see them in the Journal as \"open\".",
   "Arrastrá para mover el gráfico y pellizcá para acercar o alejar.": "Drag to move the chart and pinch to zoom.",
   "Máxima actividad": "Maximum activity",
