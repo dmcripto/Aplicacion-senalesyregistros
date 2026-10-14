@@ -9,6 +9,11 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
   // Alto en píxeles reales: el widget mide su caja al cargar y con alturas CSS relativas (vh/clamp) quedaba chico.
   const calc = () => (height === "full" ? window.innerHeight : Math.round(Math.min(height.max, Math.max(height.min, (window.innerHeight * height.vh) / 100))));
   const [px, setPx] = useState(calc);
+  const [shown, setShown] = useState(px); // alto con el que se arma el widget (se actualiza cuando el tamaño deja de cambiar)
+  useEffect(() => {
+    const id = window.setTimeout(() => setShown(px), 400);
+    return () => window.clearTimeout(id);
+  }, [px]);
   useEffect(() => {
     const on = () => setPx(calc());
     on();
@@ -33,7 +38,9 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
     script.type = "text/javascript";
     script.async = true;
     script.innerHTML = JSON.stringify({
-      autosize: true,
+      autosize: false,
+      width: "100%",
+      height: shown,
       symbol: tvSymbol,
       interval: TV_INTERVAL[tf] ?? "60",
       theme: "dark",
@@ -48,12 +55,9 @@ export default function TradingViewEmbed({ symbol, tf, height }: { symbol: strin
       backgroundColor: "#131722",
     });
     el.appendChild(script);
-    // El widget mide su caja al cargar y a veces lo hace antes de que la página termine de acomodarse (se veía chico hasta tocar «Normal/Grande»): se le avisa del tamaño real un par de veces.
-    const nudge = [400, 1200, 2800].map((ms) => window.setTimeout(() => window.dispatchEvent(new Event("resize")), ms));
     return () => {
-      nudge.forEach((id) => window.clearTimeout(id));
       el.innerHTML = "";
     };
-  }, [symbol, tf]);
-  return <div ref={box} className="tradingview-widget-container w-full" style={{ height: px, minHeight: 300 }} />;
+  }, [symbol, tf, shown]);
+  return <div ref={box} className="tradingview-widget-container w-full" style={{ height: shown, minHeight: 300 }} />;
 }
