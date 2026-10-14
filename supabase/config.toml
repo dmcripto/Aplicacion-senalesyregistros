@@ -48,3 +48,6 @@ verify_enabled = true
 
 [functions.trade]
 verify_jwt = false
+
+[functions.unlocks]
+verify_jwt = false
