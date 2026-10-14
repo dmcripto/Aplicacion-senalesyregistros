@@ -35,8 +35,10 @@ Deno.serve(async (req) => {
   const rows: UnlockRow[] = [];
   let calls = 0;
   let credit: unknown = null;
+  let end = isoDay(now, HORIZON_DAYS);
+  let retried = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const q = new URLSearchParams({ start: isoDay(now), end: isoDay(now, HORIZON_DAYS), minValueToMarketCap: String(MIN_VALUE_TO_MCAP), page: String(page), pageSize: String(PAGE_SIZE) });
+    const q = new URLSearchParams({ start: isoDay(now), end, minValueToMarketCap: String(MIN_VALUE_TO_MCAP), page: String(page), pageSize: String(PAGE_SIZE) });
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 15_000);
     let res: Response;
@@ -49,6 +51,14 @@ Deno.serve(async (req) => {
     }
     calls++;
     const body = await res.json().catch(() => null);
+    // La prueba gratuita solo deja pedir cierto rango de fechas («date must be within the allowed range: A to B»): se ajusta y se reintenta una vez.
+    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(body?.errorMessage ?? ""));
+    if (res.status === 422 && allowed && !retried && allowed[2] < end) {
+      retried = true;
+      end = allowed[2];
+      page--;
+      continue;
+    }
     if (!res.ok || !body || body.status === false) return json({ ok: false, error: `Tokenomist respondió ${res.status}`, detail: JSON.stringify(body ?? {}).slice(0, 300), calls }, 502);
     rows.push(...parseUpcomingUnlocks(body.data));
     credit = body.metadata?.credit ?? credit;
