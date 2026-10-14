@@ -420,6 +420,10 @@ async function logNewsSkip(userId: string, symbol: string, direction: "LONG" | "
   if (error) console.error("live_orders pausa:", error.message);
 }
 
+/** Precios con 6 cifras significativas: sin esto el stop y el objetivo salían con 15 decimales (0.19604256195697678). */
+const px = (x: number) => Number(x.toPrecision(6));
+const roundSig = <T extends { entry: number; sl: number; tp: number }>(s: T): T => ({ ...s, entry: px(s.entry), sl: px(s.sl), tp: px(s.tp) });
+
 const rOf = (t: { entry: number; sl: number; tp: number }, outcome: "TP" | "SL") => (outcome === "SL" ? -1 : Math.abs(t.tp - t.entry) / Math.abs(t.entry - t.sl));
 
 async function tick() {
@@ -566,11 +570,11 @@ async function tick() {
       if (!inds.has(key)) inds.set(key, indicators(done, params));
       if (unlockCfg.mode !== "off" && unlocks.length) {
         const f = signalWithUnlock(done, inds.get(key)!, i, params, symbol, done[i].t + barMs, unlocks, unlockCfg);
-        if (f && f.sig.t === done[i].t) found.push({ symbol, sig: f.sig, near: f.nearUnlock, boosted: f.boosted });
+        if (f && f.sig.t === done[i].t) found.push({ symbol, sig: roundSig(f.sig), near: f.nearUnlock, boosted: f.boosted });
         continue;
       }
       const sig = signalAt(done, inds.get(key)!, i, params);
-      if (sig && sig.t === done[i].t) found.push({ symbol, sig, near: false, boosted: false });
+      if (sig && sig.t === done[i].t) found.push({ symbol, sig: roundSig(sig), near: false, boosted: false });
     }
     found.sort((a, b) => Number(b.boosted) - Number(a.boosted) || b.sig.strength - a.sig.strength);
     for (const { symbol, sig, near, boosted } of found) {

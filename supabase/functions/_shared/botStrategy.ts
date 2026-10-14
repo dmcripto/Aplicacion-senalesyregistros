@@ -357,7 +357,7 @@ function dedupe(bars: Bar[]): Bar[] {
 
 const STABLES = new Set(["USDC", "FDUSD", "TUSD", "BUSD", "DAI", "USDP", "EUR", "USDE"]);
 // Binance también lista futuros de petróleo, oro, acciones y ETF. No son cripto: el escaneo los deja afuera.
-const NOT_CRYPTO = new Set(["CL", "BZ", "NG", "HG", "XAU", "XAG", "XPT", "XPD", "NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "SOXL", "SPCX", "SNDK", "QQQ", "SPY", "TQQQ", "SQQQ"]);
+const NOT_CRYPTO = new Set(["CL", "BZ", "NG", "HG", "XAU", "XAG", "XPT", "XPD", "NVDA", "TSLA", "AAPL", "MSFT", "GOOGL", "AMZN", "META", "SOXL", "SPCX", "SNDK", "QQQ", "SPY", "TQQQ", "SQQQ", "CRCL", "COIN", "HOOD", "PLTR", "NFLX", "AMD", "INTC", "MU", "BABA", "ORCL", "AVGO", "TSM", "MSTR", "BMNR", "SBET"]);
 const NON_CRYPTO_KIND = /tradfi|stock|equity|commodit|index|forex|fx|etf/i;
 const MIN_VOLUME_USDT = 30_000_000; // por debajo de este volumen diario el precio real se aleja mucho del que se ve
 
