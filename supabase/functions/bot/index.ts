@@ -270,12 +270,12 @@ async function runLabTest(userId: string, chosen: string[]) {
 const TEST_NOTE = "Señal de prueba de VELTRIX: no es una operación real.";
 
 async function livePrice(symbol: string): Promise<number | null> {
-  for (const url of [`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`]) {
+  for (const url of [`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`, `https://www.okx.com/api/v5/market/ticker?instId=${symbol.slice(0, -4)}-USDT-SWAP`]) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (!res.ok) continue;
-      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> } };
-      const p = Number(j.price ?? j.result?.list?.[0]?.lastPrice);
+      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> }; data?: Array<{ last?: string }> };
+      const p = Number(j.price ?? j.result?.list?.[0]?.lastPrice ?? j.data?.[0]?.last);
       if (Number.isFinite(p) && p > 0) return p;
     } catch {
       /* se prueba con el siguiente proveedor */

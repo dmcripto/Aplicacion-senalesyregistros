@@ -256,10 +256,10 @@ async function getJson(fetchFn: Fetch, url: string): Promise<unknown> {
   return res.json();
 }
 
-/** Velas de 1 hora (o de 4), de más viejas a más nuevas. Prueba Binance (futuros) y, si falla, Bybit. */
+/** Velas de 1 hora (o de 4), de más viejas a más nuevas. Prueba Binance (futuros) y, si falla (bloqueo regional), Bybit, OKX y Gate. */
 export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch, tf: BotTimeframe = "1h"): Promise<Bar[]> {
   const errors: string[] = [];
-  for (const provider of [binanceBars, bybitBars]) {
+  for (const provider of [binanceBars, bybitBars, okxBars, gateBars]) {
     try {
       const bars = await provider(symbol, count, fetchFn, tf);
       if (bars.length >= Math.min(count, 300)) return bars;
@@ -297,6 +297,52 @@ async function bybitBars(symbol: string, count: number, fetchFn: Fetch, tf: BotT
     const page = rows.map((r) => ({ t: Number(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) })).reverse();
     out.unshift(...page);
     end = page[0].t - 1;
+    if (rows.length < 1000) break;
+  }
+  return dedupe(out).slice(-count);
+}
+
+// OKX y Gate: se usan cuando Binance y Bybit bloquean el servidor (errores 451 y 403).
+
+/** Filas de velas de OKX (de la más nueva a la más vieja: [hora, apertura, máximo, mínimo, cierre, …]) → velas de más vieja a más nueva. */
+export function parseOkxBars(rows: string[][]): Bar[] {
+  return dedupe((rows ?? []).map((r) => ({ t: Number(r[0]), o: Number(r[1]), h: Number(r[2]), l: Number(r[3]), c: Number(r[4]) })).filter((b) => Number.isFinite(b.t) && Number.isFinite(b.c)));
+}
+
+/** Velas de Gate ([{t en segundos, o, h, l, c}]) → velas de más vieja a más nueva. */
+export function parseGateBars(rows: Array<{ t: number | string; o: string; h: string; l: string; c: string }>): Bar[] {
+  return dedupe((rows ?? []).map((r) => ({ t: Number(r.t) * 1000, o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c) })).filter((b) => Number.isFinite(b.t) && Number.isFinite(b.c)));
+}
+
+async function okxBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const inst = `${symbol.slice(0, -4)}-USDT-SWAP`;
+  const bar = tf === "4h" ? "4H" : tf === "15m" ? "15m" : "1H";
+  const out: Bar[] = [];
+  let after = "";
+  for (let page = 0; out.length < count && page < 40; page++) {
+    // La primera página trae hasta 300 velas recientes; las siguientes, de 100 en 100, hacia atrás en el tiempo.
+    const url = page === 0 ? `https://www.okx.com/api/v5/market/candles?instId=${inst}&bar=${bar}&limit=300` : `https://www.okx.com/api/v5/market/history-candles?instId=${inst}&bar=${bar}&limit=100&after=${after}`;
+    const j = (await getJson(fetchFn, url)) as { code?: string; data?: string[][] };
+    const rows = j.data ?? [];
+    if (!rows.length) break;
+    const bars = parseOkxBars(rows);
+    out.unshift(...bars);
+    after = String(bars[0].t);
+    if (rows.length < (page === 0 ? 300 : 100)) break;
+  }
+  return dedupe(out).slice(-count);
+}
+
+async function gateBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const contract = `${symbol.slice(0, -4)}_USDT`;
+  const out: Bar[] = [];
+  let to = Math.floor(Date.now() / 1000);
+  for (let page = 0; out.length < count && page < 10; page++) {
+    const rows = (await getJson(fetchFn, `https://api.gateio.ws/api/v4/futures/usdt/candlesticks?contract=${contract}&interval=${tf}&limit=1000&to=${to}`)) as Array<{ t: number; o: string; h: string; l: string; c: string }>;
+    if (!Array.isArray(rows) || !rows.length) break;
+    const bars = parseGateBars(rows);
+    out.unshift(...bars);
+    to = Math.floor(bars[0].t / 1000) - 1;
     if (rows.length < 1000) break;
   }
   return dedupe(out).slice(-count);
@@ -344,6 +390,24 @@ export async function fetchUniverse(n: number, fetchFn: Fetch = fetch): Promise<
   try {
     const j = (await getJson(fetchFn, "https://api.bybit.com/v5/market/tickers?category=linear")) as { result?: { list?: Array<{ symbol: string; turnover24h: string }> } };
     const list = pick((j.result?.list ?? []).map((r) => ({ symbol: r.symbol, vol: Number(r.turnover24h) })), null);
+    if (list.length >= Math.min(n, 3)) return list;
+    errors.push("pocos activos");
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  try {
+    const j = (await getJson(fetchFn, "https://www.okx.com/api/v5/market/tickers?instType=SWAP")) as { data?: Array<{ instId: string; last: string; volCcy24h: string }> };
+    // En OKX el volumen viene en la moneda base: se pasa a USDT con el último precio.
+    const rows = (j.data ?? []).filter((r) => /-USDT-SWAP$/.test(r.instId)).map((r) => ({ symbol: `${r.instId.replace("-USDT-SWAP", "")}USDT`, vol: Number(r.volCcy24h) * Number(r.last) }));
+    const list = pick(rows, null);
+    if (list.length >= Math.min(n, 3)) return list;
+    errors.push("pocos activos");
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  try {
+    const j = (await getJson(fetchFn, "https://api.gateio.ws/api/v4/futures/usdt/tickers")) as Array<{ contract: string; volume_24h_quote: string }>;
+    const list = pick((Array.isArray(j) ? j : []).filter((r) => /_USDT$/.test(r.contract)).map((r) => ({ symbol: r.contract.replace("_", ""), vol: Number(r.volume_24h_quote) })), null);
     if (list.length >= Math.min(n, 3)) return list;
     errors.push("pocos activos");
   } catch (e) {
