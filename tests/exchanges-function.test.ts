@@ -65,6 +65,20 @@ describe("función exchanges", () => {
     expect(db.tables.trades).toHaveLength(2);
   });
 
+  it("marca con «Bot real» solo lo que abrió el bot con dinero real (orden enviada del mismo par, lado y hora)", async () => {
+    db.tables.live_orders = [
+      { user_id: "u1", exchange: "bybit", kind: "bot", status: "sent", symbol: "BTCUSDT", side: "BUY", created_at: new Date(Date.now() - 36e5 - 120e3).toISOString() }, // la compra de BTC, 2 min antes
+      { user_id: "u1", exchange: "bybit", kind: "bot", status: "dry_run", symbol: "ETHUSDT", side: "SELL", created_at: new Date(Date.now() - 72e5).toISOString() }, // en seco: no cuenta
+    ];
+    await connect();
+    const btc = db.tables.trades.find((t) => t.symbol === "BTCUSDT")!;
+    const eth = db.tables.trades.find((t) => t.symbol === "ETHUSDT")!;
+    expect(btc.tags).toEqual(["Bot real"]);
+    expect(btc.notes).toContain("Bot real");
+    expect(eth.tags).toBeUndefined();
+    expect(eth.notes).not.toContain("Bot real");
+  });
+
   it("guarda el apalancamiento y el tamaño, y completa lo que ya estaba importado sin esos datos", async () => {
     vi.stubGlobal("fetch", async (url: any) => {
       const u = new URL(String(url));

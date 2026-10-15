@@ -49,6 +49,29 @@ async function unitOf(userId: string): Promise<number | null> {
 }
 
 /** Trae las operaciones cerradas del exchange y las guarda en el diario (sin duplicar). */
+const BOT_REAL_TAG = "Bot real";
+const BOT_REAL_WINDOW = 15 * 60_000;
+
+/**
+ * Qué posiciones abrió el bot con dinero real (y no vos a mano): coinciden con una orden «enviada» del bot en las «Últimas órdenes»
+ * (mismo exchange, par y lado, con la hora a menos de 15 minutos de la apertura). Sin la tabla, o sin órdenes, devuelve vacío.
+ */
+async function botRealIds(userId: string, exchange: string, list: Array<{ externalId: string; symbol: string; direction: string; openedAtMs: number }>): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (!list.length) return out;
+  try {
+    const { data } = await admin.from("live_orders").select("symbol, side, created_at").eq("user_id", userId).eq("exchange", exchange).eq("kind", "bot").eq("status", "sent").gte("created_at", new Date(Date.now() - 40 * 86_400_000).toISOString()).limit(500);
+    const orders = ((data ?? []) as Array<{ symbol: string; side: string; created_at: string }>).map((o) => ({ symbol: String(o.symbol).toUpperCase(), long: String(o.side).toUpperCase() === "BUY", at: new Date(o.created_at).getTime() }));
+    for (const p of list) {
+      const long = p.direction === "LONG";
+      if (orders.some((o) => o.symbol === p.symbol.toUpperCase() && o.long === long && Math.abs(o.at - p.openedAtMs) <= BOT_REAL_WINDOW)) out.add(p.externalId);
+    }
+  } catch {
+    /* sin la tabla: no se marca nada */
+  }
+  return out;
+}
+
 async function syncOne(conn: Connection, master: string, unit: number): Promise<{ imported: number; warning?: string; open?: number }> {
   const { data: secret } = await admin.from("exchange_secrets").select("api_key, secret_enc, passphrase_enc").eq("connection_id", conn.id).maybeSingle();
   if (!secret) throw new ExchangeError("Falta la clave de esta conexión. Desconectala y volvé a conectarla.");
@@ -69,6 +92,10 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
     openError = e;
   }
 
+  // Cuáles abrió el bot con dinero real: se marcan con la etiqueta «Bot real» (y se dice en la nota).
+  const botIds = await botRealIds(conn.user_id, conn.exchange, [...closed, ...openList].map((p) => ({ externalId: p.externalId, symbol: p.symbol, direction: p.direction, openedAtMs: Number(p.openedAt) })));
+  const botMark = <T extends { notes: string }>(r: T, id: string): T & { tags?: string[] } => (botIds.has(id) ? { ...r, notes: `🤖 ${BOT_REAL_TAG} · ${r.notes}`, tags: [BOT_REAL_TAG] } : r);
+
   // Las posiciones que se importaron como abiertas y ya cerraron se completan con el resultado real (sin duplicar).
   try {
     // Si el exchange cambió el id al cerrar, se reconoce la misma operación por par, lado y precio de entrada.
@@ -87,8 +114,8 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
     const { data: openRows } = await admin.from("trades").select("external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").in("external_id", closed.map((c) => c.externalId)).limit(500);
     const wasOpen = new Set((openRows ?? []).map((r: { external_id: string }) => r.external_id));
     for (const p of closed.filter((c) => wasOpen.has(c.externalId))) {
-      const row = toTradeRow(p, conn.exchange, unit);
-      await admin.from("trades").update({ tp: row.tp, sl: row.sl, outcome: "MANUAL", exit: row.exit, closed_at: row.closed_at, notes: row.notes }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", p.externalId).eq("outcome", "ABIERTA");
+      const row = botMark(toTradeRow(p, conn.exchange, unit), p.externalId);
+      await admin.from("trades").update({ tp: row.tp, sl: row.sl, outcome: "MANUAL", exit: row.exit, closed_at: row.closed_at, notes: row.notes, ...(row.tags ? { tags: row.tags } : {}) }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", p.externalId).eq("outcome", "ABIERTA");
     }
   } catch (e) {
     console.error("cerrar abiertas:", e instanceof Error ? e.message : e);
@@ -99,7 +126,7 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
   const seen = new Set<string>();
   const rows = closed
     .filter((p) => !ignored.has(p.externalId) && !seen.has(p.externalId) && !!seen.add(p.externalId))
-    .map((p) => ({ ...toTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
+    .map((p) => ({ ...botMark(toTradeRow(p, conn.exchange, unit), p.externalId), user_id: conn.user_id }));
 
   // Las columnas de apalancamiento y tamaño pueden no existir todavía (falta correr el SQL): entonces se importa igual, sin ellas.
   const withoutManagement = <T extends Record<string, unknown>>(r: T) => {
@@ -137,7 +164,7 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
     if (openError) throw openError;
     const open = openList;
     openCount = open.length;
-    const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...toOpenTradeRow(p, conn.exchange, unit), user_id: conn.user_id }));
+    const openRows = open.filter((p) => !ignored.has(p.externalId)).map((p) => ({ ...botMark(toOpenTradeRow(p, conn.exchange, unit), p.externalId), user_id: conn.user_id }));
     // Las provisorias («open:…») que ya no están abiertas se borran: al cerrarse se importó la operación real.
     if (conn.exchange !== "bitunix") {
       const { data: stale } = await admin.from("trades").select("id, external_id").eq("user_id", conn.user_id).eq("source", conn.exchange).eq("outcome", "ABIERTA").like("external_id", "open:%");
@@ -154,7 +181,7 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
       }
       // Si cambiaste el TP o el SL en el exchange, el diario se actualiza.
       for (const r of openRows) {
-        await admin.from("trades").update({ tp: r.tp, sl: r.sl, notes: r.notes }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", r.external_id).eq("outcome", "ABIERTA");
+        await admin.from("trades").update({ tp: r.tp, sl: r.sl, notes: r.notes, ...(r.tags ? { tags: r.tags } : {}) }).eq("user_id", conn.user_id).eq("source", conn.exchange).eq("external_id", r.external_id).eq("outcome", "ABIERTA");
       }
     }
   } catch (e) {
