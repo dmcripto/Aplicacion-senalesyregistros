@@ -20,6 +20,7 @@ import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shar
 import { sendExpoPush } from "../_shared/expoPush.ts";
 import { publishToCommunities, resultCardHtml, signalCardHtml } from "../_shared/community.ts";
 import { botToken, esc, notifyTelegram } from "../_shared/telegram.ts";
+import { resultCardImage, signalCardImage } from "../_shared/card.ts";
 import type { Lang } from "../_shared/telegram.ts";
 import { MAX_PAUSE_MIN, activeNewsPause, pauseCfgOf, pauseLabel } from "../_shared/newsPause.ts";
 import type { NewsEvent } from "../_shared/newsPause.ts";
@@ -100,11 +101,21 @@ async function sharesCommunity(userId: string): Promise<boolean> {
 async function shareOpened(userId: string, t: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }, profile: BotProfileId) {
   try {
     if (!(await sharesCommunity(userId))) return;
-    await publishToCommunities(admin, botToken(), userId, (l) => {
+    const noteOf = (l: Lang) => {
       const pn = PROFILE_NAME[profile][l];
-      const note = l === "en" ? `Automatic signal from the VELTRIX bot (${pn} profile). Not a personal recommendation or investment advice.` : `Señal automática del bot de VELTRIX (perfil ${pn}). No es una recomendación personal ni un consejo de inversión.`;
-      return `${signalCardHtml(t, l, { header: l === "en" ? "🤖 Automatic bot signal" : "🤖 Señal automática del bot", disclaimer: true })}\n\n<i>${esc(note)}</i>`;
-    });
+      return l === "en" ? `🤖 Automatic signal from the VELTRIX bot (${pn} profile). Not a personal recommendation or investment advice.` : `🤖 Señal automática del bot de VELTRIX (perfil ${pn}). No es una recomendación personal ni un consejo de inversión.`;
+    };
+    // Misma tarjeta con imagen que las demás señales de la comunidad; si la imagen falla, sale el texto.
+    await publishToCommunities(
+      admin,
+      botToken(),
+      userId,
+      (l) => `${signalCardHtml(t, l, { header: l === "en" ? "🤖 Automatic bot signal" : "🤖 Señal automática del bot", disclaimer: true })}\n\n<i>${esc(noteOf(l))}</i>`,
+      async (l) => {
+        const img = await signalCardImage(t, l);
+        return img ? { png: img.png, caption: `${img.caption}\n\n<i>${esc(noteOf(l))}</i>` } : null;
+      },
+    );
   } catch (e) {
     console.error("comunidad bot:", e instanceof Error ? e.message : e);
   }
@@ -114,7 +125,8 @@ async function shareClosed(userId: string, t: { symbol: string; entry: number; t
   try {
     if (!(await sharesCommunity(userId))) return;
     const r = rOf(t, outcome);
-    await publishToCommunities(admin, botToken(), userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: l === "en" ? "Result (VELTRIX bot)" : "Resultado (bot de VELTRIX)" }));
+    const label = (l: Lang) => (l === "en" ? "Result (VELTRIX bot)" : "Resultado (bot de VELTRIX)");
+    await publishToCommunities(admin, botToken(), userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: label(l) }), (l) => resultCardImage(t.symbol, outcome, r, l, {}));
   } catch (e) {
     console.error("comunidad bot:", e instanceof Error ? e.message : e);
   }
