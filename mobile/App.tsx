@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   PanResponder,
   Platform,
   SafeAreaView,
@@ -29,7 +30,7 @@ import MapScreen from "./src/screens/MapScreen";
 import { dailyStatus } from "@dmcripto/core";
 import { NO_MONEY, getLang } from "@dmcripto/core";
 import type { DailyLimits, MoneySettings, Trade } from "@dmcripto/core";
-import { fetchConnections, fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney, saveTimezone, syncExchanges } from "./src/tradesApi";
+import { fetchLimits, fetchMoney, saveLang, saveLimits, saveMoney, saveTimezone, syncExchanges } from "./src/tradesApi";
 import { MoneyContext, makeMoneyCtx } from "./src/money";
 import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
@@ -111,15 +112,21 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
     Promise.resolve(saveTimezone(userId)).catch(() => {});
   }, [userId]);
 
-  // Si hay un exchange conectado, se sincroniza solo al abrir la app (máximo una vez cada 5 minutos).
+  // Si hay un exchange conectado, se sincroniza solo: al abrir la app, al volver a ella y cada 3 minutos mientras está abierta (el servidor además lo hace cada ~10 minutos sin que la abras).
   useEffect(() => {
     if (!money.capital || !money.riskPct) return;
-    fetchConnections()
-      .then((cs) => {
-        const stale = cs.some((c) => !c.lastSyncAt || Date.now() - new Date(c.lastSyncAt).getTime() > 5 * 60_000);
-        if (stale) return syncExchanges();
-      })
-      .catch(() => {});
+    const run = () => {
+      syncExchanges().catch(() => {});
+    };
+    run();
+    const id = setInterval(run, 3 * 60_000);
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "active") run();
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
   }, [userId, money.capital, money.riskPct]);
 
   const persistMoney = async (m: MoneySettings) => {
