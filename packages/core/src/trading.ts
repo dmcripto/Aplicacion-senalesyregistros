@@ -1922,6 +1922,14 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
       return { name: tr("Velas de 4 horas · corredor con protección temprana"), blurb: tr("Como el corredor, pero el stop sube a la entrada cuando el precio recorre la mitad del camino al primer objetivo.") };
     case "h4-wide-runner":
       return { name: tr("Velas de 4 horas · objetivo amplio y corredor"), blurb: tr("Objetivo amplio: cobra la mitad en 3 veces lo arriesgado y deja correr el resto hasta 6.") };
+    case "h4-ext":
+      return { name: tr("Velas de 4 horas · sin entradas estiradas"), blurb: tr("Como el equilibrado, pero no entra si el precio ya se alejó más de 3 ATR de su media rápida (movimiento ya estirado).") };
+    case "h4-room":
+      return { name: tr("Velas de 4 horas · con espacio hasta el soporte"), blurb: tr("Como el equilibrado, pero no entra si hay un soporte (o resistencia) de las últimas 100 velas a menos de 1,5 ATR del lado del objetivo.") };
+    case "h4-filter":
+      return { name: tr("Velas de 4 horas · ambos filtros"), blurb: tr("Aplica a la vez el filtro de entrada estirada y el de espacio hasta el soporte.") };
+    case "h4-runner-filter":
+      return { name: tr("Velas de 4 horas · corredor con ambos filtros"), blurb: tr("El corredor (cobra la mitad en 2R, stop a la entrada, resto hasta 4R) con los dos filtros de entrada.") };
     case "m15-balanced":
       return { name: tr("Velas de 15 minutos · equilibrado"), blurb: tr("Más operaciones y más comisiones. Solo se miden los últimos 90 días: evidencia más débil.") };
     case "m15-wide":
