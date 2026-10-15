@@ -9,6 +9,7 @@ export * from "./mfa";
 export * from "./indicators";
 export * from "./alerts";
 export * from "./economy";
+export * from "./appUpdate";
 export * from "./drawings";
 export * from "./movingAverages";
 import { buildStrategy } from "./strategy";

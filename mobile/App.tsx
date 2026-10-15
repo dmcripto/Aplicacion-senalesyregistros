@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Animated,
   AppState,
+  Linking,
   PanResponder,
   Platform,
   SafeAreaView,
@@ -37,6 +38,8 @@ import { colors } from "./src/theme";
 import { LangProvider } from "./src/lang";
 import ErrorBoundary from "./src/ErrorBoundary";
 import { installGlobalErrorHandlers } from "./src/errorReport";
+import { checkAppUpdate } from "./src/appUpdate";
+import type { UpdateInfo } from "@dmcripto/core";
 
 installGlobalErrorHandlers();
 import { t } from "@dmcripto/core";
@@ -161,6 +164,23 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
     return () => sub.remove();
   }, [refresh]);
 
+  // Aviso de versión nueva: se mira al abrir y al volver a la app (como mucho cada 6 horas). Quien lo cierra no lo ve de nuevo hasta la próxima vez que abra la app.
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [updateClosed, setUpdateClosed] = useState(false);
+  useEffect(() => {
+    let last = 0;
+    const run = () => {
+      if (Date.now() - last < 6 * 3_600_000) return;
+      last = Date.now();
+      void checkAppUpdate().then((u) => setUpdate(u));
+    };
+    run();
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st === "active") run();
+    });
+    return () => sub.remove();
+  }, []);
+
   if (onboarding === null) return <View style={{ flex: 1 }} />;
   if (onboarding) return <OnboardingScreen userId={userId} onDone={finishOnboarding} />;
 
@@ -177,6 +197,20 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
           <Text style={styles.liveText}>{t("EN VIVO")}{open > 0 ? ` · ${open}` : ""}</Text>
         </View>
       </View>
+      {update && !updateClosed && (
+        <View style={styles.update}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.updateTitle}>{t("Hay una versión nueva: {v}", { v: update.version })}</Text>
+            {update.notes ? <Text style={styles.updateNote}>{update.notes}</Text> : null}
+          </View>
+          <TouchableOpacity onPress={() => void Linking.openURL(update.url)} style={styles.updateBtn}>
+            <Text style={styles.updateBtnText}>{t("Descargar")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setUpdateClosed(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={styles.updateX}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <Animated.View
         style={{ flex: 1, opacity: slide.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }), transform: [{ translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [28 * dirRef.current, 0] }) }] }}
         {...swipe.panHandlers}
@@ -275,6 +309,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
     backgroundColor: "rgba(10,14,20,0.6)",
   },
+  update: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: "rgba(46,196,241,0.12)", borderBottomWidth: 1, borderBottomColor: "rgba(46,196,241,0.35)" },
+  updateTitle: { color: colors.snow, fontSize: 13, fontWeight: "800" },
+  updateNote: { color: colors.fog, fontSize: 11, marginTop: 2 },
+  updateBtn: { backgroundColor: "#2ec4f1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  updateBtnText: { color: "#04121a", fontSize: 12, fontWeight: "900" },
+  updateX: { color: colors.fog, fontSize: 16, paddingHorizontal: 4 },
   brand: { color: colors.snow, fontSize: 20, fontWeight: "900", letterSpacing: 1.2, flex: 1 },
   live: {
     flexDirection: "row",
