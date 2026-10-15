@@ -172,3 +172,18 @@ describe("rango de apalancamiento (piso y tope)", () => {
     expect(planOrder(far, 85000, BTC, big(1, 20)).ok).toBe(true); // con el rango conservador sí entra
   });
 });
+
+describe("cuánto se tolera que el precio se haya movido desde la señal", () => {
+  const cfg: BxCfg = { risk_usdt: 100, max_margin_usdt: 100000, max_leverage: 50 };
+  it("con stop ancho (~4 %) se tolera hasta ~1 %: no se pierde la señal por unos minutos de demora", () => {
+    const s = sig({ entry: 100, sl: 96, tp: 105 });
+    expect(planOrder(s, 100.8, { ...BTC, minQty: 0.001 }, cfg).ok).toBe(true);
+    expect(planOrder(s, 101.2, { ...BTC, minQty: 0.001 }, cfg).ok).toBe(false);
+  });
+  it("con stop chico sigue valiendo el 0,5 %", () => {
+    const s = sig({ entry: 100, sl: 99.5, tp: 101 });
+    const r = planOrder(s, 100.7, { ...BTC, minQty: 0.001 }, cfg);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.reason).toContain("0,5 %");
+  });
+});

@@ -27,6 +27,8 @@ export const EN: Record<string, string> = {
   "Nivel del RSI": "RSI level",
   "Crear alerta": "Create alert",
   "Crear alerta de precio": "Create price alert",
+  "Posiciones abiertas a la vez": "Open positions at a time",
+  "Si hay 3 errores seguidos, el bot real se apaga solo. Con más de una posición abierta el riesgo posible se suma (riesgo por operación × cantidad), y la pérdida máxima por día sigue frenando al bot.": "After 3 errors in a row the live bot turns itself off. With more than one open position the possible risk adds up (risk per trade × count), and the daily max loss still stops the bot.",
   "Compartir las señales del bot en mi comunidad": "Share the bot's signals in my community",
   "Publica cada señal que abre el bot, y su resultado, en la comunidad de Telegram que conectaste. Salen marcadas como «Señal automática del bot», con el aviso de que no es una recomendación. Con perfiles de mucha actividad pueden ser varias por día.": "Publishes every signal the bot opens, and its result, in the Telegram community you connected. They are labelled \"Automatic bot signal\" with a notice that it is not a recommendation. With high-activity profiles there can be several per day.",
   "Sincronizado. Posiciones abiertas en el exchange: {n}. Las ves en el Diario como «abiertas».": "Synced. Open positions on the exchange: {n}. You'll see them in the Journal as \"open\".",

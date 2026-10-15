@@ -1779,7 +1779,7 @@ export interface LiveSettings {
   lastError: string | null;
 }
 
-export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 2, dailyLossUsdt: 2 } as const;
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2 } as const;
 
 /**
  * Rangos de apalancamiento sugeridos para el bot real, uno por perfil: se tocan y rellenan el piso y el tope (después se pueden ajustar a mano).

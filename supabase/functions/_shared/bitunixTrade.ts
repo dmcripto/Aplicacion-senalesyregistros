@@ -38,7 +38,9 @@ export interface BxSignal {
 
 export type BxPlan = { ok: true; qty: number; leverage: number; notional: number; margin: number; risk: number } | { ok: false; reason: string };
 
-const MOVED_MAX = 0.005; // si el precio ya se movió más de 0,5 % desde la señal, no se persigue
+const MOVED_MAX = 0.005; // si el precio ya se movió más de 0,5 % desde la señal, no se persigue (salvo stop ancho: ver MOVED_STOP_FRACTION)
+const MOVED_STOP_FRACTION = 0.25;
+const MOVED_CAP = 0.015;
 const floorTo = (n: number, decimals: number) => {
   const k = 10 ** decimals;
   return Math.floor(n * k + 1e-9) / k;
@@ -52,7 +54,10 @@ export function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg
   if (!(price > 0) || !(sig.entry > 0)) return { ok: false, reason: "Precio no válido." };
   if (![cfg.risk_usdt, cfg.max_margin_usdt, cfg.max_leverage, pair.minQty].every((v) => Number.isFinite(v) && v > 0)) return { ok: false, reason: "Faltan los topes de seguridad: no se opera." };
   const long = sig.direction === "LONG";
-  if (Math.abs(price - sig.entry) / sig.entry > MOVED_MAX) return { ok: false, reason: "El precio ya se movió más de 0,5 % desde la señal: no se persigue." };
+  // No se persigue una entrada tardía: hasta 0,5 % de movimiento, o hasta un cuarto de la distancia al stop si es mayor (tope 1,5 %), para que
+  // las señales con stop ancho no se pierdan por unos minutos de demora. El tamaño se calcula igual con el precio de ahora.
+  const movedMax = Math.min(MOVED_CAP, Math.max(MOVED_MAX, (Math.abs(sig.entry - sig.sl) / sig.entry) * MOVED_STOP_FRACTION));
+  if (Math.abs(price - sig.entry) / sig.entry > movedMax) return { ok: false, reason: `El precio ya se movió más de ${(movedMax * 100).toFixed(1).replace(".", ",")} % desde la señal: no se persigue.` };
   const dist = long ? price - sig.sl : sig.sl - price;
   const toTp = long ? sig.tp - price : price - sig.tp;
   if (!(dist > 0) || !(toTp > 0)) return { ok: false, reason: "El precio ya pasó el stop o el objetivo." };
