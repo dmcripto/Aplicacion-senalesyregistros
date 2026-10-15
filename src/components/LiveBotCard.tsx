@@ -209,6 +209,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
         maxLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).max,
         minLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).min,
         dailyLossUsdt: clampLive(limits.dailyLossUsdt, 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
+        maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(limits.maxOpen || 1))),
       },
       t("Topes guardados."),
     );
@@ -330,7 +331,17 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
                 <p className="text-[11px] leading-relaxed text-dim">{t("El bot usa el menor apalancamiento que entre en tu margen, pero nunca menos que el mínimo ni más que el máximo.")}</p>
                 {Math.max(limits.minLeverage, limits.maxLeverage) >= HIGH_LEVERAGE && <p className="text-[11px] leading-relaxed text-amber-300">⚠️ {t("Con {x}x o más, una variación chica del precio liquida la posición. El bot solo opera si el stop queda bien antes de la liquidación (a 40x, a menos de 1,5 % del precio); si no, omite la operación. El riesgo por operación sigue siendo el tope que fijaste.", { x: HIGH_LEVERAGE })}</p>}
               </div>
-              <p className="text-[11px] leading-relaxed text-dim">{t("Una sola posición abierta a la vez. Si hay 3 errores seguidos, el bot real se apaga solo.")}</p>
+              <div className="space-y-2 rounded-md border border-line/70 p-2.5">
+                <p className={label}>{t("Posiciones abiertas a la vez")}</p>
+                <div className="flex gap-2">
+                  {[1, 2, 3].map((n) => (
+                    <button key={n} type="button" onClick={() => setLimits({ ...limits, maxOpen: n })} className={cx("min-w-[44px] rounded-md border px-3 py-1.5 text-[13px] font-bold", limits.maxOpen === n ? "border-gold/60 bg-gold/15 text-gold" : "border-line text-snow hover:border-line2 hover:bg-white/5")}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[11px] leading-relaxed text-dim">{t("Si hay 3 errores seguidos, el bot real se apaga solo. Con más de una posición abierta el riesgo posible se suma (riesgo por operación × cantidad), y la pérdida máxima por día sigue frenando al bot.")}</p>
               <button onClick={saveLimits} disabled={busy != null} className="w-full rounded-md border border-line px-3 py-2 text-[12px] font-bold text-snow hover:border-line2 hover:bg-white/5 disabled:opacity-40">
                 {t("Guardar topes")}
               </button>

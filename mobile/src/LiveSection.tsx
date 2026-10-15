@@ -32,7 +32,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiSecret, setApiSecret] = useState("");
   const [apiPass, setApiPass] = useState("");
   const [openList, setOpenList] = useState(false);
-  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", daily: "0.5" });
+  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", daily: "0.5", open: "1" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
 
@@ -45,7 +45,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     try {
       const v = await fetchLive(userId);
       setView(v);
-      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), daily: String(v.live.dailyLossUsdt) });
+      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), daily: String(v.live.dailyLossUsdt), open: String(v.live.maxOpen) });
       setUnavailable(false);
     } catch {
       setUnavailable(true);
@@ -154,6 +154,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         maxLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).max,
         minLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).min,
         dailyLossUsdt: clampLive(Number(lim.daily.replace(",", ".")), 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
+        maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(Number(lim.open) || 1))),
       },
       t("Topes guardados."),
     );
@@ -265,7 +266,15 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
             </View>
             <Text style={s.hint}>{t("El bot usa el menor apalancamiento que entre en tu margen, pero nunca menos que el mínimo ni más que el máximo.")}</Text>
             {Math.max(Number(lim.minLev) || 0, Number(lim.lev) || 0) >= HIGH_LEVERAGE && <Text style={[s.hint, { color: colors.bear }]}>⚠️ {t("Con {x}x o más, una variación chica del precio liquida la posición. El bot solo opera si el stop queda bien antes de la liquidación (a 40x, a menos de 1,5 % del precio); si no, omite la operación. El riesgo por operación sigue siendo el tope que fijaste.", { x: HIGH_LEVERAGE })}</Text>}
-            <Text style={s.hint}>{t("Una sola posición abierta a la vez. Si hay 3 errores seguidos, el bot real se apaga solo.")}</Text>
+            <Text style={s.label}>{t("Posiciones abiertas a la vez")}</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {[1, 2, 3].map((n) => (
+                <TouchableOpacity key={n} style={[s.chip, Number(lim.open) === n && s.chipOn]} onPress={() => setLim({ ...lim, open: String(n) })}>
+                  <Text style={[s.chipText, Number(lim.open) === n && { color: colors.ink }]}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={s.hint}>{t("Si hay 3 errores seguidos, el bot real se apaga solo. Con más de una posición abierta el riesgo posible se suma (riesgo por operación × cantidad), y la pérdida máxima por día sigue frenando al bot.")}</Text>
             <TouchableOpacity style={[s.outline, busy != null && { opacity: 0.4 }]} disabled={busy != null} onPress={saveLimits}>
               <Text style={s.outlineText}>{t("Guardar topes")}</Text>
             </TouchableOpacity>
