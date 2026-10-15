@@ -299,7 +299,10 @@ async function getJson(fetchFn: Fetch, url: string): Promise<unknown> {
 /** Velas de 1 hora (o de 4), de más viejas a más nuevas. Prueba Binance (futuros) y, si falla (bloqueo regional), Bybit, OKX y Gate. */
 export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch, tf: BotTimeframe = "1h"): Promise<Bar[]> {
   const errors: string[] = [];
-  for (const provider of [binanceBars, bybitBars, okxBars, gateBars]) {
+  // Para las corridas en vivo (pocas velas) se prefieren las velas de Bitunix, el exchange donde opera el bot real: así los máximos y mínimos
+  // que activan un stop son los mismos que ve la cuenta real. Las pruebas largas (laboratorio, historial) siguen con el resto.
+  const providers = count <= BITUNIX_MAX_BARS ? [bitunixBars, binanceBars, bybitBars, okxBars, gateBars] : [binanceBars, bybitBars, okxBars, gateBars];
+  for (const provider of providers) {
     try {
       const bars = await provider(symbol, count, fetchFn, tf);
       if (bars.length >= Math.min(count, 300)) return bars;
@@ -309,6 +312,38 @@ export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = 
     }
   }
   throw new Error(`No se pudieron bajar las velas de ${symbol} (${errors.join(", ")})`);
+}
+
+/** Más velas que esto se piden a los otros exchanges (Bitunix trae 200 por página). */
+export const BITUNIX_MAX_BARS = 300;
+
+/** Velas de Bitunix ({open, high, low, close, time}, en cualquier orden) → velas de más vieja a más nueva; descarta filas inválidas. */
+export function parseBitunixBars(rows: Array<{ open?: unknown; high?: unknown; low?: unknown; close?: unknown; time?: unknown }>): Bar[] {
+  const out: Bar[] = [];
+  for (const r of rows ?? []) {
+    const b = { t: Number(r.time), o: Number(r.open), h: Number(r.high), l: Number(r.low), c: Number(r.close) };
+    if ([b.t, b.o, b.h, b.l, b.c].every(Number.isFinite) && b.t > 0 && b.o > 0 && b.c > 0 && b.h >= b.l) out.push(b);
+  }
+  return dedupe(out.sort((a, b) => a.t - b.t));
+}
+
+async function bitunixBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const names = tf === "4h" ? ["4h", "240m"] : tf === "15m" ? ["15m"] : ["1h", "60m"]; // la API acepta uno de los dos nombres; se prueba el siguiente si el primero no trae nada
+  for (const interval of names) {
+    const out: Bar[] = [];
+    let end = Date.now();
+    for (let page = 0; out.length < count && page < 4; page++) {
+      const j = (await getJson(fetchFn, `https://fapi.bitunix.com/api/v1/futures/market/kline?symbol=${symbol}&interval=${interval}&limit=200&endTime=${end}`)) as { code?: number | string; data?: Array<Record<string, unknown>> };
+      if (j.code != null && Number(j.code) !== 0) break;
+      const bars = parseBitunixBars(j.data ?? []);
+      if (!bars.length || (out.length && bars[0].t >= out[0].t)) break; // nada nuevo: la API no pagina
+      out.unshift(...bars);
+      end = bars[0].t - 1;
+    }
+    const bars = dedupe(out).slice(-count);
+    if (bars.length) return bars;
+  }
+  throw new Error("Bitunix sin velas");
 }
 
 async function binanceBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
