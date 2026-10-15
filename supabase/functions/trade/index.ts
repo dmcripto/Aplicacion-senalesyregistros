@@ -20,6 +20,7 @@ import { isLiveExchange, liveEx, LIVE_EXCHANGES, LIVE_NEEDS_PASS } from "../_sha
 import { LV_PASS_SEP } from "../_shared/liveMore.ts";
 import type { LiveExchangeId } from "../_shared/liveExchange.ts";
 import { sendExpoPush } from "../_shared/expoPush.ts";
+import { esc, notifyTelegram } from "../_shared/telegram.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -159,6 +160,25 @@ async function recordFailure(userId: string, live: Live, message: string) {
   await pushTo(userId, off ? "⛔ Bot real apagado" : "⚠️ Orden real con problemas", off ? `Se apagó solo tras ${MAX_ERRORS} errores seguidos: ${message}` : message);
 }
 
+/**
+ * Avisa (push y Telegram, solo a la propia persona) que una señal del bot no se pudo operar porque su exchange no la tiene: así no se pierde de vista
+ * una buena señal que quedó solo como simulada. Respeta el interruptor de avisos del bot; un fallo acá nunca afecta a la orden.
+ */
+async function notifyUnavailable(userId: string, symbol: string, exchange: string) {
+  try {
+    const { data: cfg } = await admin.from("bot_settings").select("notify").eq("user_id", userId).maybeSingle();
+    if ((cfg as { notify?: boolean } | null)?.notify === false) return;
+    const { data: prof } = await admin.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const en = (prof as { lang?: string } | null)?.lang === "en";
+    const title = en ? `⚠️ ${symbol}: not traded` : `⚠️ ${symbol}: no se operó`;
+    const body = en ? `The bot spotted ${symbol}, but ${exchange} doesn't offer it (or its rules couldn't be read), so it stays as a simulated signal only.` : `El bot detectó ${symbol}, pero ${exchange} no la tiene disponible (o no se pudieron leer sus reglas): quedó solo como señal simulada.`;
+    await pushTo(userId, title, body);
+    await notifyTelegram(admin, userId, (l) => `<b>${esc(l === "en" ? `⚠️ ${symbol}: not traded` : `⚠️ ${symbol}: no se operó`)}</b>\n${esc(l === "en" ? `The bot spotted ${symbol}, but ${exchange} doesn't offer it (or its rules couldn't be read), so it stays as a simulated signal only.` : `El bot detectó ${symbol}, pero ${exchange} no la tiene disponible (o no se pudieron leer sus reglas): quedó solo como señal simulada.`)}`);
+  } catch {
+    /* el aviso es un extra */
+  }
+}
+
 // ─── Orden del bot (la llama la función del bot con el secreto compartido) ───
 
 async function execute(userId: string, tradeId: string) {
@@ -187,7 +207,11 @@ async function execute(userId: string, tradeId: string) {
   const price = await livePrice(sig.symbol);
   if (price == null) return skip("No se pudo leer el precio actual.");
   const pair = await ex.pair(fetch, creds.key, creds.secret, sig.symbol);
-  if (!pair) return skip(`${sig.symbol} no está disponible en ${ex.name} o no se pudieron leer sus reglas: no se opera.`);
+  if (!pair) {
+    const r = await skip(`${sig.symbol} no está disponible en ${ex.name} o no se pudieron leer sus reglas: no se opera.`);
+    await notifyUnavailable(userId, sig.symbol, ex.name);
+    return r;
+  }
   const plan = planOrder(sig, price, pair, cfgOf(live));
   if (!plan.ok) return skip(plan.reason);
 
