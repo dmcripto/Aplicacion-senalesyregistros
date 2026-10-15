@@ -760,34 +760,83 @@ describe("función bot · perfil lento (velas de 4 horas)", () => {
     expect(new Date(t.closed_at).getTime() - rows[rows.length - 2][0]).toBe(FOUR); // cierra al final de esa vela de 4 horas
   });
 
-  describe("prueba paralela «corredor»", () => {
-    it("abre su operación aparte (tag Corredor, TP1 en targets, TP final a 4R) sin tocar la del perfil elegido", async () => {
+  describe("prueba paralela «entradas filtradas» y operaciones «corredor» que quedaron", () => {
+    /** Velas de 4 h suaves; la última cerrada rompe apenas el máximo (entrada cercana a la media: pasa el filtro). */
+    function gentle(): number[][] {
+      const rows: number[][] = [];
+      const start = hour(FOUR) - 284 * FOUR;
+      let p = 100;
+      for (let i = 0; i < 284; i++) {
+        const c = 100 + i * 0.03 + Math.sin(i / 3) * 0.4;
+        rows.push([start + i * FOUR, p, Math.max(p, c) + 0.2, Math.min(p, c) - 0.2, c]);
+        p = c;
+      }
+      const last = rows.length - 1;
+      const hi = Math.max(...rows.slice(last - 20, last).map((r) => r[2]));
+      const c = hi + 0.15;
+      rows[last] = [rows[last][0], rows[last - 1][4], c + 0.05, rows[last - 1][4] - 0.1, c];
+      rows.push([hour(FOUR), c, c + 0.1, c - 0.1, c]); // vela en curso
+      return rows;
+    }
+
+    it("abre su operación aparte (tag «Filtro 4h», stop y objetivo comunes) sin tocar la del perfil elegido", async () => {
+      klines4h = gentle();
+      klines = series(285, true);
       enable({ profile: "balanced", runner_test: true });
       const r = await tick();
       expect(r.body.opened).toBe(2);
-      const normal = db.tables.trades.find((x) => !x.tags.includes("Corredor"))!;
-      const run = db.tables.trades.find((x) => x.tags.includes("Corredor"))!;
+      const normal = db.tables.trades.find((x) => !x.tags.includes("Filtro 4h"))!;
+      const par = db.tables.trades.find((x) => x.tags.includes("Filtro 4h"))!;
       expect(normal.external_id.endsWith(":4h")).toBe(false);
-      expect(run.external_id.endsWith(":4h:run")).toBe(true);
-      expect(run.source).toBe("bot");
-      const risk = run.entry - run.sl;
-      expect(run.targets).toHaveLength(1);
-      expect(run.targets[0]).toBeCloseTo(run.entry + 2 * risk, 1);
-      expect(run.tp).toBeCloseTo(run.entry + 4 * risk, 1);
-      expect(run.notes).toContain("corredor");
+      expect(par.external_id.endsWith(":4h:par")).toBe(true);
+      expect(par.source).toBe("bot");
+      expect(par.direction).toBe("LONG");
+      expect(par.tp - par.entry).toBeCloseTo(2 * (par.entry - par.sl), 1);
+      expect(par.notes).toContain("filtro");
+    });
+
+    it("el filtro descarta una entrada muy estirada: el perfil elegido entra, la prueba paralela no", async () => {
+      // series(…, true) rompe con una vela enorme respecto del ATR
+      enable({ profile: "balanced", runner_test: true });
+      const r = await tick();
+      expect(r.body.opened).toBe(1);
+      expect(db.tables.trades.some((x) => x.tags.includes("Filtro 4h"))).toBe(false);
     });
 
     it("no se duplica en la corrida siguiente y no cuenta contra los lugares del perfil elegido", async () => {
+      klines4h = gentle();
       enable({ profile: "balanced", runner_test: true, max_open: 1 });
       await tick();
       await tick();
       expect(db.tables.trades).toHaveLength(2); // una de cada una, aunque el tope sea 1
     });
 
-    it("apagada no hace nada", async () => {
-      enable({ profile: "balanced" });
+    const parTrade = (rows: number[][]) => {
+      const signalT = rows[rows.length - 6][0];
+      const entry = rows[rows.length - 6][4];
+      db.tables.trades.push({ id: "p1", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 2, tags: ["Bot simulado", "Filtro 4h"], external_id: `BTCUSDT:${signalT}:4h:par` });
+      return entry;
+    };
+
+    it("cierra la operación de la prueba paralela en TP con las velas de 4 horas", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = parTrade(rows);
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry, entry + 2.3, entry - 0.2, entry + 2.1];
+      klines4h = rows;
+      enable({ runner_test: false });
+      const r = await tick();
+      expect(r.body.closed).toBe(1);
+      expect(db.tables.trades.find((x) => x.id === "p1")).toMatchObject({ outcome: "TP", auto_closed: true });
+    });
+
+    it("y en SL si toca el stop", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = parTrade(rows);
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry, entry + 0.4, entry - 1.4, entry - 1.1];
+      klines4h = rows;
+      enable({ runner_test: false });
       await tick();
-      expect(db.tables.trades.some((x) => x.tags.includes("Corredor"))).toBe(false);
+      expect(db.tables.trades.find((x) => x.id === "p1")).toMatchObject({ outcome: "SL" });
     });
 
     const runTrade = (rows: number[][]) => {
