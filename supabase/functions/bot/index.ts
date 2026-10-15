@@ -13,7 +13,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate, stepRunner, RUNNER_PARAMS } from "../_shared/botStrategy.ts";
 import { cleanUnlock, unlockNote } from "../_shared/unlockFilter.ts";
 import type { UnlockEvent } from "../_shared/unlockFilter.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
@@ -44,6 +44,10 @@ const TICK_BARS = MAX_WARMUP + 80; // lo justo para calcular los indicadores de 
 const PROFILE_LABEL: Record<BotProfileId, string> = { conservative: "perfil conservador", dynamic: "perfil dinámico", intense: "perfil intensivo, más operaciones", balanced: "perfil equilibrado", slow: "perfil lento, velas de 4 horas", slowwide: "perfil lento con objetivo amplio, velas de 4 horas", max: "perfil de máxima actividad, todas las señales posibles" };
 const noteFor = (id: BotProfileId) => `🤖 Bot simulado (${PROFILE_LABEL[id]}) · ${describeParams(BOT_PROFILES[id])}. No se operó en ningún exchange.`;
 const TAG = "Bot simulado";
+/** Prueba paralela «corredor»: operaciones simuladas aparte del perfil elegido (que sigue siendo el del bot real). Nunca llegan al bot real ni a la comunidad. */
+const RUN_TAG = "Corredor";
+const isRunner = (t: { tags?: unknown }) => Array.isArray(t.tags) && (t.tags as unknown[]).includes(RUN_TAG);
+const RUN_NOTE = "🏃 Bot simulado · prueba paralela «corredor» (velas de 4 horas): cobra la mitad en 2R, sube el stop a la entrada y deja correr el resto hasta 4R. No se operó en ningún exchange.";
 
 // ─── Avisos personales ──────────────────────────────────────────────────────
 // Push en la app y mensaje por Telegram al chat vinculado de la propia persona. Nunca se publica en comunidades:
@@ -143,6 +147,42 @@ async function notifyClosed(userId: string, tradeId: string, t: { symbol: string
     await notifyTelegram(admin, userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: l === "en" ? "Result (simulated bot)" : "Resultado (bot simulado)" }));
   } catch (e) {
     console.error("aviso bot:", e instanceof Error ? e.message : e);
+  }
+}
+
+
+// Avisos de la prueba paralela «corredor» (solo a la propia persona).
+async function notifyRunnerOpened(userId: string, tradeId: string, t: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp1: number; tp2: number; sl: number }) {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const en = (await langOf(userId)) === "en";
+    const side = t.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA";
+    await push(userId, `🏃 ${t.symbol} · ${side} (${en ? "runner test" : "prueba corredor"})`, `${en ? "Entry" : "Entrada"} ${t.entry} · TP1 ${t.tp1} · TP2 ${t.tp2} · SL ${t.sl}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => `${signalCardHtml({ symbol: t.symbol, direction: t.direction, entry: t.entry, tp: t.tp2, sl: t.sl }, l, { header: "🏃", disclaimer: false })}\n\n<i>${esc(l === "en" ? `Runner test (simulated): take half at TP1 ${t.tp1}, then move the stop to entry and let the rest run to TP2. Nothing was traded.` : `Prueba corredor (simulada): cobra la mitad en TP1 ${t.tp1}, sube el stop a la entrada y deja correr el resto hasta TP2. No se operó nada.`)}</i>`);
+  } catch (e) {
+    console.error("aviso corredor:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function notifyRunnerBe(userId: string, tradeId: string, symbol: string) {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const en = (await langOf(userId)) === "en";
+    await push(userId, `🏃 ${symbol} · ${en ? "TP1 reached" : "TP1 alcanzado"}`, en ? "Half taken, stop moved to entry. The rest keeps running." : "Mitad cobrada y stop en la entrada. El resto sigue corriendo.", tradeId);
+  } catch (e) {
+    console.error("aviso corredor:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function notifyRunnerClosed(userId: string, tradeId: string, symbol: string, r: number) {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const en = (await langOf(userId)) === "en";
+    const rs = `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(1)}R`;
+    await push(userId, `🏃 ${symbol} · ${en ? "runner closed" : "corredor cerrado"}`, `${en ? "Result" : "Resultado"}: ${rs}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => resultCardHtml(symbol, r > 0 ? "TP" : "SL", r, l, { label: l === "en" ? "Result (runner test)" : "Resultado (prueba corredor)" }));
+  } catch (e) {
+    console.error("aviso corredor:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -365,9 +405,13 @@ interface Settings {
   unlock_mode?: unknown;
   unlock_window_days?: unknown;
   unlock_min_pct?: unknown;
+  runner_test?: unknown;
 }
 
 interface OpenBotTrade {
+  tags?: string[] | null;
+  targets?: number[] | null;
+  targets_hit?: number | null;
   id: string;
   user_id: string;
   symbol: string;
@@ -443,8 +487,10 @@ async function tick() {
   const { data: rows } = await admin.from("bot_settings").select("*").eq("enabled", true).order("last_tick_at", { ascending: true, nullsFirst: true }).limit(MAX_USERS);
   const settings = (rows ?? []) as Settings[];
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
-  const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp, external_id").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
-  const open = (openRows ?? []) as OpenBotTrade[];
+  const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp, external_id, tags, targets, targets_hit").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
+  const allOpen = (openRows ?? []) as OpenBotTrade[];
+  const open = allOpen.filter((t) => !isRunner(t));
+  const openRun = allOpen.filter((t) => isRunner(t)); // las de la prueba paralela «corredor»: se siguen aparte
   // Quien escanea el mercado mira además los futuros más operados (la lista es la misma para todos y se baja una vez).
   const failed: string[] = [];
   const scanMax = Math.max(0, ...settings.map((s) => scanSizeOf(s.scan_top)));
@@ -461,6 +507,8 @@ async function tick() {
   const need = new Set<string>();
   for (const s of settings) for (const sym of watchOf(s)) need.add(`${sym}|${tfOfSettings(s)}`);
   for (const t of open) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|${tfOfTrade(t)}`);
+  for (const s of settings) if (s.runner_test === true) for (const sym of watchOf(s)) need.add(`${sym}|4h`);
+  for (const t of openRun) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|4h`);
   if (!need.size) return { ok: true, users: 0, opened: 0, closed: 0 };
 
   const bars = new Map<string, Bar[]>(); // clave: «ACTIVO|1h» o «ACTIVO|4h»
@@ -499,6 +547,48 @@ async function tick() {
       closed++;
       await notifyClosed(t.user_id, t.id, t, hit.outcome);
       await shareClosed(t.user_id, t, hit.outcome);
+    }
+  }
+
+  // 1b) Prueba paralela «corredor»: se repasan las velas desde la entrada (siempre da lo mismo) y se cierra lo que corresponda.
+  const RUN_BAR = barMsOf({ tf: "4h" });
+  for (const t of openRun) {
+    const b0 = bars.get(`${t.symbol}|4h`);
+    const candle = Number(String(t.external_id ?? "").split(":")[1]);
+    const tp1 = Number(t.targets?.[0]);
+    if (!b0 || !Number.isFinite(candle) || !Number.isFinite(tp1)) continue;
+    const b = closedBars(b0, Date.now(), RUN_BAR);
+    const from = b.findIndex((x) => x.t >= candle + RUN_BAR);
+    if (from < 0) continue;
+    const o = { sig: { direction: t.direction, entry: t.entry, sl: t.sl, tp: tp1, t: candle, strength: 0 }, openedAt: 0 } as Parameters<typeof stepRunner>[0];
+    let res: ReturnType<typeof stepRunner> = null;
+    let at = -1;
+    for (let j = from; j < b.length && !res; j++) {
+      res = stepRunner(o, b[j], RUNNER_PARAMS.runner!, RUNNER_PARAMS.rr);
+      at = j;
+    }
+    if (!res) {
+      if (o.stage === "be" && (t.targets_hit ?? 0) < 1) {
+        const { data: upd } = await admin.from("trades").update({ targets_hit: 1 }).eq("id", t.id).eq("outcome", "ABIERTA").select("id");
+        if (upd?.length) await notifyRunnerBe(t.user_id, t.id, t.symbol);
+      }
+      continue;
+    }
+    const dir = t.direction === "LONG" ? 1 : -1;
+    const risk = Math.abs(t.entry - t.sl);
+    // Resultado mezclado (parte cobrada en el primer objetivo + el resto): se guarda como salida a un precio que da ese mismo R en el diario.
+    const patch = res.outcome === "SL"
+      ? { outcome: "SL" }
+      : { outcome: "MANUAL", exit: px(t.entry + dir * risk * res.r) };
+    const { data: upd } = await admin
+      .from("trades")
+      .update({ ...patch, targets_hit: 1, closed_at: new Date(b[at].t + RUN_BAR).toISOString(), auto_closed: true })
+      .eq("id", t.id)
+      .eq("outcome", "ABIERTA")
+      .select("id");
+    if (upd?.length) {
+      closed++;
+      await notifyRunnerClosed(t.user_id, t.id, t.symbol, res.r);
     }
   }
 
@@ -543,10 +633,10 @@ async function tick() {
     const tf = tfOfSettings(s);
     const barMs = barMsOf({ tf });
     const rules: BotAction[] = cleanActions(s.rules);
-    const { data: openNow } = await admin.from("trades").select("symbol").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
-    const openSymbols = new Set((openNow ?? []).map((r: { symbol: string }) => r.symbol));
-    const { data: recent } = await admin.from("trades").select("entry, sl, tp, outcome").eq("user_id", s.user_id).eq("source", "bot").neq("outcome", "ABIERTA").gte("closed_at", since);
-    const lossToday = (recent ?? []).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
+    const { data: openNow } = await admin.from("trades").select("symbol, tags").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
+    const openSymbols = new Set((openNow ?? []).filter((r: { tags?: unknown }) => !isRunner(r)).map((r: { symbol: string }) => r.symbol));
+    const { data: recent } = await admin.from("trades").select("entry, sl, tp, outcome, tags").eq("user_id", s.user_id).eq("source", "bot").neq("outcome", "ABIERTA").gte("closed_at", since);
+    const lossToday = (recent ?? []).filter((r: { tags?: unknown }) => !isRunner(r)).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
     await admin.from("bot_settings").update({ last_tick_at: new Date().toISOString() }).eq("user_id", s.user_id);
     const pause = activeNewsPause(newsEvents, pauseCfgOf(pauseRows.get(s.user_id)), nowMs);
     await markNewsPause(s.user_id, pause, pauseRows.get(s.user_id)?.paused_until ?? null);
@@ -555,11 +645,12 @@ async function tick() {
     const maxPerDay = capOf(rules, "maxPerDay");
     const stopAfter = capOf(rules, "stopAfterLosses");
     const { data: today } = maxPerDay != null || stopAfter != null
-      ? await admin.from("trades").select("outcome, closed_at, date").eq("user_id", s.user_id).eq("source", "bot").gte("date", since).order("date", { ascending: false })
-      : { data: [] as Array<{ outcome: string; closed_at: string | null; date: string }> };
-    let openedToday = (today ?? []).length;
+      ? await admin.from("trades").select("outcome, closed_at, date, tags").eq("user_id", s.user_id).eq("source", "bot").gte("date", since).order("date", { ascending: false })
+      : { data: [] as Array<{ outcome: string; closed_at: string | null; date: string; tags?: unknown }> };
+    const todayMine = (today ?? []).filter((r: { tags?: unknown }) => !isRunner(r));
+    let openedToday = todayMine.length;
     if (stopAfter != null) {
-      const closedRows = (today ?? []).filter((r: { outcome: string }) => r.outcome !== "ABIERTA").sort((a: { closed_at: string | null }, b: { closed_at: string | null }) => String(b.closed_at).localeCompare(String(a.closed_at)));
+      const closedRows = todayMine.filter((r: { outcome: string }) => r.outcome !== "ABIERTA").sort((a: { closed_at: string | null }, b: { closed_at: string | null }) => String(b.closed_at).localeCompare(String(a.closed_at)));
       let streak = 0;
       for (const r of closedRows) {
         if (r.outcome !== "SL") break;
@@ -625,6 +716,52 @@ async function tick() {
       opened++;
       count++;
       openedToday++;
+    }
+  }
+  // 3) Prueba paralela «corredor» (opcional, solo simulada): entra por su cuenta, sin tocar el perfil elegido ni el bot real.
+  const runInds = new Map<string, Indicators>();
+  for (const s of settings) {
+    if (s.runner_test !== true) continue;
+    if (Date.now() - t0 > BUDGET_MS) break;
+    if (activeNewsPause(newsEvents, pauseCfgOf(pauseRows.get(s.user_id)), nowMs)) continue;
+    const { data: mine } = await admin.from("trades").select("symbol, tags").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
+    const openSym = new Set((mine ?? []).filter((r: { tags?: unknown }) => isRunner(r)).map((r: { symbol: string }) => r.symbol));
+    let count = openSym.size;
+    const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
+    for (const symbol of watchOf(s)) {
+      if (openSym.has(symbol)) continue;
+      const b = bars.get(`${symbol}|4h`);
+      if (!b) continue;
+      const done = closedBars(b, Date.now(), RUN_BAR);
+      const i = done.length - 1;
+      if (i < 0) continue;
+      const key = `${symbol}:runner`;
+      if (!runInds.has(key)) runInds.set(key, indicators(done, RUNNER_PARAMS));
+      const sig = signalAt(done, runInds.get(key)!, i, RUNNER_PARAMS);
+      if (sig && sig.t === done[i].t) found.push({ symbol, sig: roundSig(sig) });
+    }
+    found.sort((a, b) => b.sig.strength - a.sig.strength);
+    for (const { symbol, sig } of found) {
+      if (count >= s.max_open) break;
+      if (Date.now() - (sig.t + RUN_BAR) > 2 * BAR_MS) continue; // señal vieja: no se persigue
+      const externalId = `${symbol}:${sig.t}:4h:run`;
+      const { data: already } = await admin.from("trades").select("id").eq("user_id", s.user_id).eq("external_id", externalId).maybeSingle();
+      if (already) continue;
+      const dir = sig.direction === "LONG" ? 1 : -1;
+      const risk = Math.abs(sig.entry - sig.sl);
+      const tp2 = px(sig.entry + dir * risk * RUNNER_PARAMS.runner!.tp2);
+      const { data: trade, error: trErr } = await admin
+        .from("trades")
+        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: tp2, targets: [sig.tp], source: "bot", external_id: externalId, notes: RUN_NOTE, tags: [TAG, RUN_TAG] })
+        .select("id")
+        .single();
+      if (trErr || !trade) {
+        console.error("bot corredor:", trErr?.message);
+        continue;
+      }
+      await notifyRunnerOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp1: sig.tp, tp2, sl: sig.sl });
+      opened++;
+      count++;
     }
   }
   return { ok: true, users: settings.length, opened, closed, failed, deferred };

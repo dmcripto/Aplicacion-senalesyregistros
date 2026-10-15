@@ -639,6 +639,9 @@ export interface LabVariant {
   params: BotParams;
 }
 
+/** Prueba paralela «corredor» del bot simulado: velas de 4 horas, 50 % cobrado en 2R, stop a la entrada y el resto hasta 4R. Nunca opera en real. */
+export const RUNNER_PARAMS: BotParams = { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5 } };
+
 export const LAB_DAYS = 360;
 /** Días de historia por tamaño de vela: con velas de 15 minutos un año son demasiadas velas para pedir en una sola prueba. */
 export const LAB_DAYS_BY_TF: Record<BotTimeframe, number> = { "15m": 90, "1h": LAB_DAYS, "4h": LAB_DAYS };
@@ -650,7 +653,7 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
   // Modo «corredor»: cobrar la mitad en el primer objetivo, subir el stop a la entrada y dejar correr el resto (ver RunnerParams).
   { id: "h1-runner", params: { ...DEFAULT_PARAMS, runner: { tp2: 4, partial: 0.5 } } },
-  { id: "h4-runner", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5 } } },
+  { id: "h4-runner", params: RUNNER_PARAMS },
   { id: "h4-runner-be", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5, beAt: 0.5 } } },
   { id: "h4-wide-runner", params: { ...BOT_PROFILES.slowwide, runner: { tp2: 6, partial: 0.5 } } },
   // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
