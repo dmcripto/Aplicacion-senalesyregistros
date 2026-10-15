@@ -44,6 +44,7 @@ export const EN: Record<string, string> = {
   "Aplica a la vez el filtro de entrada estirada y el de espacio hasta el soporte.": "Applies both the stretched-entry filter and the room-to-support filter.",
   "El corredor (cobra la mitad en 2R, stop a la entrada, resto hasta 4R) con los dos filtros de entrada.": "The runner (takes half at 2R, stop to entry, rest up to 4R) with both entry filters.",
   "total": "total",
+  "Hay una versión nueva: {v}": "New version available: {v}",
   "Crear alerta de precio": "Create price alert",
   "Posiciones abiertas a la vez": "Open positions at a time",
   "Si hay 3 errores seguidos, el bot real se apaga solo. Con más de una posición abierta el riesgo posible se suma (riesgo por operación × cantidad), y la pérdida máxima por día sigue frenando al bot.": "After 3 errors in a row the live bot turns itself off. With more than one open position the possible risk adds up (risk per trade × count), and the daily max loss still stops the bot.",
