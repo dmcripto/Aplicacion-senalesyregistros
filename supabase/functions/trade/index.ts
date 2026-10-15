@@ -187,7 +187,7 @@ async function execute(userId: string, tradeId: string) {
   const price = await livePrice(sig.symbol);
   if (price == null) return skip("No se pudo leer el precio actual.");
   const pair = await ex.pair(fetch, creds.key, creds.secret, sig.symbol);
-  if (!pair) return skip(`No se pudieron leer las reglas del par en ${ex.name}: no se opera.`);
+  if (!pair) return skip(`${sig.symbol} no está disponible en ${ex.name} o no se pudieron leer sus reglas: no se opera.`);
   const plan = planOrder(sig, price, pair, cfgOf(live));
   if (!plan.ok) return skip(plan.reason);
 
