@@ -558,6 +558,19 @@ async function tick() {
     }
   });
 
+  // Último precio de cada operación abierta (cierre de la vela más reciente del exchange de la persona): la pantalla lo muestra en lugar de
+  // consultar otro exchange, donde el mismo nombre puede ser otra moneda. Si la columna todavía no existe, se deja de intentar.
+  let priceColumn = true;
+  const seenAt = new Date().toISOString();
+  await mapPool(allOpen, 8, async (t) => {
+    if (!priceColumn) return;
+    const b = bars.get(barsKey(t.user_id, t.symbol, isSide(t) ? "4h" : tfOfTrade(t)));
+    const last = b?.[b.length - 1]?.c;
+    if (!(typeof last === "number" && Number.isFinite(last) && last > 0)) return;
+    const { error } = await admin.from("trades").update({ last_price: px(last), last_price_at: seenAt }).eq("id", t.id).eq("outcome", "ABIERTA");
+    if (error) priceColumn = false;
+  });
+
   // 1) Cerrar lo que tocó stop u objetivo.
   let closed = 0;
   const { data: sigRows } = open.length

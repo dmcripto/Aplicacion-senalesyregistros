@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import { fetchTrades, rowToTrade } from "./tradesApi";
@@ -161,8 +161,14 @@ export function usePrices(trades: Trade[]) {
   const [prices, setPrices] = useState<Record<string, number>>({});
   const entries = useRef(new Map<string, number>());
   entries.current = new Map(trades.map((t) => [t.id, t.entry]));
+  // Las operaciones del bot traen el último precio que vio el servidor en el exchange de la persona (la misma fuente con la que decide y cierra):
+  // si es reciente (menos de 20 minutos) se usa ese, y no se consulta Binance, donde el mismo nombre puede ser otra moneda.
+  const nowMs = Date.now();
+  const own: Record<string, number> = {};
+  for (const t of trades) if (t.outcome === "ABIERTA" && t.lastPrice != null && t.lastPriceAt && nowMs - new Date(t.lastPriceAt).getTime() < 20 * 60_000) own[t.id] = t.lastPrice;
+  const ownKey = JSON.stringify(own);
   const key = trades
-    .filter((t) => t.outcome === "ABIERTA")
+    .filter((t) => t.outcome === "ABIERTA" && own[t.id] == null)
     .map((t) => t.id + "=" + t.symbol)
     .sort()
     .join("|");
@@ -213,7 +219,7 @@ export function usePrices(trades: Trade[]) {
     };
   }, [key]);
 
-  return prices;
+  return useMemo(() => ({ ...prices, ...own }), [prices, ownKey]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
 /** Avisa cuando una señal pasa de abierta a TP mientras mirás la pantalla (a mano o por el cierre automático). */
