@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  analyze, balanceInfo, binanceSymbol, levelProgress, todayOverview, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, monthlySummary,
+  analyze, balanceInfo, binanceSymbol, levelProgress, todayOverview, calcPosition, cleanTags, computeStats, dailyStatus, fmtCurrency, fmtPrice, monthlySummary,
   demoFrame, parseAlerts, resultR, rrOf, rValueMoney, sampleTrades, setLang, signalShareMessage, summarize, tagStats, tradesToCsv,
 } from "../packages/core/src/trading";
 import type { Trade } from "../packages/core/src/trading";
@@ -368,5 +368,15 @@ describe("ficha de cada perfil del bot", () => {
       expect(c.forWho.length).toBeGreaterThan(20);
       expect(c.activityLabel).toMatch(/operaciones/);
     }
+  });
+});
+
+describe("fmtPrice con precios muy chicos", () => {
+  it("no muestra 0 para PEPE y similares", () => {
+    expect(fmtPrice(0.0000034123)).toBe("0.000003412");
+    expect(fmtPrice(0.00812345)).toBe("0.008123");
+    expect(fmtPrice(2.9796)).toBe("2.9796");
+    expect(fmtPrice(2358.654)).toBe("2,358.65");
+    expect(fmtPrice(0)).toBe("0");
   });
 });
