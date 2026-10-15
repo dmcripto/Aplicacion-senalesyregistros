@@ -159,6 +159,8 @@ export function useFlashId() {
  */
 export function usePrices(trades: Trade[]) {
   const [prices, setPrices] = useState<Record<string, number>>({});
+  const entries = useRef(new Map<string, number>());
+  entries.current = new Map(trades.map((t) => [t.id, t.entry]));
   const key = trades
     .filter((t) => t.outcome === "ABIERTA")
     .map((t) => t.id + "=" + t.symbol)
@@ -195,7 +197,12 @@ export function usePrices(trades: Trade[]) {
       );
       if (stop) return;
       const byId: Record<string, number> = {};
-      for (const [id, sym] of open) if (bySymbol[sym] != null) byId[id] = bySymbol[sym];
+      for (const [id, sym] of open) {
+        const p = bySymbol[sym];
+        const entry = entries.current.get(id);
+        // Un mismo nombre puede ser otra moneda en otro exchange (por ejemplo LIT): un precio a menos de la mitad o a más del doble de la entrada no es de esta operación.
+        if (p != null && !(entry && (p < entry * 0.5 || p > entry * 2))) byId[id] = p;
+      }
       setPrices(byId);
     };
     void load();
