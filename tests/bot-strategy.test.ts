@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
+import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, parseBitunixBars, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -663,5 +663,66 @@ describe("filtro de entrada (entradas tardías)", () => {
     const withSupport = bars.map((b, i) => (i === 200 ? { ...b, l: bars[bars.length - 1].c - 0.2 } : b));
     expect(at(withSupport, DEFAULT_PARAMS)?.direction).toBe("SHORT");
     expect(at(withSupport, { ...DEFAULT_PARAMS, filter: { minRoom: 1.5 } })).toBeNull();
+  });
+});
+
+describe("velas de Bitunix (las del exchange donde opera el bot real)", () => {
+  const H = 3_600_000;
+  const row = (i: number, over: Record<string, unknown> = {}) => ({ open: String(100 + i), high: String(101 + i), low: String(99 + i), close: String(100.5 + i), quoteVol: "1", baseVol: "1", time: 1_700_000_000_000 + i * H, ...over });
+
+  it("las ordena de más vieja a más nueva y descarta filas inválidas", () => {
+    const bars = parseBitunixBars([row(2), row(0), row(1), row(3, { high: "x" }), row(4, { time: "no" }), row(5, { high: "90", low: "99" }), row(0)]);
+    expect(bars.map((b) => b.o)).toEqual([100, 101, 102]);
+  });
+
+  /** Una API de prueba con `total` velas: devuelve hasta 200 anteriores a endTime, de la más nueva a la más vieja. */
+  const api = (total: number, opts: { interval?: string; failBitunix?: boolean } = {}) => {
+    const calls: string[] = [];
+    const fetchFn = (async (url: any) => {
+      const u = new URL(String(url));
+      calls.push(u.hostname);
+      if (u.hostname === "fapi.bitunix.com") {
+        if (opts.failBitunix) return new Response("no", { status: 403 });
+        if (opts.interval && u.searchParams.get("interval") !== opts.interval) return new Response(JSON.stringify({ code: 0, data: [] }));
+        const end = Number(u.searchParams.get("endTime"));
+        const all = Array.from({ length: total }, (_, i) => row(i, { time: Date.now() - (total - i) * H }));
+        const page = all.filter((r) => r.time <= end).slice(-200).reverse();
+        return new Response(JSON.stringify({ code: 0, data: page }));
+      }
+      if (u.hostname === "www.okx.com") {
+        const rows = Array.from({ length: 300 }, (_, i) => [String(Date.now() - (i + 1) * H), "1", "2", "0.5", "1.5"]);
+        return new Response(JSON.stringify({ code: "0", data: rows }));
+      }
+      return new Response("no", { status: 451 });
+    }) as unknown as typeof fetch;
+    return { fetchFn, calls };
+  };
+
+  it("en las corridas en vivo se usan primero las velas de Bitunix (pidiendo dos páginas si hacen falta)", async () => {
+    const { fetchFn, calls } = api(400);
+    const bars = await fetchBars("BTCUSDT", 285, fetchFn);
+    expect(bars).toHaveLength(285);
+    expect(bars[0].t).toBeLessThan(bars[284].t);
+    expect(new Set(calls)).toEqual(new Set(["fapi.bitunix.com"]));
+  });
+
+  it("si el nombre de intervalo no lo conoce prueba el otro", async () => {
+    const { fetchFn } = api(400, { interval: "60m" });
+    expect(await fetchBars("BTCUSDT", 285, fetchFn)).toHaveLength(285);
+  });
+
+  it("si Bitunix falla o trae pocas velas sigue con los otros exchanges", async () => {
+    const blocked = api(400, { failBitunix: true });
+    expect((await fetchBars("BTCUSDT", 285, blocked.fetchFn)).length).toBe(285);
+    expect(blocked.calls).toContain("www.okx.com");
+    const few = api(120); // no alcanza para calcular los indicadores
+    await fetchBars("BTCUSDT", 285, few.fetchFn);
+    expect(few.calls).toContain("www.okx.com");
+  });
+
+  it("las pruebas largas (más de 300 velas) no usan Bitunix", async () => {
+    const { fetchFn, calls } = api(400);
+    await fetchBars("BTCUSDT", 1000, fetchFn).catch(() => null);
+    expect(calls).not.toContain("fapi.bitunix.com");
   });
 });
