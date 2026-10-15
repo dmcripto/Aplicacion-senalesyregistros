@@ -77,13 +77,20 @@ async function stepOk(userId: string, token: string): Promise<boolean> {
   return data !== false;
 }
 
+/** Precio actual. Binance y Bybit bloquean el servidor de Supabase (errores 451 y 403), así que después se prueba OKX y Gate. */
 async function livePrice(symbol: string): Promise<number | null> {
-  for (const url of [`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`]) {
+  const base = symbol.endsWith("USDT") ? symbol.slice(0, -4) : symbol;
+  for (const url of [
+    `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`,
+    `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`,
+    `https://www.okx.com/api/v5/market/ticker?instId=${base}-USDT-SWAP`,
+    `https://api.gateio.ws/api/v4/futures/usdt/tickers?contract=${base}_USDT`,
+  ]) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (!res.ok) continue;
-      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> } };
-      const p = Number(j.price ?? j.result?.list?.[0]?.lastPrice);
+      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> }; data?: Array<{ last?: string }> } | Array<{ last?: string }>;
+      const p = Array.isArray(j) ? Number(j[0]?.last) : Number(j.price ?? j.result?.list?.[0]?.lastPrice ?? j.data?.[0]?.last);
       if (Number.isFinite(p) && p > 0) return p;
     } catch {
       /* se prueba con el siguiente proveedor */

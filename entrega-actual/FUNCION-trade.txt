@@ -1,0 +1,2826 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+// ─── VELTRIX · Conexión de solo lectura con exchanges ─────────────────────
+// Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix, MEXC, Gate, Bitget, OKX, KuCoin y BingX (futuros). Solo se hacen pedidos
+// GET de lectura: VELTRIX nunca opera ni mueve fondos.
+// Sin dependencias de Deno ni de Node: solo fetch y WebCrypto, para poder probarlo en local.
+
+type ExchangeId = "binance" | "bybit" | "bitunix" | "mexc" | "gate" | "bitget" | "okx" | "kucoin" | "bingx";
+const EXCHANGES: ExchangeId[] = ["binance", "bybit", "bitunix", "mexc", "gate", "bitget", "okx", "kucoin", "bingx"];
+const EXCHANGE_NAMES: Record<ExchangeId, string> = { binance: "Binance", bybit: "Bybit", bitunix: "Bitunix", mexc: "MEXC", gate: "Gate", bitget: "Bitget", okx: "OKX", kucoin: "KuCoin", bingx: "BingX" };
+/** Exchanges que además de la clave y la secreta piden una contraseña de la API (passphrase). */
+const NEEDS_PASSPHRASE: ExchangeId[] = ["bitget", "okx", "kucoin"];
+
+interface ClosedPosition {
+  externalId: string;
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  qty: number; // tamaño en la moneda base
+  entry: number;
+  exit: number;
+  pnl: number; // resultado neto en USDT (después de comisiones cuando el exchange las informa)
+  openedAt: number; // ms
+  closedAt: number; // ms
+  /** Apalancamiento de la posición, solo si el exchange lo informa (si no, queda sin dato). */
+  leverage?: number;
+  raw?: string; // datos tal como los informó el exchange, para verificar casos todavía sin comprobar con cuentas reales
+}
+
+interface CheckResult {
+  ok: boolean;
+  error?: string;
+  warning?: string;
+}
+
+/** Error con un mensaje pensado para mostrarse tal cual al usuario (en español). */
+class ExchangeError extends Error {}
+
+type FetchFn = typeof fetch;
+
+// ─── Utilidades ─────────────────────────────────────────────────────────────
+
+const enc = new TextEncoder();
+const DAY = 86_400_000;
+const WINDOW = 7 * DAY - 60_000; // los dos exchanges limitan cada consulta a 7 días
+
+const toHex = (buf: ArrayBuffer) =>
+  [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+async function hmacHex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+}
+
+const qs = (params: Record<string, string | number>) =>
+  Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+
+const num = (v: unknown) => {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(n) ? n : 0;
+};
+/** Apalancamiento informado por el exchange: solo si es un número razonable (si no, sin dato). */
+const lev = (x: unknown): number | undefined => {
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0 && n <= 1000 ? n : undefined;
+};
+
+/** Reparte [from, to] en ventanas de hasta 7 días. */
+function windows(from: number, to: number): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (let s = from; s < to; s += WINDOW + 1) out.push([s, Math.min(to, s + WINDOW)]);
+  return out;
+}
+
+async function getJson(fetchFn: FetchFn, url: string, headers: Record<string, string>, who: string): Promise<any> {
+  let res: Response;
+  try {
+    res = await fetchFn(url, { headers });
+  } catch {
+    throw new ExchangeError(`No se pudo conectar con ${who}. Probá de nuevo en unos minutos.`);
+  }
+  const text = await res.text();
+  let body: any = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    /* no era JSON */
+  }
+  if (res.status === 451 || res.status === 403) {
+    throw new ExchangeError(`${who} rechazó la conexión desde nuestro servidor (bloqueo regional o de red). Probá de nuevo más tarde.`);
+  }
+  if (res.status === 429 || res.status === 418) {
+    throw new ExchangeError(`${who} limitó los pedidos por unos minutos. Probá de nuevo más tarde.`);
+  }
+  return { status: res.status, body, text };
+}
+
+// ─── Binance (futuros USDⓈ-M) ───────────────────────────────────────────────
+
+const B_SPOT = "https://api.binance.com";
+const B_FUT = "https://fapi.binance.com";
+
+/** Firma de Binance: HMAC-SHA256 (hex) de la query string, agregada como &signature=. */
+async function binanceSign(query: string, secret: string) {
+  return hmacHex(secret, query);
+}
+
+async function binanceGet(fetchFn: FetchFn, host: string, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const query = qs({ ...params, recvWindow: 10_000, timestamp: Date.now() });
+  const sig = await binanceSign(query, secret);
+  const r = await getJson(fetchFn, `${host}${path}?${query}&signature=${sig}`, { "X-MBX-APIKEY": key }, "Binance");
+  const code = r.body?.code;
+  if (r.status >= 400 || (typeof code === "number" && code < 0)) {
+    if (code === -2014 || code === -2008 || code === -2015 || code === -1022) {
+      throw new ExchangeError(
+        code === -1022
+          ? "Binance no aceptó la clave secreta. Revisá que la copiaste completa."
+          : "Binance rechazó la clave. Revisá que esté bien copiada, que tenga activado \"Habilitar lectura\" (y Futuros si operás futuros) y que no tenga restricción de IP.",
+      );
+    }
+    if (code === -1021) throw new ExchangeError("El reloj del servidor no coincide con el de Binance. Probá de nuevo.");
+    throw new ExchangeError(`Binance respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body;
+}
+
+async function binanceCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    const perms = await binanceGet(fetchFn, B_SPOT, "/sapi/v1/account/apiRestrictions", {}, key, secret);
+    const risky: string[] = [];
+    if (perms.enableWithdrawals) risky.push("retiros");
+    if (perms.enableSpotAndMarginTrading) risky.push("operar spot y margen");
+    if (perms.enableMargin) risky.push("margen");
+    if (perms.enableInternalTransfer || perms.permitsUniversalTransfer) risky.push("transferencias");
+    if (risky.length) {
+      return { ok: false, error: `Esta clave permite ${risky.join(", ")}. Por seguridad, creá una nueva en Binance con SOLO "Habilitar lectura".` };
+    }
+    await binanceGet(fetchFn, B_FUT, "/fapi/v2/balance", {}, key, secret); // confirma que se pueden leer los futuros
+    return {
+      ok: true,
+      warning: perms.enableFutures
+        ? "Esta clave también permite operar futuros. VELTRIX solo lee, pero para más seguridad creá una con solo lectura si tu cuenta lo permite."
+        : undefined,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+interface BinanceFill {
+  id: number;
+  symbol: string;
+  side: "BUY" | "SELL";
+  positionSide: string; // BOTH | LONG | SHORT
+  price: number;
+  qty: number;
+  realizedPnl: number;
+  commission: number;
+  commissionAsset: string;
+  time: number;
+}
+
+const STABLES = new Set(["USDT", "USDC", "BUSD", "FDUSD"]);
+
+/** Convierte una lista de ejecuciones (fills) en posiciones cerradas: de "cero" a "cero". */
+function buildPositions(fills: BinanceFill[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  const groups = new Map<string, BinanceFill[]>();
+  for (const f of fills) {
+    const k = `${f.symbol}|${f.positionSide}`;
+    (groups.get(k) ?? groups.set(k, []).get(k)!).push(f);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => a.time - b.time || a.id - b.id);
+    const eps = 1e-12;
+    let dir: 1 | -1 | 0 = 0; // 1 = long, -1 = short
+    let size = 0;
+    let openQty = 0, openCost = 0, closeQty = 0, closeVal = 0, pnl = 0, firstTime = 0;
+    const reset = () => {
+      dir = 0; size = 0; openQty = 0; openCost = 0; closeQty = 0; closeVal = 0; pnl = 0; firstTime = 0;
+    };
+    for (const f of list) {
+      const fee = STABLES.has(f.commissionAsset) ? f.commission : 0;
+      const sideSign = f.side === "BUY" ? 1 : -1;
+      // En modo cobertura (LONG/SHORT) la dirección la fija el lado de la posición.
+      const hedgeDir = f.positionSide === "LONG" ? 1 : f.positionSide === "SHORT" ? -1 : 0;
+      if (dir === 0) {
+        if (f.realizedPnl !== 0) continue; // cierra una posición abierta antes del período consultado: no se puede reconstruir
+        dir = (hedgeDir || sideSign) as 1 | -1;
+        firstTime = f.time;
+      }
+      const opening = sideSign === dir;
+      if (opening) {
+        size += f.qty;
+        openQty += f.qty;
+        openCost += f.qty * f.price;
+        pnl -= fee;
+      } else {
+        const closing = Math.min(f.qty, size);
+        size -= closing;
+        closeQty += closing;
+        closeVal += closing * f.price;
+        pnl += f.realizedPnl - fee;
+        if (size <= eps) {
+          out.push({
+            externalId: `${f.symbol}:${f.positionSide}:${f.id}`,
+            symbol: f.symbol,
+            direction: dir === 1 ? "LONG" : "SHORT",
+            qty: openQty,
+            entry: openCost / openQty,
+            exit: closeVal / closeQty,
+            pnl,
+            openedAt: firstTime,
+            closedAt: f.time,
+          });
+          const leftover = f.qty - closing;
+          reset();
+          if (leftover > eps && !hedgeDir) {
+            // En modo un solo sentido, un cierre que se pasa de tamaño abre la posición contraria.
+            dir = sideSign as 1 | -1;
+            size = leftover;
+            openQty = leftover;
+            openCost = leftover * f.price;
+            firstTime = f.time;
+          }
+        }
+      }
+    }
+  }
+  return out.sort((a, b) => a.closedAt - b.closedAt);
+}
+
+async function binanceFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const symbols = new Set<string>();
+  for (const [s, e] of windows(since, now)) {
+    const rows = await binanceGet(fetchFn, B_FUT, "/fapi/v1/income", { incomeType: "REALIZED_PNL", startTime: s, endTime: e, limit: 1000 }, key, secret);
+    for (const r of rows as Array<{ symbol?: string }>) if (r.symbol) symbols.add(r.symbol);
+  }
+  const fills: BinanceFill[] = [];
+  for (const symbol of symbols) {
+    for (const [s, e] of windows(since, now)) {
+      let from = s;
+      for (let page = 0; page < 20; page++) {
+        const rows = (await binanceGet(fetchFn, B_FUT, "/fapi/v1/userTrades", { symbol, startTime: from, endTime: e, limit: 1000 }, key, secret)) as any[];
+        for (const r of rows) {
+          fills.push({
+            id: Number(r.id),
+            symbol: r.symbol,
+            side: r.side,
+            positionSide: r.positionSide ?? "BOTH",
+            price: num(r.price),
+            qty: num(r.qty),
+            realizedPnl: num(r.realizedPnl),
+            commission: num(r.commission),
+            commissionAsset: String(r.commissionAsset ?? ""),
+            time: Number(r.time),
+          });
+        }
+        if (rows.length < 1000) break;
+        from = Number(rows[rows.length - 1].time) + 1;
+      }
+    }
+  }
+  return buildPositions(fills).filter((p) => p.closedAt >= since);
+}
+
+// ─── Bybit (v5, perpetuos lineales) ─────────────────────────────────────────
+
+const BYBIT = "https://api.bybit.com";
+const RECV = "10000";
+
+/** Firma de Bybit v5: HMAC-SHA256 (hex) de timestamp + apiKey + recvWindow + queryString. */
+async function bybitSign(timestamp: string, apiKey: string, recvWindow: string, query: string, secret: string) {
+  return hmacHex(secret, timestamp + apiKey + recvWindow + query);
+}
+
+async function bybitGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const query = qs(params);
+  const ts = String(Date.now());
+  const sig = await bybitSign(ts, key, RECV, query, secret);
+  const r = await getJson(
+    fetchFn,
+    `${BYBIT}${path}${query ? `?${query}` : ""}`,
+    { "X-BAPI-API-KEY": key, "X-BAPI-TIMESTAMP": ts, "X-BAPI-RECV-WINDOW": RECV, "X-BAPI-SIGN": sig },
+    "Bybit",
+  );
+  const code = r.body?.retCode;
+  if (r.status >= 400 || (code !== undefined && code !== 0)) {
+    if (code === 10003 || code === 10004) throw new ExchangeError("Bybit no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (code === 10005) throw new ExchangeError("La clave de Bybit no tiene permiso de lectura para posiciones. Activá \"Lectura\" en Contratos.");
+    if (code === 10010) throw new ExchangeError("La clave de Bybit tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (code === 10002) throw new ExchangeError("El reloj del servidor no coincide con el de Bybit. Probá de nuevo.");
+    throw new ExchangeError(`Bybit respondió con un error${r.body?.retMsg ? `: ${r.body.retMsg}` : ""}.`);
+  }
+  return r.body.result;
+}
+
+async function bybitCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    let info: any = null;
+    try {
+      info = await bybitGet(fetchFn, "/v5/user/query-api", {}, key, secret);
+    } catch (e) {
+      // Bybit solo deja consultar los permisos si la clave tiene algún permiso de billetera.
+      // Una clave solo de lectura sin billetera cae acá: se comprueba entonces que se puedan leer las posiciones.
+      if (!(e instanceof ExchangeError) || !/permiso de lectura/.test(e.message)) throw e;
+    }
+    if (info) {
+      if (info.readOnly !== 1) {
+        return { ok: false, error: "Esta clave permite operar. Por seguridad, creá una nueva en Bybit con permisos de SOLO LECTURA." };
+      }
+      return { ok: true };
+    }
+    await bybitGet(fetchFn, "/v5/position/closed-pnl", { category: "linear", limit: 1 }, key, secret);
+    return { ok: true, warning: "No pudimos confirmar que la clave sea solo de lectura. Verificá en Bybit que hayas elegido \"Solo lectura\"." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+function parseBybitClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list) {
+    // "side" es el lado de la orden que cerró: Sell cierra un long, Buy cierra un short.
+    const direction = r.side === "Sell" ? "LONG" : r.side === "Buy" ? "SHORT" : null;
+    const entry = num(r.avgEntryPrice), exit = num(r.avgExitPrice), qty = num(r.closedSize ?? r.qty);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0)) continue;
+    const closedAt = Number(r.updatedTime ?? r.createdTime);
+    out.push({
+      externalId: `${r.symbol}:${r.orderId}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl: num(r.closedPnl),
+      openedAt: Number(r.createdTime ?? closedAt),
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function bybitFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    let cursor = "";
+    for (let page = 0; page < 30; page++) {
+      const params: Record<string, string | number> = { category: "linear", startTime: s, endTime: e, limit: 100 };
+      if (cursor) params.cursor = cursor;
+      const result = await bybitGet(fetchFn, "/v5/position/closed-pnl", params, key, secret);
+      all.push(...parseBybitClosed(result?.list ?? []));
+      cursor = result?.nextPageCursor ?? "";
+      if (!cursor || !(result?.list?.length > 0)) break;
+    }
+  }
+  return all;
+}
+
+// ─── Bitunix (futuros) ──────────────────────────────────────────────────────
+
+const BITUNIX = "https://fapi.bitunix.com";
+
+const sha256Hex = async (text: string) => toHex(await crypto.subtle.digest("SHA-256", enc.encode(text)));
+
+/**
+ * Firma de Bitunix: sha256( sha256(nonce + timestamp + apiKey + parámetros ordenados por nombre y pegados como clave+valor) + secreta ).
+ * Los pedidos de lectura son GET (sin cuerpo). Los pedidos POST (órdenes del bot con dinero real) suman el cuerpo JSON compacto al final de los parámetros.
+ */
+async function bitunixSign(nonce: string, timestamp: string, apiKey: string, params: Record<string, string | number>, secret: string, body = "") {
+  const sorted = Object.keys(params).sort().map((k) => k + params[k]).join("");
+  return sha256Hex((await sha256Hex(nonce + timestamp + apiKey + sorted + body)) + secret);
+}
+
+async function bitunixGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const nonce = toHex(crypto.getRandomValues(new Uint8Array(16)).buffer);
+  const ts = String(Date.now());
+  const sign = await bitunixSign(nonce, ts, key, params, secret);
+  const query = qs(params);
+  const r = await getJson(
+    fetchFn,
+    `${BITUNIX}${path}${query ? `?${query}` : ""}`,
+    { "api-key": key, nonce, timestamp: ts, sign, "Content-Type": "application/json", language: "en-US" },
+    "Bitunix",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (c === 10003 || c === 10007) throw new ExchangeError("Bitunix no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 10004) throw new ExchangeError("La clave de Bitunix tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === 10005 || c === 10006) throw new ExchangeError("Bitunix limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    if (r.status === 401) throw new ExchangeError("Bitunix no aceptó la clave. Revisá que esté bien copiada y que tenga permiso de lectura.");
+    throw new ExchangeError(`Bitunix respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function bitunixCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await bitunixGet(fetchFn, "/api/v1/futures/position/get_history_positions", { limit: 1 }, key, secret);
+    // Bitunix no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Bitunix no nos deja confirmar los permisos de la clave. Verificá en Bitunix que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+function parseBitunixClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toUpperCase();
+    const direction = side === "LONG" || side === "BUY" ? "LONG" : side === "SHORT" || side === "SELL" ? "SHORT" : null;
+    const entry = num(r.entryPrice), exit = num(r.closePrice);
+    // Tamaño máximo de la posición; si falta, se deduce del resultado bruto y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const qty = num(r.maxQty) > 0 ? num(r.maxQty) : move > 0 ? Math.abs(num(r.realizedPNL)) / move : 0;
+    const closedAt = Number(r.mtime ?? r.ctime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      exit,
+      // Aunque la documentación diga lo contrario, realizedPNL ya viene con las comisiones descontadas
+      // (comprobado con una operación real: precio −0,2088 − comisiones 0,1555 = realizedPNL −0,3643).
+      pnl: num(r.realizedPNL),
+      openedAt: Number(r.ctime ?? closedAt),
+      closedAt,
+      // Solo si hubo funding: todavía no se sabe si realizedPNL lo incluye, y esto permite comprobarlo con un caso real.
+      raw: num(r.funding) !== 0 ? `Bitunix informó: realizedPNL ${r.realizedPNL} · fee ${r.fee} · funding ${r.funding}` : undefined,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function bitunixFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let skip = 0, page = 0; page < 30; page++, skip += 100) {
+      const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_history_positions", { startTime: s, endTime: e, skip, limit: 100 }, key, secret);
+      const list: any[] = data?.positionList ?? [];
+      all.push(...parseBitunixClosed(list));
+      if (list.length < 100) break;
+    }
+  }
+  return all;
+}
+
+// ─── MEXC (futuros) ─────────────────────────────────────────────────────────
+
+const MEXC = "https://contract.mexc.com";
+
+/** Firma de MEXC: HMAC-SHA256 (hex) de apiKey + timestamp + parámetros ordenados (clave=valor&...). */
+async function mexcSign(apiKey: string, timestamp: string, query: string, secret: string) {
+  return hmacHex(secret, apiKey + timestamp + query);
+}
+
+async function mexcGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const sorted = Object.fromEntries(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const query = qs(sorted);
+  const ts = String(Date.now());
+  const sig = await mexcSign(key, ts, query, secret);
+  const r = await getJson(
+    fetchFn,
+    `${MEXC}${path}${query ? `?${query}` : ""}`,
+    { ApiKey: key, "Request-Time": ts, Signature: sig, "Content-Type": "application/json" },
+    "MEXC",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || r.body?.success === false || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (c === 602 || c === 10072) throw new ExchangeError("MEXC no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 10073 || c === 700003) throw new ExchangeError("El reloj del servidor no coincide con el de MEXC. Probá de nuevo.");
+    if (c === 401 || c === 403 || r.status === 401) throw new ExchangeError("La clave de MEXC no tiene permiso para leer Futuros. Activá la lectura de \"Futuros\" y volvé a intentar.");
+    // «Trading information read access is required»: la clave puede ver la cuenta pero no el historial de operaciones.
+    if (/read access is required|trading information|trade information|order information/i.test(String(r.body?.message ?? r.body?.msg ?? ""))) {
+      throw new ExchangeError("A la clave de MEXC le falta un permiso de lectura. Creá una clave nueva y, en Futuros, tildá los tres de solo lectura: «Ver detalles de la cuenta», «Ver detalles de la orden» y «Ver información de trading» (si no ves ese último, tildá todos los que digan «Ver»/«Leer» de Futuros). No tildes «Colocar órdenes» ni nada de Spot, retirar o transferir.");
+    }
+    throw new ExchangeError(`MEXC respondió con un error${r.body?.message || r.body?.msg ? `: ${r.body.message ?? r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function mexcCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await mexcGet(fetchFn, "/api/v1/private/position/list/history_positions", { page_num: 1, page_size: 1 }, key, secret);
+    // MEXC no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "MEXC no nos deja confirmar los permisos de la clave. Verificá en MEXC que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** MEXC informa el tamaño en contratos: se multiplica por lo que vale cada contrato en la moneda base. */
+function parseMexcClosed(list: any[], contractSizes: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    if (Number(r.state) !== 3) continue; // 1 y 2 = posición todavía abierta
+    const direction = Number(r.positionType) === 1 ? "LONG" : Number(r.positionType) === 2 ? "SHORT" : null;
+    const entry = num(r.openAvgPrice ?? r.holdAvgPrice), exit = num(r.closeAvgPrice);
+    const size = contractSizes[String(r.symbol)];
+    // Sin el valor del contrato se deduce el tamaño del resultado bruto y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const qty = size > 0 ? num(r.closeVol) * size : move > 0 ? Math.abs(num(r.closeProfitLoss)) / move : 0;
+    const closedAt = Number(r.updateTime ?? r.createTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol).replace(/_/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl: num(r.realised), // resultado final ya descontadas las comisiones
+      openedAt: Number(r.createTime ?? closedAt),
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function mexcContractSize(fetchFn: FetchFn, symbol: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${MEXC}/api/v1/contract/detail?symbol=${encodeURIComponent(symbol)}`, {}, "MEXC");
+    return num(r.body?.data?.contractSize);
+  } catch {
+    return 0;
+  }
+}
+
+async function mexcFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  // El historial viene sin filtro de fechas: se pide por páginas hasta pasar el período buscado.
+  for (let page = 1; page <= 30; page++) {
+    const list: any[] = (await mexcGet(fetchFn, "/api/v1/private/position/list/history_positions", { page_num: page, page_size: 100 }, key, secret)) ?? [];
+    raw.push(...list.filter((r) => Number(r.updateTime ?? r.createTime) >= since && Number(r.updateTime ?? r.createTime) <= now));
+    if (list.length < 100) break;
+    const oldest = Math.min(...list.map((r) => Number(r.updateTime ?? r.createTime)));
+    if (oldest < since) break;
+  }
+  const sizes: Record<string, number> = {};
+  for (const symbol of new Set(raw.map((r) => String(r.symbol)))) sizes[symbol] = await mexcContractSize(fetchFn, symbol);
+  return parseMexcClosed(raw, sizes);
+}
+
+// ─── Gate (futuros perpetuos USDT) ──────────────────────────────────────────
+
+const GATE = "https://api.gateio.ws";
+const GATE_PATH = "/api/v4/futures/usdt/position_close";
+
+const hmacHex512 = async (secret: string, message: string) => {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-512" }, false, ["sign"]);
+  return toHex(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+};
+const sha512Hex = async (text: string) => toHex(await crypto.subtle.digest("SHA-512", enc.encode(text)));
+
+/** Firma de Gate v4: HMAC-SHA512 (hex) de "MÉTODO\nruta\nquery\nsha512(cuerpo)\ntimestamp en segundos". */
+async function gateSign(method: string, path: string, query: string, timestamp: string, secret: string) {
+  return hmacHex512(secret, [method.toUpperCase(), path, query, await sha512Hex(""), timestamp].join("\n"));
+}
+
+async function gateGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string) {
+  const query = qs(params);
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sig = await gateSign("GET", path, query, ts, secret);
+  const r = await getJson(fetchFn, `${GATE}${path}${query ? `?${query}` : ""}`, { KEY: key, Timestamp: ts, SIGN: sig, "Content-Type": "application/json" }, "Gate");
+  const label = r.body?.label;
+  if (r.status >= 400 || (typeof label === "string" && label)) {
+    if (label === "INVALID_KEY" || label === "INVALID_SIGNATURE") throw new ExchangeError("Gate no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (label === "IP_FORBIDDEN") throw new ExchangeError("La clave de Gate tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (label === "REQUEST_EXPIRED") throw new ExchangeError("El reloj del servidor no coincide con el de Gate. Probá de nuevo.");
+    if (label === "FORBIDDEN") throw new ExchangeError("La clave de Gate no tiene permiso para leer Futuros. Activá la lectura de \"Futuros perpetuos\" y volvé a intentar.");
+    if (label === "TOO_MANY_REQUESTS") throw new ExchangeError("Gate limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`Gate respondió con un error${r.body?.message ? `: ${r.body.message}` : ""}.`);
+  }
+  return r.body;
+}
+
+async function gateCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await gateGet(fetchFn, GATE_PATH, { limit: 1 }, key, secret);
+    // Gate no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Gate no nos deja confirmar los permisos de la clave. Verificá en Gate que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** Gate informa el tamaño en contratos: se multiplica por lo que vale cada contrato en la moneda base (quanto_multiplier). */
+function parseGateClosed(list: any[], multipliers: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const direction = r.side === "long" ? "LONG" : r.side === "short" ? "SHORT" : null;
+    // En un largo, long_price es la entrada y short_price la salida; en un corto, al revés.
+    const entry = num(direction === "LONG" ? r.long_price : r.short_price);
+    const exit = num(direction === "LONG" ? r.short_price : r.long_price);
+    const mult = multipliers[String(r.contract)];
+    const pnl = num(r.pnl); // ya incluye comisiones y funding
+    // Sin el valor del contrato se deduce el tamaño del resultado de precio (pnl_pnl) y el recorrido.
+    const move = Math.abs(exit - entry);
+    const qty = mult > 0 ? num(r.max_size) * mult : move > 0 ? Math.abs(num(r.pnl_pnl)) / move : 0;
+    const closedAt = Number(r.time) * 1000;
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    const openedAt = Number(r.first_open_time) * 1000;
+    out.push({
+      externalId: `${r.contract}:${r.side}:${r.first_open_time}:${r.time}`,
+      symbol: String(r.contract).replace(/_/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number.isFinite(openedAt) ? openedAt : closedAt,
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function gateMultiplier(fetchFn: FetchFn, contract: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${GATE}/api/v4/futures/usdt/contracts/${encodeURIComponent(contract)}`, {}, "Gate");
+    return num(r.body?.quanto_multiplier);
+  } catch {
+    return 0;
+  }
+}
+
+async function gateFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let offset = 0, page = 0; page < 30; page++, offset += 100) {
+      const list: any[] = (await gateGet(fetchFn, GATE_PATH, { from: Math.floor(s / 1000), to: Math.floor(e / 1000), limit: 100, offset }, key, secret)) ?? [];
+      raw.push(...(Array.isArray(list) ? list : []));
+      if (!Array.isArray(list) || list.length < 100) break;
+    }
+  }
+  const mults: Record<string, number> = {};
+  for (const c of new Set(raw.map((r) => String(r.contract)))) mults[c] = await gateMultiplier(fetchFn, c);
+  return parseGateClosed(raw, mults);
+}
+
+// ─── Bitget (futuros USDT) ──────────────────────────────────────────────────
+
+const BITGET = "https://api.bitget.com";
+const BITGET_PATH = "/api/v2/mix/position/history-position";
+
+const hmacBase64 = async (secret: string, message: string) => {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64(await crypto.subtle.sign("HMAC", key, enc.encode(message)));
+};
+
+/** Firma de Bitget: HMAC-SHA256 en base64 de timestamp + MÉTODO + ruta + ?query. */
+async function bitgetSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function bitgetGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const sorted = Object.fromEntries(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const query = qs(sorted);
+  const ts = String(Date.now());
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await bitgetSign(ts, "GET", full, secret);
+  const r = await getJson(fetchFn, `${BITGET}${full}`, { "ACCESS-KEY": key, "ACCESS-SIGN": sig, "ACCESS-TIMESTAMP": ts, "ACCESS-PASSPHRASE": pass, "Content-Type": "application/json" }, "Bitget");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "00000")) {
+    const c = String(code);
+    if (["40006", "40009", "40010", "40012"].includes(c)) throw new ExchangeError("Bitget no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "40011" || c === "40001" || c === "40002") throw new ExchangeError("Faltan datos de la clave de Bitget. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "40014") throw new ExchangeError("La clave de Bitget no tiene permiso para leer Futuros. Activá la lectura de \"Futuros\" y volvé a intentar.");
+    if (c === "40018") throw new ExchangeError("La clave de Bitget tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "40004" || c === "40008" || c === "40005") throw new ExchangeError("El reloj del servidor no coincide con el de Bitget. Probá de nuevo.");
+    throw new ExchangeError(`Bitget respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function bitgetCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "Bitget pide también la contraseña de la API (passphrase)." };
+  try {
+    await bitgetGet(fetchFn, BITGET_PATH, { productType: "USDT-FUTURES", limit: 1 }, key, secret, pass);
+    // Bitget no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "Bitget no nos deja confirmar los permisos de la clave. Verificá en Bitget que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+function parseBitgetClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const direction = r.holdSide === "long" ? "LONG" : r.holdSide === "short" ? "SHORT" : null;
+    const entry = num(r.openAvgPrice), exit = num(r.closeAvgPrice);
+    const qty = num(r.closeTotalPos) > 0 ? num(r.closeTotalPos) : num(r.openTotalPos);
+    const closedAt = Number(r.utime ?? r.ctime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: r.positionId ? `${r.symbol}:${r.positionId}` : `${r.symbol}:${r.holdSide}:${r.ctime}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.pnl) + num(r.openFee) + num(r.closeFee) + num(r.totalFunding), // neto de comisiones y funding
+      openedAt: Number(r.ctime ?? closedAt),
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function bitgetFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    let cursor = "";
+    for (let page = 0; page < 30; page++) {
+      const params: Record<string, string | number> = { productType: "USDT-FUTURES", startTime: s, endTime: e, limit: 100 };
+      if (cursor) params.idLessThan = cursor;
+      const data = await bitgetGet(fetchFn, BITGET_PATH, params, key, secret, pass);
+      const list: any[] = data?.list ?? [];
+      all.push(...parseBitgetClosed(list));
+      cursor = data?.endId ? String(data.endId) : "";
+      if (!cursor || list.length < 100) break;
+    }
+  }
+  return all;
+}
+
+// ─── OKX (perpetuos y futuros) ──────────────────────────────────────────────
+
+const OKX = "https://www.okx.com";
+const OKX_PATH = "/api/v5/account/positions-history";
+
+/** Firma de OKX: HMAC-SHA256 en base64 de timestamp ISO + MÉTODO + ruta + ?query. */
+async function okxSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function okxGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const query = qs(params);
+  const ts = new Date().toISOString();
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await okxSign(ts, "GET", full, secret);
+  const r = await getJson(fetchFn, `${OKX}${full}`, { "OK-ACCESS-KEY": key, "OK-ACCESS-SIGN": sig, "OK-ACCESS-TIMESTAMP": ts, "OK-ACCESS-PASSPHRASE": pass, "Content-Type": "application/json" }, "OKX");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "0")) {
+    const c = String(code);
+    if (c === "50111" || c === "50113" || c === "50105" || c === "50114") throw new ExchangeError("OKX no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "50103" || c === "50104") throw new ExchangeError("Faltan datos de la clave de OKX. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "50110") throw new ExchangeError("La clave de OKX tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "50102") throw new ExchangeError("El reloj del servidor no coincide con el de OKX. Probá de nuevo.");
+    if (c === "50011" || r.status === 429) throw new ExchangeError("OKX limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`OKX respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function okxCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "OKX pide también la contraseña de la API (passphrase)." };
+  try {
+    const cfg = await okxGet(fetchFn, "/api/v5/account/config", {}, key, secret, pass);
+    const perm = String(cfg?.[0]?.perm ?? "");
+    if (/trade|withdraw/.test(perm)) {
+      return { ok: false, error: "Esta clave permite operar o retirar. Por seguridad, creá una nueva en OKX con permisos de SOLO LECTURA." };
+    }
+    return perm ? { ok: true } : { ok: true, warning: "No pudimos confirmar que la clave sea solo de lectura. Verificá en OKX que hayas elegido \"Solo lectura\"." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** OKX informa el tamaño en contratos: se multiplica por el valor del contrato (ctVal × ctMult). */
+function parseOkxClosed(list: any[], contractValues: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const entry = num(r.openAvgPx), exit = num(r.closeAvgPx);
+    const pnl = num(r.realizedPnl); // ya incluye comisiones, funding y penalidad de liquidación
+    // En modo neto "direction" viene como "net": el lado se deduce del recorrido del precio y del signo del resultado de precio.
+    const dirOfPrice = (exit - entry) * num(r.pnl); // positivo: subió y ganó (o bajó y perdió) → largo
+    const direction = r.direction === "long" ? "LONG" : r.direction === "short" ? "SHORT" : dirOfPrice > 0 ? "LONG" : dirOfPrice < 0 ? "SHORT" : null;
+    const cv = contractValues[String(r.instId)];
+    const move = Math.abs(exit - entry);
+    const qty = cv > 0 ? num(r.closeTotalPos) * cv : move > 0 ? Math.abs(num(r.pnl)) / move : 0;
+    const closedAt = Number(r.uTime ?? r.cTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.instId}:${r.posId}`,
+      symbol: String(r.instId).replace(/-SWAP$/, "").replace(/-/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number(r.cTime ?? closedAt),
+      closedAt,
+      leverage: lev(r.lever),
+    });
+  }
+  return out;
+}
+
+async function okxContractValue(fetchFn: FetchFn, instType: string, instId: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${OKX}/api/v5/public/instruments?instType=${instType}&instId=${encodeURIComponent(instId)}`, {}, "OKX");
+    const d = r.body?.data?.[0];
+    return num(d?.ctVal) * (num(d?.ctMult) || 1);
+  } catch {
+    return 0;
+  }
+}
+
+async function okxFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  const types = new Map<string, string>();
+  for (const instType of ["SWAP", "FUTURES"]) {
+    let after = "";
+    for (let page = 0; page < 30; page++) {
+      const params: Record<string, string | number> = { instType, limit: 100 };
+      if (after) params.after = after; // trae lo anterior a esa fecha
+      const list: any[] = (await okxGet(fetchFn, OKX_PATH, params, key, secret, pass)) ?? [];
+      for (const r of list) {
+        const t = Number(r.uTime ?? r.cTime);
+        if (t >= since && t <= now) {
+          raw.push(r);
+          types.set(String(r.instId), instType);
+        }
+      }
+      if (list.length < 100) break;
+      const oldest = Math.min(...list.map((r) => Number(r.uTime ?? r.cTime)));
+      if (!(oldest > since)) break;
+      after = String(oldest);
+    }
+  }
+  const values: Record<string, number> = {};
+  for (const [id, t] of types) values[id] = await okxContractValue(fetchFn, t, id);
+  return parseOkxClosed(raw, values);
+}
+
+// ─── KuCoin (futuros) ───────────────────────────────────────────────────────
+
+const KUCOIN = "https://api-futures.kucoin.com";
+const KUCOIN_PATH = "/api/v1/history-positions";
+
+/** Firma de KuCoin: HMAC-SHA256 en base64 de timestamp + MÉTODO + ruta + ?query. */
+async function kucoinSign(timestamp: string, method: string, pathWithQuery: string, secret: string) {
+  return hmacBase64(secret, timestamp + method.toUpperCase() + pathWithQuery);
+}
+
+async function kucoinGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, pass: string) {
+  const query = qs(params);
+  const ts = String(Date.now());
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const sig = await kucoinSign(ts, "GET", full, secret);
+  const r = await getJson(
+    fetchFn,
+    `${KUCOIN}${full}`,
+    {
+      "KC-API-KEY": key,
+      "KC-API-SIGN": sig,
+      "KC-API-TIMESTAMP": ts,
+      "KC-API-PASSPHRASE": await hmacBase64(secret, pass), // con la versión 2 de la clave, la contraseña va firmada
+      "KC-API-KEY-VERSION": "2",
+      "Content-Type": "application/json",
+    },
+    "KuCoin",
+  );
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && String(code) !== "200000")) {
+    const c = String(code);
+    if (["400003", "400004", "400005"].includes(c) || r.status === 401) throw new ExchangeError("KuCoin no aceptó la clave, la clave secreta o la contraseña de la API. Revisá que estén bien copiadas.");
+    if (c === "400001") throw new ExchangeError("Faltan datos de la clave de KuCoin. Revisá la clave, la secreta y la contraseña de la API.");
+    if (c === "400006") throw new ExchangeError("La clave de KuCoin tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === "400007") throw new ExchangeError("La clave de KuCoin no tiene permiso para leer Futuros. Revisá los permisos de la clave y volvé a intentar.");
+    if (c === "400002") throw new ExchangeError("El reloj del servidor no coincide con el de KuCoin. Probá de nuevo.");
+    if (c === "429000") throw new ExchangeError("KuCoin limitó los pedidos por unos minutos. Probá de nuevo más tarde.");
+    throw new ExchangeError(`KuCoin respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function kucoinCheck(key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<CheckResult> {
+  if (!pass) return { ok: false, error: "KuCoin pide también la contraseña de la API (passphrase)." };
+  try {
+    await kucoinGet(fetchFn, KUCOIN_PATH, { limit: 1 }, key, secret, pass);
+    // KuCoin no permite consultar los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "KuCoin no nos deja confirmar los permisos de la clave. Verificá en KuCoin que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+/** KuCoin informa el tamaño en lotes: se multiplica por el valor del lote (multiplier). El pnl ya viene neto de comisiones y funding. */
+function parseKucoinClosed(list: any[], multipliers: Record<string, number>): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const type = String(r.type ?? "").toUpperCase();
+    const side = String(r.side ?? "").toLowerCase();
+    const direction = side === "long" || type.endsWith("LONG") ? "LONG" : side === "short" || type.endsWith("SHORT") ? "SHORT" : null;
+    const entry = num(r.openPrice), exit = num(r.closePrice);
+    const pnl = num(r.pnl);
+    const mult = Math.abs(multipliers[String(r.symbol)] ?? 0);
+    // Sin el tamaño se deduce del resultado bruto (pnl + comisión − funding) y el recorrido del precio.
+    const move = Math.abs(exit - entry);
+    const gross = Math.abs(pnl + num(r.tradeFee) - num(r.fundingFee));
+    const qty = mult > 0 && num(r.closeSize) > 0 ? num(r.closeSize) * mult : move > 0 ? gross / move : 0;
+    const closedAt = Number(r.closeTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.closeId ?? r.positionId ?? closedAt}`,
+      symbol: String(r.symbol).replace(/M$/, "").replace(/^XBT/, "BTC"),
+      direction,
+      qty,
+      entry,
+      exit,
+      pnl,
+      openedAt: Number(r.openTime ?? closedAt),
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function kucoinMultiplier(fetchFn: FetchFn, symbol: string): Promise<number> {
+  try {
+    const r = await getJson(fetchFn, `${KUCOIN}/api/v1/contracts/${encodeURIComponent(symbol)}`, {}, "KuCoin");
+    return num(r.body?.data?.multiplier);
+  } catch {
+    return 0;
+  }
+}
+
+async function kucoinFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch, pass = ""): Promise<ClosedPosition[]> {
+  const raw: any[] = [];
+  for (const [s, e] of windows(since, now)) {
+    for (let pageId = 1; pageId <= 30; pageId++) {
+      const data = await kucoinGet(fetchFn, KUCOIN_PATH, { from: s, to: e, limit: 100, pageId }, key, secret, pass);
+      const items: any[] = data?.items ?? [];
+      raw.push(...items);
+      const totalPage = Number(data?.totalPage);
+      if (items.length < 100 || (Number.isFinite(totalPage) && pageId >= totalPage)) break;
+    }
+  }
+  const mults: Record<string, number> = {};
+  for (const sym of new Set(raw.map((r) => String(r.symbol)))) mults[sym] = await kucoinMultiplier(fetchFn, sym);
+  return parseKucoinClosed(raw, mults);
+}
+
+// ─── BingX (futuros perpetuos USDT) ─────────────────────────────────────────
+
+const BINGX = "https://open-api.bingx.com";
+const BINGX_HISTORY = "/openApi/swap/v1/trade/positionHistory";
+const BINGX_INCOME = "/openApi/swap/v2/user/income";
+
+/** Firma de BingX: HMAC-SHA256 (hex) de los parámetros ordenados por nombre (clave=valor&...), con el timestamp incluido. */
+async function bingxSign(query: string, secret: string) {
+  return hmacHex(secret, query);
+}
+
+/** Pide a BingX. Con `soft`, un error de parámetros devuelve null en vez de cortar (para probar otra forma de pedirlo). */
+async function bingxGet(fetchFn: FetchFn, path: string, params: Record<string, string | number>, key: string, secret: string, soft = false) {
+  const all = { ...params, recvWindow: 10_000, timestamp: Date.now() };
+  const sorted = Object.fromEntries(Object.entries(all).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const raw = Object.entries(sorted).map(([k, v]) => `${k}=${v}`).join("&");
+  const sig = await bingxSign(raw, secret);
+  const r = await getJson(fetchFn, `${BINGX}${path}?${qs(sorted)}&signature=${sig}`, { "X-BX-APIKEY": key }, "BingX");
+  const code = r.body?.code;
+  if (r.status >= 400 || (code !== undefined && Number(code) !== 0)) {
+    const c = Number(code);
+    if (soft && (c === 100400 || c === 80014 || /symbol/i.test(String(r.body?.msg ?? "")))) return null;
+    if (c === 100001 || c === 100412 || c === 100413) throw new ExchangeError("BingX no aceptó la clave o la clave secreta. Revisá que estén bien copiadas.");
+    if (c === 100004) throw new ExchangeError("La clave de BingX no tiene permiso para leer Futuros. Activá la lectura y volvé a intentar.");
+    if (c === 100419) throw new ExchangeError("La clave de BingX tiene restricción de IP. Creala sin restricción de IP (con solo lectura es seguro).");
+    if (c === 100410 || c === 100500) throw new ExchangeError("BingX está ocupado en este momento. Probá de nuevo en unos minutos.");
+    throw new ExchangeError(`BingX respondió con un error${r.body?.msg ? `: ${r.body.msg}` : ""}.`);
+  }
+  return r.body?.data;
+}
+
+async function bingxCheck(key: string, secret: string, fetchFn: FetchFn = fetch): Promise<CheckResult> {
+  try {
+    await bingxGet(fetchFn, BINGX_INCOME, { limit: 1 }, key, secret);
+    // BingX no permite confirmar con certeza los permisos de una clave: se avisa para que la persona lo confirme.
+    return { ok: true, warning: "BingX no nos deja confirmar los permisos de la clave. Verificá en BingX que sea de SOLO LECTURA (sin operar ni retirar)." };
+  } catch (e) {
+    return { ok: false, error: e instanceof ExchangeError ? e.message : "No se pudo verificar la clave." };
+  }
+}
+
+function parseBingxClosed(list: any[]): ClosedPosition[] {
+  const out: ClosedPosition[] = [];
+  for (const r of list ?? []) {
+    const entry = num(r.avgPrice), exit = num(r.avgClosePrice);
+    const side = String(r.positionSide ?? "").toUpperCase();
+    // En modo unidireccional el lado no viene como LONG/SHORT: se deduce del recorrido del precio y del resultado.
+    const dirOfPrice = (exit - entry) * num(r.realisedProfit);
+    const direction = side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : dirOfPrice > 0 ? "LONG" : dirOfPrice < 0 ? "SHORT" : null;
+    const qty = num(r.closePositionAmt) > 0 ? num(r.closePositionAmt) : num(r.positionAmt);
+    const closedAt = Number(r.updateTime ?? r.openTime);
+    if (!direction || !(entry > 0) || !(exit > 0) || !(qty > 0) || !Number.isFinite(closedAt)) continue;
+    out.push({
+      externalId: `${r.symbol}:${r.positionId}`,
+      symbol: String(r.symbol).replace(/-/g, ""),
+      direction,
+      qty,
+      entry,
+      exit,
+      // netProfit ya descuenta comisiones y funding (en la muestra de BingX: 102,89 − 0,34 − 2,92 = 99,63).
+      pnl: r.netProfit !== undefined ? num(r.netProfit) : num(r.realisedProfit) + num(r.positionCommission) + num(r.totalFunding),
+      openedAt: Number(r.openTime ?? closedAt),
+      closedAt,
+      leverage: lev(r.leverage),
+    });
+  }
+  return out;
+}
+
+async function bingxPages(fetchFn: FetchFn, params: Record<string, string | number>, key: string, secret: string, soft: boolean): Promise<any[] | null> {
+  const rows: any[] = [];
+  for (let pageIndex = 1; pageIndex <= 30; pageIndex++) {
+    const data = await bingxGet(fetchFn, BINGX_HISTORY, { ...params, pageIndex, pageSize: 100 }, key, secret, soft);
+    if (data === null) return null;
+    const list: any[] = data?.positionHistory ?? [];
+    rows.push(...list);
+    if (list.length < 100) break;
+  }
+  return rows;
+}
+
+async function bingxFetchClosed(key: string, secret: string, since: number, now = Date.now(), fetchFn: FetchFn = fetch): Promise<ClosedPosition[]> {
+  const all: ClosedPosition[] = [];
+  for (const [s, e] of windows(since, now)) {
+    // Primero se pide todo junto; si BingX exige el par, se arma la lista de pares a partir de los resultados cerrados del período.
+    let rows = await bingxPages(fetchFn, { startTs: s, endTs: e }, key, secret, true);
+    if (rows === null) {
+      const income: any[] = (await bingxGet(fetchFn, BINGX_INCOME, { incomeType: "REALIZED_PNL", startTime: s, endTime: e, limit: 1000 }, key, secret)) ?? [];
+      rows = [];
+      for (const symbol of new Set(income.map((i) => String(i.symbol ?? "")).filter(Boolean))) {
+        rows.push(...((await bingxPages(fetchFn, { symbol, startTs: s, endTs: e }, key, secret, false)) ?? []));
+      }
+    }
+    all.push(...parseBingxClosed(rows));
+  }
+  return all;
+}
+
+// ─── Común ──────────────────────────────────────────────────────────────────
+
+const checkKey = (ex: ExchangeId, key: string, secret: string, fetchFn?: FetchFn, pass?: string) =>
+  ex === "binance" ? binanceCheck(key, secret, fetchFn)
+  : ex === "bybit" ? bybitCheck(key, secret, fetchFn)
+  : ex === "bitunix" ? bitunixCheck(key, secret, fetchFn)
+  : ex === "mexc" ? mexcCheck(key, secret, fetchFn)
+  : ex === "gate" ? gateCheck(key, secret, fetchFn)
+  : ex === "bitget" ? bitgetCheck(key, secret, fetchFn, pass)
+  : ex === "okx" ? okxCheck(key, secret, fetchFn, pass)
+  : ex === "kucoin" ? kucoinCheck(key, secret, fetchFn, pass)
+  : bingxCheck(key, secret, fetchFn);
+
+const fetchClosed = (ex: ExchangeId, key: string, secret: string, since: number, now?: number, fetchFn?: FetchFn, pass?: string) =>
+  ex === "binance" ? binanceFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bybit" ? bybitFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bitunix" ? bitunixFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "mexc" ? mexcFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "gate" ? gateFetchClosed(key, secret, since, now, fetchFn)
+  : ex === "bitget" ? bitgetFetchClosed(key, secret, since, now, fetchFn, pass)
+  : ex === "okx" ? okxFetchClosed(key, secret, since, now, fetchFn, pass)
+  : ex === "kucoin" ? kucoinFetchClosed(key, secret, since, now, fetchFn, pass)
+  : bingxFetchClosed(key, secret, since, now, fetchFn);
+
+interface TradeRow {
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  entry: number;
+  tp: number;
+  sl: number;
+  date: string;
+  outcome: "MANUAL";
+  exit: number;
+  closed_at: string;
+  notes: string;
+  source: ExchangeId;
+  external_id: string;
+  /** Apalancamiento (si el exchange lo informa) y valor de la posición en USDT. */
+  leverage: number | null;
+  size_usd: number | null;
+}
+
+const round = (n: number) => Number(n.toPrecision(10));
+
+/**
+ * Arma la fila del diario a partir de una posición cerrada.
+ * `unit` es lo que vale 1R en dinero (capital × riesgo %). Como el exchange no guarda el stop,
+ * se toma como stop la distancia en la que la posición perdería exactamente 1R, y como salida
+ * el precio que reproduce el resultado NETO real: así el R del diario coincide con el dinero.
+ */
+function toTradeRow(p: ClosedPosition, exchange: ExchangeId, unit: number): TradeRow {
+  const dir = p.direction === "LONG" ? 1 : -1;
+  const slDist = unit / p.qty;
+  const exitNet = p.entry + (dir * p.pnl) / p.qty;
+  const tpDist = p.pnl > 0 ? Math.abs(exitNet - p.entry) : slDist;
+  const name = EXCHANGE_NAMES[exchange];
+  return {
+    symbol: p.symbol.toUpperCase(),
+    direction: p.direction,
+    entry: round(p.entry),
+    tp: round(p.entry + dir * tpDist),
+    sl: round(p.entry - dir * slDist),
+    date: new Date(p.openedAt).toISOString(),
+    outcome: "MANUAL",
+    exit: round(exitNet),
+    closed_at: new Date(p.closedAt).toISOString(),
+    notes: `${name} · cantidad ${round(p.qty)} · salida real ${round(p.exit)} · resultado neto ${p.pnl >= 0 ? "+" : "−"}${Math.abs(p.pnl).toFixed(2)} USDT${p.raw ? ` · ${p.raw}` : ""}`,
+    source: exchange,
+    external_id: p.externalId,
+    leverage: p.leverage ?? null,
+    size_usd: p.qty > 0 && p.entry > 0 ? round(p.qty * p.entry) : null,
+  };
+}
+
+// ─── Posiciones abiertas (solo Bitunix, por ahora) ──────────────────────────
+
+interface OpenPosition {
+  /** En Bitunix es el mismo id que tendrá al cerrarse; en los demás es «open:PAR:LADO» (provisorio: al cerrarse se importa la operación real y este se borra). */
+  externalId: string;
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  qty: number;
+  entry: number;
+  openedAt: number; // ms
+  leverage?: number;
+  /** Objetivo y stop reales de la posición, solo si el exchange los informa y están del lado correcto. */
+  tp?: number;
+  sl?: number;
+}
+
+/** Descarta un TP/SL que no sirve (cero, o del lado equivocado de la entrada). */
+function realLevels(direction: "LONG" | "SHORT", entry: number, tpRaw: unknown, slRaw: unknown): { tp?: number; sl?: number } {
+  const tp = num(tpRaw), sl = num(slRaw);
+  const long = direction === "LONG";
+  return {
+    tp: tp > 0 && (long ? tp > entry : tp < entry) ? tp : undefined,
+    sl: sl > 0 && (long ? sl < entry : sl > entry) ? sl : undefined,
+  };
+}
+
+function parseBitunixOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toUpperCase();
+    const direction = side === "LONG" || side === "BUY" ? "LONG" : side === "SHORT" || side === "SELL" ? "SHORT" : null;
+    const entry = num(r.avgOpenPrice ?? r.entryPrice ?? r.openPrice);
+    const qty = num(r.qty);
+    const openedAt = Number(r.ctime ?? Date.now());
+    if (!direction || !r.positionId || !r.symbol || !(entry > 0) || !(qty > 0) || !Number.isFinite(openedAt)) continue;
+    out.push({ externalId: `${r.symbol}:${r.positionId}`, symbol: String(r.symbol), direction, qty, entry, openedAt, leverage: lev(r.leverage) });
+  }
+  return out;
+}
+
+function parseBinanceOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const amt = num(r.positionAmt);
+    const entry = num(r.entryPrice);
+    if (!r.symbol || amt === 0 || !(entry > 0)) continue;
+    const ps = String(r.positionSide ?? "BOTH").toUpperCase();
+    const direction = ps === "LONG" ? "LONG" : ps === "SHORT" ? "SHORT" : amt > 0 ? "LONG" : "SHORT";
+    const t = Number(r.updateTime);
+    out.push({ externalId: `open:${r.symbol}:${direction}`, symbol: String(r.symbol), direction, qty: Math.abs(amt), entry, openedAt: Number.isFinite(t) && t > 0 ? t : Date.now(), leverage: lev(r.leverage) });
+  }
+  return out;
+}
+
+function parseBybitOpen(list: any[]): OpenPosition[] {
+  const out: OpenPosition[] = [];
+  for (const r of list ?? []) {
+    const side = String(r.side ?? "").toLowerCase();
+    const direction = side === "buy" ? "LONG" : side === "sell" ? "SHORT" : null;
+    const entry = num(r.avgPrice ?? r.entryPrice);
+    const qty = num(r.size);
+    if (!direction || !r.symbol || !(entry > 0) || !(qty > 0)) continue;
+    const t = Number(r.createdTime);
+    out.push({
+      externalId: `open:${r.symbol}:${direction}`,
+      symbol: String(r.symbol),
+      direction,
+      qty,
+      entry,
+      openedAt: Number.isFinite(t) && t > 0 ? t : Date.now(),
+      leverage: lev(r.leverage),
+      ...realLevels(direction, entry, r.takeProfit, r.stopLoss),
+    });
+  }
+  return out;
+}
+
+/** Objetivo y stop reales de Bitunix (órdenes TP/SL pendientes), por posición. Si falla, se usan los de referencia. */
+async function bitunixLevels(fetchFn: FetchFn, key: string, secret: string, positions: OpenPosition[]) {
+  for (const p of positions) {
+    try {
+      const data = await bitunixGet(fetchFn, "/api/v1/futures/tpsl/get_pending_orders", { symbol: p.symbol }, key, secret);
+      const list: any[] = Array.isArray(data) ? data : data?.orderList ?? data?.list ?? [];
+      const mine = list.filter((o) => !o.positionId || String(o.positionId) === p.externalId.split(":")[1]);
+      const tp = mine.map((o) => o.tpPrice).find((v) => num(v) > 0);
+      const sl = mine.map((o) => o.slPrice).find((v) => num(v) > 0);
+      Object.assign(p, realLevels(p.direction, p.entry, tp, sl));
+    } catch {
+      /* se queda con los niveles de referencia */
+    }
+  }
+}
+
+/** Posiciones abiertas ahora (Bitunix, Binance y Bybit). Los demás exchanges devuelven vacío: sus operaciones se importan al cerrarse. */
+async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch): Promise<OpenPosition[]> {
+  if (ex === "bitunix") {
+    const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_pending_positions", {}, key, secret);
+    const list = parseBitunixOpen(Array.isArray(data) ? data : data?.positionList ?? []);
+    await bitunixLevels(fetchFn, key, secret, list);
+    return list;
+  }
+  if (ex === "binance") return parseBinanceOpen(await binanceGet(fetchFn, B_FUT, "/fapi/v2/positionRisk", {}, key, secret));
+  if (ex === "bybit") {
+    const out: OpenPosition[] = [];
+    let cursor = "";
+    for (let page = 0; page < 5; page++) {
+      const params: Record<string, string | number> = { category: "linear", settleCoin: "USDT", limit: 200 };
+      if (cursor) params.cursor = cursor;
+      const result = await bybitGet(fetchFn, "/v5/position/list", params, key, secret);
+      out.push(...parseBybitOpen(result?.list ?? []));
+      cursor = result?.nextPageCursor ?? "";
+      if (!cursor) break;
+    }
+    return out;
+  }
+  return [];
+}
+
+/** Fila del diario para una posición abierta. Con niveles reales usa esos; si no, de referencia (stop = 1R de tu riesgo por operación, objetivo = 2R). */
+function toOpenTradeRow(p: OpenPosition, exchange: ExchangeId, unit: number) {
+  const dir = p.direction === "LONG" ? 1 : -1;
+  const slDist = unit / p.qty;
+  const realSl = p.sl != null, realTp = p.tp != null;
+  const what = realSl && realTp ? "stop y objetivo reales de la orden" : realSl ? "stop real de la orden; objetivo de referencia (2R)" : realTp ? "objetivo real de la orden; stop de referencia (1R)" : "stop y objetivo de referencia (1R y 2R de tu riesgo por operación), no los de la orden";
+  return {
+    symbol: p.symbol.toUpperCase(),
+    direction: p.direction,
+    entry: round(p.entry),
+    tp: round(p.tp ?? p.entry + dir * 2 * slDist),
+    sl: round(p.sl ?? p.entry - dir * slDist),
+    date: new Date(p.openedAt).toISOString(),
+    outcome: "ABIERTA" as const,
+    notes: `${EXCHANGE_NAMES[exchange]} · posición abierta · cantidad ${round(p.qty)} · ${what}`,
+    source: exchange,
+    external_id: p.externalId,
+    leverage: p.leverage ?? null,
+    size_usd: p.qty > 0 && p.entry > 0 ? round(p.qty * p.entry) : null,
+  };
+}
+
+// ─── Cifrado de la clave secreta (AES-GCM) ──────────────────────────────────
+
+async function aesKey(master: string) {
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(master));
+  return crypto.subtle.importKey("raw", digest, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+const b64 = (buf: ArrayBuffer | Uint8Array) => {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s);
+};
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function encryptSecret(plain: string, master: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(master), enc.encode(plain));
+  return `${b64(iv)}.${b64(ct)}`;
+}
+
+async function decryptSecret(packed: string, master: string): Promise<string> {
+  const [iv, ct] = packed.split(".");
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(iv) }, await aesKey(master), unb64(ct));
+  return new TextDecoder().decode(plain);
+}
+
+// ─── VELTRIX · Órdenes reales en Bitunix (prueba mínima) ────────────────────
+// Esto SÍ opera con dinero: se usa solo desde la función «trade», con la clave con permiso de operar de la persona,
+// con topes duros (ver la migración 0037) y empezando siempre en «prueba en seco» (no se envía nada).
+// La documentación de Bitunix no se pudo consultar al escribirlo: por eso la primera orden real es una orden mínima
+// de prueba, confirmada a mano, que se cierra enseguida; recién si sale bien se habilita el modo automático.
+
+
+const BX = "https://fapi.bitunix.com";
+
+interface BxPair {
+  symbol: string;
+  minQty: number; // tamaño mínimo de una orden (moneda base)
+  qtyDecimals: number; // decimales permitidos del tamaño
+  maxLeverage: number;
+  /** Decimales del precio (para redondear stop y objetivo); null si el exchange no lo informó. */
+  priceDecimals?: number | null;
+  /** Si el exchange solo acepta tamaños múltiplos de un paso (por ejemplo contratos), ese paso en moneda base. */
+  qtyStep?: number;
+}
+
+interface BxCfg {
+  risk_usdt: number; // lo máximo que se pierde si salta el stop
+  max_margin_usdt: number; // lo máximo de margen (plata de la cuenta) que usa una operación
+  max_leverage: number;
+  /** Piso de apalancamiento (Dinámico: 40x). Sin dato = 1x, o sea, el bot usa el mínimo que alcance. */
+  min_leverage?: number;
+}
+
+interface BxSignal {
+  symbol: string;
+  direction: "LONG" | "SHORT";
+  entry: number;
+  sl: number;
+  tp: number;
+}
+
+type BxPlan = { ok: true; qty: number; leverage: number; notional: number; margin: number; risk: number } | { ok: false; reason: string };
+
+const MOVED_MAX = 0.005; // si el precio ya se movió más de 0,5 % desde la señal, no se persigue
+const floorTo = (n: number, decimals: number) => {
+  const k = 10 ** decimals;
+  return Math.floor(n * k + 1e-9) / k;
+};
+
+/**
+ * Cuánto comprar o vender: el tamaño sale del riesgo fijo (qty = riesgo / distancia al stop), sin pasarse del margen máximo.
+ * Nunca redondea hacia arriba ni sube el riesgo para llegar al mínimo del exchange: si no entra, se omite la operación.
+ */
+function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg): BxPlan {
+  if (!(price > 0) || !(sig.entry > 0)) return { ok: false, reason: "Precio no válido." };
+  if (![cfg.risk_usdt, cfg.max_margin_usdt, cfg.max_leverage, pair.minQty].every((v) => Number.isFinite(v) && v > 0)) return { ok: false, reason: "Faltan los topes de seguridad: no se opera." };
+  const long = sig.direction === "LONG";
+  if (Math.abs(price - sig.entry) / sig.entry > MOVED_MAX) return { ok: false, reason: "El precio ya se movió más de 0,5 % desde la señal: no se persigue." };
+  const dist = long ? price - sig.sl : sig.sl - price;
+  const toTp = long ? sig.tp - price : price - sig.tp;
+  if (!(dist > 0) || !(toTp > 0)) return { ok: false, reason: "El precio ya pasó el stop o el objetivo." };
+  const levCap = Math.max(1, Math.min(cfg.max_leverage, pair.maxLeverage > 0 ? pair.maxLeverage : cfg.max_leverage));
+  const maxNotional = cfg.max_margin_usdt * levCap;
+  const wanted = Math.min(cfg.risk_usdt / dist, maxNotional / price);
+  const qty = pair.qtyStep && pair.qtyStep > 0 ? floorTo(Math.floor(wanted / pair.qtyStep + 1e-9) * pair.qtyStep, pair.qtyDecimals) : floorTo(wanted, pair.qtyDecimals);
+  if (!(qty > 0) || qty < pair.minQty) return { ok: false, reason: `Con tus topes el tamaño (${wanted.toPrecision(2)}) queda por debajo del mínimo del exchange (${pair.minQty}).` };
+  const notional = qty * price;
+  // El apalancamiento es el mínimo que entra en el margen, pero nunca menos que el piso de la persona ni más que el tope (ni que el del exchange).
+  const floor = Math.min(levCap, Math.max(1, Math.round(cfg.min_leverage ?? 1)));
+  const leverage = Math.min(levCap, Math.max(floor, Math.ceil(notional / cfg.max_margin_usdt)));
+  const margin = notional / leverage;
+  const risk = qty * dist;
+  if (margin > cfg.max_margin_usdt + 1e-9) return { ok: false, reason: "El margen necesario supera tu tope." };
+  if (risk > cfg.risk_usdt * 1.001) return { ok: false, reason: "El riesgo superaría tu tope." };
+  // El stop tiene que quedar bien antes de la liquidación (con margen aislado se liquida más o menos a 1/apalancamiento).
+  if (dist / price > 0.6 / leverage) return { ok: false, reason: "El stop quedaría demasiado cerca de la liquidación con ese apalancamiento." };
+  return { ok: true, qty, leverage, notional, margin, risk };
+}
+
+const hex = (buf: ArrayBuffer | Uint8Array) => [...new Uint8Array(buf as ArrayBuffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+interface BxReply {
+  ok: boolean;
+  status: number;
+  code: number | null;
+  msg: string;
+  data: any;
+}
+
+/** Pedido firmado. GET: parámetros en la dirección. POST: cuerpo JSON compacto (entra en la firma). Nunca lanza: devuelve el resultado tal cual. */
+async function bxCall(fetchFn: FetchFn, method: "GET" | "POST", path: string, params: Record<string, string | number>, body: Record<string, unknown> | null, key: string, secret: string): Promise<BxReply> {
+  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
+  const ts = String(Date.now());
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const sign = await bitunixSign(nonce, ts, key, params, secret, bodyStr);
+  const query = Object.keys(params).length ? "?" + Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&") : "";
+  try {
+    const res = await fetchFn(`${BX}${path}${query}`, {
+      method,
+      headers: { "api-key": key, nonce, timestamp: ts, sign, "Content-Type": "application/json", language: "en-US" },
+      ...(method === "POST" ? { body: bodyStr } : {}),
+      signal: AbortSignal.timeout(10000),
+    });
+    const text = await res.text();
+    let j: any = null;
+    try {
+      j = JSON.parse(text);
+    } catch {
+      /* no era JSON */
+    }
+    const code = j?.code === undefined ? null : Number(j.code);
+    return { ok: res.status < 400 && code === 0, status: res.status, code, msg: String(j?.msg ?? j?.message ?? (j ? "" : text.slice(0, 120))), data: j?.data };
+  } catch {
+    return { ok: false, status: 0, code: null, msg: "No se pudo conectar con Bitunix.", data: null };
+  }
+}
+
+const n = (v: unknown) => {
+  const x = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(x) ? x : 0;
+};
+
+/** Plata disponible en la cuenta de futuros (USDT). */
+async function bxBalance(fetchFn: FetchFn, key: string, secret: string): Promise<{ ok: boolean; available: number; msg: string; code: number | null }> {
+  const r = await bxCall(fetchFn, "GET", "/api/v1/futures/account", { marginCoin: "USDT" }, null, key, secret);
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  return { ok: r.ok, available: n(d?.available) + n(d?.margin), msg: r.msg, code: r.code };
+}
+
+/** Reglas del par (mínimo y decimales). Si no se pueden leer con certeza, devuelve null y no se opera. */
+async function bxPair(fetchFn: FetchFn, key: string, secret: string, symbol: string): Promise<BxPair | null> {
+  const r = await bxCall(fetchFn, "GET", "/api/v1/futures/market/trading_pairs", { symbols: symbol }, null, key, secret);
+  const list: any[] = Array.isArray(r.data) ? r.data : [];
+  const p = list.find((x) => String(x?.symbol).toUpperCase() === symbol.toUpperCase());
+  if (!r.ok || !p) return null;
+  const minQty = n(p.minTradeVolume);
+  const qtyDecimals = Number.isInteger(Number(p.basePrecision)) ? Number(p.basePrecision) : -1;
+  if (!(minQty > 0) || qtyDecimals < 0 || qtyDecimals > 12) return null;
+  const pd = Number(p.quotePrecision);
+  return { symbol, minQty, qtyDecimals, maxLeverage: n(p.maxLeverage) || 20, priceDecimals: Number.isInteger(pd) && pd >= 0 && pd <= 12 ? pd : null };
+}
+
+/** Posiciones abiertas ahora en la cuenta. null = no se pudo leer. */
+async function bxPositions(fetchFn: FetchFn, key: string, secret: string): Promise<Array<{ positionId: string; symbol: string; qty: number; side: string }> | null> {
+  const r = await bxCall(fetchFn, "GET", "/api/v1/futures/position/get_pending_positions", {}, null, key, secret);
+  if (!r.ok) return null;
+  const list: any[] = Array.isArray(r.data) ? r.data : [];
+  return list.map((p) => ({ positionId: String(p.positionId), symbol: String(p.symbol), qty: n(p.qty), side: String(p.side ?? "") }));
+}
+
+/** Margen aislado y apalancamiento del par (antes de abrir). Devuelve los avisos de lo que no se pudo cambiar. */
+async function bxSetup(fetchFn: FetchFn, key: string, secret: string, symbol: string, leverage: number): Promise<string[]> {
+  const warn: string[] = [];
+  const m = await bxCall(fetchFn, "POST", "/api/v1/futures/account/change_margin_mode", {}, { symbol, marginCoin: "USDT", marginMode: "ISOLATION" }, key, secret);
+  if (!m.ok) warn.push(`margen aislado: ${m.msg || m.code}`);
+  const l = await bxCall(fetchFn, "POST", "/api/v1/futures/account/change_leverage", {}, { symbol, marginCoin: "USDT", leverage }, key, secret);
+  if (!l.ok) warn.push(`apalancamiento: ${l.msg || l.code}`);
+  return warn;
+}
+
+/** El cuerpo de la orden de mercado con stop y objetivo enviados junto con la orden. */
+function orderBody(sig: BxSignal, qty: number, clientId: string, priceDecimals: number | null = null): Record<string, unknown> {
+  const px = (v: number) => String(priceDecimals == null ? v : Number(v.toFixed(priceDecimals)));
+  return {
+    symbol: sig.symbol,
+    qty: String(qty),
+    side: sig.direction === "LONG" ? "BUY" : "SELL",
+    tradeSide: "OPEN",
+    orderType: "MARKET",
+    tpPrice: px(sig.tp),
+    tpOrderType: "MARKET",
+    slPrice: px(sig.sl),
+    slOrderType: "MARKET",
+    slStopType: "MARK_PRICE",
+    clientId,
+  };
+}
+
+const bxPlace = (fetchFn: FetchFn, key: string, secret: string, body: Record<string, unknown>) => bxCall(fetchFn, "POST", "/api/v1/futures/trade/place_order", {}, body, key, secret);
+const bxFlashClose = (fetchFn: FetchFn, key: string, secret: string, positionId: string) => bxCall(fetchFn, "POST", "/api/v1/futures/trade/flash_close_position", {}, { positionId }, key, secret);
+const bxCancelAll = (fetchFn: FetchFn, key: string, secret: string) => bxCall(fetchFn, "POST", "/api/v1/futures/trade/cancel_all_orders", {}, {}, key, secret);
+
+// ─── VELTRIX · Órdenes reales en MEXC (futuros) ─────────────────────────────
+// Igual que con Bitunix: esto SÍ opera con dinero, solo se usa desde la función «trade», con la clave con permiso
+// de operar de la persona, con los topes de la tabla bot_live y empezando siempre en «prueba en seco».
+// La documentación de MEXC no se pudo consultar al escribirlo: por eso la primera orden real es una orden mínima de
+// prueba, confirmada a mano, que se cierra enseguida; recién si sale bien se habilita el modo automático.
+//
+// MEXC mide el tamaño en CONTRATOS (cada contrato vale una fracción de la moneda): acá todo se calcula en moneda base
+// como en los otros exchanges y se convierte a contratos al armar la orden.
+
+
+const MX_BASES = ["https://contract.mexc.com", "https://api.mexc.com"];
+
+interface MxReply {
+  ok: boolean;
+  status: number;
+  code: number | null;
+  msg: string;
+  data: any;
+}
+
+interface MxPosition {
+  positionId: string;
+  symbol: string; // BTCUSDT
+  contractSymbol: string; // BTC_USDT
+  qty: number; // moneda base
+  vol: number; // contratos
+  side: "LONG" | "SHORT";
+}
+
+/** BTCUSDT → BTC_USDT. */
+const mexcSymbol = (symbol: string) => (symbol.includes("_") ? symbol : symbol.replace(/(USDT|USDC)$/, "_$1"));
+const fromMexcSymbol = (symbol: string) => symbol.replace(/_/g, "");
+
+const mxNum = (v: unknown) => {
+  const x = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(x) ? x : 0;
+};
+const mxDecimals = (x: number) => {
+  if (!(x > 0)) return 0;
+  const s = x.toFixed(12).replace(/0+$/, "");
+  const i = s.indexOf(".");
+  return i < 0 ? 0 : s.length - i - 1;
+};
+
+/** Pedido firmado. GET: parámetros ordenados en la dirección. POST: cuerpo JSON compacto (entra en la firma). Nunca lanza. */
+async function mexcCall(fetchFn: FetchFn, method: "GET" | "POST", path: string, params: Record<string, string | number>, body: Record<string, unknown> | null, key: string, secret: string): Promise<MxReply> {
+  const sorted = Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const query = sorted.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const paramString = method === "POST" ? bodyStr : query;
+  let last: MxReply = { ok: false, status: 0, code: null, msg: "No se pudo conectar con MEXC.", data: null };
+  for (const base of MX_BASES) {
+    const ts = String(Date.now());
+    const sign = await mexcSign(key, ts, paramString, secret);
+    try {
+      const res = await fetchFn(`${base}${path}${method === "GET" && query ? `?${query}` : ""}`, {
+        method,
+        headers: { ApiKey: key, "Request-Time": ts, Signature: sign, "Content-Type": "application/json" },
+        ...(method === "POST" ? { body: bodyStr } : {}),
+        signal: AbortSignal.timeout(10000),
+      });
+      const text = await res.text();
+      let j: any = null;
+      try {
+        j = JSON.parse(text);
+      } catch {
+        /* no era JSON */
+      }
+      const code = j?.code === undefined ? null : Number(j.code);
+      const blocked = j === null && /access denied/i.test(text);
+      last = { ok: res.status < 400 && j?.success !== false && (code === null || code === 0) && j !== null, status: res.status, code, msg: blocked ? "MEXC bloqueó el pedido (Access Denied). MEXC no deja enviar órdenes de futuros por API en muchas cuentas: pedile a su soporte que habilite la API de futuros, o usá otro exchange." : String(j?.message ?? j?.msg ?? (j ? "" : text.slice(0, 120))), data: j?.data };
+      // Solo se prueba la otra dirección si esta ni siquiera conoce la ruta (404): nunca después de un pedido que pudo llegar.
+      if (res.status !== 404) return last;
+    } catch {
+      last = { ok: false, status: 0, code: null, msg: "No se pudo conectar con MEXC.", data: null };
+      if (method === "POST") return last; // un envío que pudo salir no se repite
+    }
+  }
+  return last;
+}
+
+/** Plata disponible en la cuenta de futuros (USDT). */
+async function mxBalance(fetchFn: FetchFn, key: string, secret: string): Promise<{ ok: boolean; available: number; msg: string; code: number | null }> {
+  const r = await mexcCall(fetchFn, "GET", "/api/v1/private/account/asset/USDT", {}, null, key, secret);
+  const d = Array.isArray(r.data) ? r.data[0] : r.data;
+  return { ok: r.ok && d != null, available: mxNum(d?.availableBalance), msg: r.msg, code: r.code };
+}
+
+/** Reglas del par a partir del detalle del contrato (pura, para probarla). null = no se entiende: no se opera. */
+function mexcPairFromDetail(d: any, symbol: string): (BxPair & { contractSize: number }) | null {
+  const contractSize = mxNum(d?.contractSize);
+  const minVol = mxNum(d?.minVol) || 1;
+  const volUnit = mxNum(d?.volUnit) || 1;
+  if (!(contractSize > 0)) return null;
+  const qtyStep = volUnit * contractSize;
+  const minQty = minVol * contractSize;
+  const qtyDecimals = mxDecimals(qtyStep);
+  if (qtyDecimals > 12) return null;
+  const ps = mxNum(d?.priceScale);
+  const priceDecimals = Number.isInteger(ps) && ps > 0 && ps <= 12 ? ps : d?.priceUnit ? mxDecimals(mxNum(d.priceUnit)) : null;
+  return { symbol, minQty, qtyDecimals, qtyStep, maxLeverage: mxNum(d?.maxLeverage) || 20, priceDecimals, contractSize };
+}
+
+async function mxPair(fetchFn: FetchFn, key: string, secret: string, symbol: string): Promise<(BxPair & { contractSize: number }) | null> {
+  const r = await mexcCall(fetchFn, "GET", "/api/v1/contract/detail", { symbol: mexcSymbol(symbol) }, null, key, secret);
+  const d = Array.isArray(r.data) ? r.data.find((x: any) => String(x?.symbol).toUpperCase() === mexcSymbol(symbol).toUpperCase()) : r.data;
+  if (!r.ok || !d) return null;
+  return mexcPairFromDetail(d, symbol);
+}
+
+/** Posiciones abiertas ahora. null = no se pudo leer. */
+async function mxPositions(fetchFn: FetchFn, key: string, secret: string): Promise<MxPosition[] | null> {
+  const r = await mexcCall(fetchFn, "GET", "/api/v1/private/position/open_positions", {}, null, key, secret);
+  if (!r.ok) return null;
+  const list: any[] = Array.isArray(r.data) ? r.data : [];
+  const sizes: Record<string, number> = {};
+  const out: MxPosition[] = [];
+  for (const p of list) {
+    const cs = String(p.symbol);
+    if (!(cs in sizes)) {
+      const det = await mexcCall(fetchFn, "GET", "/api/v1/contract/detail", { symbol: cs }, null, key, secret);
+      const d = Array.isArray(det.data) ? det.data[0] : det.data;
+      sizes[cs] = det.ok ? mxNum(d?.contractSize) : 0;
+    }
+    const vol = mxNum(p.holdVol);
+    if (!(vol > 0)) continue;
+    out.push({ positionId: String(p.positionId), symbol: fromMexcSymbol(cs), contractSymbol: cs, qty: Number((vol * sizes[cs]).toFixed(12)), vol, side: Number(p.positionType) === 2 ? "SHORT" : "LONG" });
+  }
+  return out;
+}
+
+/** La orden de mercado con stop y objetivo enviados junto con la orden. El tamaño se pasa a contratos. */
+function mexcOrderBody(sig: BxSignal, qty: number, clientId: string, pair: { contractSize: number; priceDecimals?: number | null }, leverage: number): Record<string, unknown> {
+  const px = (v: number) => (pair.priceDecimals == null ? v : Number(v.toFixed(pair.priceDecimals)));
+  const vol = Math.round(qty / pair.contractSize);
+  return {
+    symbol: mexcSymbol(sig.symbol),
+    vol,
+    leverage,
+    side: sig.direction === "LONG" ? 1 : 3, // 1 = abrir compra, 3 = abrir venta
+    type: 5, // a mercado
+    openType: 1, // margen aislado
+    externalOid: clientId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 32),
+    stopLossPrice: px(sig.sl),
+    takeProfitPrice: px(sig.tp),
+  };
+}
+
+const mxPlace = (fetchFn: FetchFn, key: string, secret: string, body: Record<string, unknown>) => mexcCall(fetchFn, "POST", "/api/v1/private/order/create", {}, body, key, secret);
+
+/** Cierra una posición a mercado con una orden en sentido contrario. */
+const mxClose = (fetchFn: FetchFn, key: string, secret: string, p: MxPosition) =>
+  mexcCall(fetchFn, "POST", "/api/v1/private/order/create", {}, { symbol: p.contractSymbol, vol: p.vol, side: p.side === "LONG" ? 4 : 2, type: 5, openType: 1, positionId: Number(p.positionId) || p.positionId, externalOid: `vxclose${Date.now()}` }, key, secret);
+
+/** Cancela las órdenes pendientes y los stops. */
+async function mxCancelAll(fetchFn: FetchFn, key: string, secret: string): Promise<MxReply> {
+  const a = await mexcCall(fetchFn, "POST", "/api/v1/private/order/cancel_all", {}, {}, key, secret);
+  const b = await mexcCall(fetchFn, "POST", "/api/v1/private/stoporder/cancel_all", {}, {}, key, secret);
+  return a.ok && b.ok ? a : { ...(a.ok ? b : a), ok: false };
+}
+
+// ─── VELTRIX · Bot real: Binance, Bybit, OKX, Bitget, BingX, Gate y KuCoin (futuros USDT) ──────────────
+// Igual que Bitunix y MEXC: esto SÍ opera con dinero, solo se usa desde la función «trade», con la clave con permiso de
+// operar de la persona, con los topes de bot_live y empezando siempre en «prueba en seco».
+// Las documentaciones no se pudieron consultar al escribirlo: por eso la primera orden real es una orden mínima de prueba,
+// confirmada a mano, que se cierra enseguida; recién si sale bien se habilita el modo automático.
+// Si el stop o el objetivo no se pueden colocar junto con la orden (Binance y Gate los piden aparte), la posición se cierra
+// al instante: nunca queda una posición abierta sin stop.
+// OKX y Bitget piden además una contraseña de la API (passphrase): se guarda junto a la clave secreta separada por \u0001.
+
+
+
+interface LvReply {
+  ok: boolean;
+  msg: string;
+  code: number | null;
+  data?: unknown;
+}
+interface LvPos {
+  symbol: string;
+  qty: number;
+  positionId: string;
+  raw: any;
+}
+type LvPair = BxPair & { contractSize?: number };
+interface LvAdapter {
+  balance(f: FetchFn, key: string, secret: string): Promise<{ ok: boolean; available: number; msg: string; code: number | null }>;
+  pair(f: FetchFn, key: string, secret: string, symbol: string): Promise<LvPair | null>;
+  positions(f: FetchFn, key: string, secret: string): Promise<LvPos[] | null>;
+  setup(f: FetchFn, key: string, secret: string, symbol: string, leverage: number): Promise<string[]>;
+  order(sig: BxSignal, qty: number, clientId: string, pair: LvPair, leverage: number): Record<string, unknown>;
+  place(f: FetchFn, key: string, secret: string, body: Record<string, unknown>): Promise<LvReply>;
+  close(f: FetchFn, key: string, secret: string, pos: LvPos): Promise<LvReply>;
+  cancelAll(f: FetchFn, key: string, secret: string): Promise<LvReply>;
+}
+
+/** Exchanges que piden contraseña de la API; se guarda pegada a la clave secreta. */
+const LV_PASS_SEP = "\u0001";
+const lvSplit = (packed: string): [string, string] => {
+  const i = packed.indexOf(LV_PASS_SEP);
+  return i < 0 ? [packed, ""] : [packed.slice(0, i), packed.slice(i + 1)];
+};
+
+const lvN = (v: unknown) => {
+  const x = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(x) ? x : 0;
+};
+const lvDec = (x: number) => {
+  if (!(x > 0)) return 0;
+  const s = x.toFixed(12).replace(/0+$/, "");
+  const i = s.indexOf(".");
+  return i < 0 ? 0 : s.length - i - 1;
+};
+const lvQs = (params: Record<string, string | number>) => Object.entries(params).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join("&");
+const lvSorted = (params: Record<string, string | number>) => Object.fromEntries(Object.entries(params).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) as Record<string, string | number>;
+const lvEnc = new TextEncoder();
+const lvHex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+const lvB64 = (b: ArrayBuffer) => btoa(String.fromCharCode(...new Uint8Array(b)));
+async function lvHmac(secret: string, msg: string, hash: "SHA-256" | "SHA-512"): Promise<ArrayBuffer> {
+  const k = await crypto.subtle.importKey("raw", lvEnc.encode(secret), { name: "HMAC", hash }, false, ["sign"]);
+  return crypto.subtle.sign("HMAC", k, lvEnc.encode(msg));
+}
+const lvSha512 = async (t: string) => lvHex(await crypto.subtle.digest("SHA-512", lvEnc.encode(t)));
+const lvId = (s: string, max: number) => s.replace(/[^a-zA-Z0-9]/g, "").slice(0, max);
+const lvPx = (v: number, d: number | null | undefined) => (d == null ? v : Number(v.toFixed(d)));
+const lvNoConn = (name: string): LvReply => ({ ok: false, msg: `No se pudo conectar con ${name}.`, code: null });
+const lvOpp = (sig: BxSignal) => (sig.direction === "LONG" ? "SELL" : "BUY");
+
+interface Raw {
+  status: number;
+  j: any;
+  text: string;
+}
+/** Un pedido que nunca lanza: null = no se pudo conectar. */
+async function lvFetch(f: FetchFn, url: string, init: RequestInit): Promise<Raw | null> {
+  try {
+    const res = await f(url, { ...init, signal: AbortSignal.timeout(10000) });
+    const text = await res.text();
+    let j: any = null;
+    try {
+      j = JSON.parse(text);
+    } catch {
+      /* no era JSON */
+    }
+    return { status: res.status, j, text };
+  } catch {
+    return null;
+  }
+}
+const lvBad = (r: Raw) => r.j === null && r.text ? r.text.slice(0, 120) : "";
+
+// ─── Bybit (v5, lineales) ───────────────────────────────────────────────────
+
+async function byCall(f: FetchFn, method: "GET" | "POST", path: string, params: Record<string, string | number>, body: unknown, key: string, secret: string): Promise<LvReply> {
+  const query = lvQs(params);
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const ts = String(Date.now());
+  const sign = lvHex(await lvHmac(secret, ts + key + "10000" + (method === "GET" ? query : bodyStr), "SHA-256"));
+  const r = await lvFetch(f, `https://api.bybit.com${path}${method === "GET" && query ? `?${query}` : ""}`, {
+    method,
+    headers: { "X-BAPI-API-KEY": key, "X-BAPI-TIMESTAMP": ts, "X-BAPI-RECV-WINDOW": "10000", "X-BAPI-SIGN": sign, "Content-Type": "application/json" },
+    ...(method === "POST" ? { body: bodyStr } : {}),
+  });
+  if (!r) return lvNoConn("Bybit");
+  const code = r.j?.retCode === undefined ? null : Number(r.j.retCode);
+  return { ok: r.status < 400 && code === 0, code, msg: String(r.j?.retMsg ?? lvBad(r)), data: r.j?.result };
+}
+const bybit: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await byCall(f, "GET", "/v5/account/wallet-balance", { accountType: "UNIFIED", coin: "USDT" }, null, k, s);
+    const d: any = (r.data as any)?.list?.[0];
+    return { ok: r.ok && !!d, available: lvN(d?.totalAvailableBalance) || lvN(d?.coin?.[0]?.availableToWithdraw), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const r = await byCall(f, "GET", "/v5/market/instruments-info", { category: "linear", symbol }, null, k, s);
+    const d: any = (r.data as any)?.list?.[0];
+    if (!r.ok || !d) return null;
+    const step = lvN(d.lotSizeFilter?.qtyStep);
+    const minQty = lvN(d.lotSizeFilter?.minOrderQty);
+    if (!(step > 0) || !(minQty > 0)) return null;
+    return { symbol, minQty, qtyStep: step, qtyDecimals: lvDec(step), maxLeverage: lvN(d.leverageFilter?.maxLeverage) || 20, priceDecimals: lvDec(lvN(d.priceFilter?.tickSize)) };
+  },
+  async positions(f, k, s) {
+    const r = await byCall(f, "GET", "/v5/position/list", { category: "linear", settleCoin: "USDT", limit: 200 }, null, k, s);
+    if (!r.ok) return null;
+    return (((r.data as any)?.list ?? []) as any[]).filter((p) => lvN(p.size) > 0).map((p) => ({ symbol: String(p.symbol), qty: lvN(p.size), positionId: String(p.symbol), raw: p }));
+  },
+  async setup(f, k, s, symbol, leverage) {
+    const warn: string[] = [];
+    const lv = String(leverage);
+    const m = await byCall(f, "POST", "/v5/position/switch-isolated", {}, { category: "linear", symbol, tradeMode: 1, buyLeverage: lv, sellLeverage: lv }, k, s);
+    if (!m.ok && m.code !== 110026) warn.push(`margen aislado: ${m.msg || m.code}`);
+    const l = await byCall(f, "POST", "/v5/position/set-leverage", {}, { category: "linear", symbol, buyLeverage: lv, sellLeverage: lv }, k, s);
+    if (!l.ok && l.code !== 110043) warn.push(`apalancamiento: ${l.msg || l.code}`);
+    return warn;
+  },
+  order: (sig, qty, clientId, pair) => ({
+    category: "linear",
+    symbol: sig.symbol,
+    side: sig.direction === "LONG" ? "Buy" : "Sell",
+    orderType: "Market",
+    qty: String(qty),
+    takeProfit: String(lvPx(sig.tp, pair.priceDecimals)),
+    stopLoss: String(lvPx(sig.sl, pair.priceDecimals)),
+    tpslMode: "Full",
+    tpTriggerBy: "MarkPrice",
+    slTriggerBy: "MarkPrice",
+    tpOrderType: "Market",
+    slOrderType: "Market",
+    orderLinkId: lvId(clientId, 36),
+    positionIdx: 0,
+  }),
+  place: (f, k, s, body) => byCall(f, "POST", "/v5/order/create", {}, body, k, s),
+  close: (f, k, s, p) => byCall(f, "POST", "/v5/order/create", {}, { category: "linear", symbol: p.symbol, side: p.raw?.side === "Sell" ? "Buy" : "Sell", orderType: "Market", qty: String(p.qty), reduceOnly: true, positionIdx: Number(p.raw?.positionIdx) || 0 }, k, s),
+  cancelAll: (f, k, s) => byCall(f, "POST", "/v5/order/cancel-all", {}, { category: "linear", settleCoin: "USDT" }, k, s),
+};
+
+// ─── OKX (v5, perpetuos) ────────────────────────────────────────────────────
+// Las cuentas europeas (EEA) usan otro dominio: se prueba primero ese y, si la clave no es de ese entorno, el global.
+
+const OKX_BASES = ["https://eea.okx.com", "https://www.okx.com"];
+const okxInst = (symbol: string) => (symbol.includes("-") ? symbol : symbol.replace(/(USDT|USDC)$/, "-$1") + "-SWAP");
+const okxFrom = (instId: string) => instId.replace(/-SWAP$/, "").replace(/-/g, "");
+
+async function okCall(f: FetchFn, method: "GET" | "POST", path: string, params: Record<string, string | number>, body: unknown, packed: string, key: string): Promise<LvReply> {
+  const [secret, pass] = lvSplit(packed);
+  const query = lvQs(params);
+  const full = `${path}${method === "GET" && query ? `?${query}` : ""}`;
+  const bodyStr = body ? JSON.stringify(body) : "";
+  let last: LvReply = lvNoConn("OKX");
+  for (const base of OKX_BASES) {
+    const ts = new Date().toISOString();
+    const sign = lvB64(await lvHmac(secret, ts + method + full + bodyStr, "SHA-256"));
+    const r = await lvFetch(f, `${base}${full}`, {
+      method,
+      headers: { "OK-ACCESS-KEY": key, "OK-ACCESS-SIGN": sign, "OK-ACCESS-TIMESTAMP": ts, "OK-ACCESS-PASSPHRASE": pass, "Content-Type": "application/json" },
+      ...(method === "POST" ? { body: bodyStr } : {}),
+    });
+    if (!r) {
+      last = lvNoConn("OKX");
+      if (method === "POST") return last; // un envío que pudo salir no se repite
+      continue;
+    }
+    const code = r.j?.code === undefined ? null : Number(r.j.code);
+    let ok = r.status < 400 && code === 0;
+    let msg = String(r.j?.msg ?? lvBad(r));
+    let c = code;
+    const first = Array.isArray(r.j?.data) ? r.j.data[0] : null;
+    if (ok && first && first.sCode !== undefined && String(first.sCode) !== "0") {
+      ok = false;
+      msg = String(first.sMsg ?? msg);
+      c = Number(first.sCode);
+    }
+    last = { ok, code: c, msg, data: r.j?.data };
+    // 50101 / 50100: la clave es de otro dominio (europeo o global). El pedido fue rechazado, se puede probar en el otro.
+    if (code !== 50101 && code !== 50100) return last;
+  }
+  return last;
+}
+async function okCtVal(f: FetchFn, k: string, s: string, instId: string): Promise<{ cs: number; d: any } | null> {
+  const r = await okCall(f, "GET", "/api/v5/public/instruments", { instType: "SWAP", instId }, null, s, k);
+  const d: any = (r.data as any[])?.[0];
+  const cs = lvN(d?.ctVal) * (lvN(d?.ctMult) || 1);
+  return r.ok && d && cs > 0 ? { cs, d } : null;
+}
+const okx: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await okCall(f, "GET", "/api/v5/account/balance", { ccy: "USDT" }, null, s, k);
+    const d: any = (r.data as any[])?.[0];
+    const det = (d?.details ?? []).find((x: any) => x.ccy === "USDT");
+    return { ok: r.ok && !!d, available: lvN(det?.availBal), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const x = await okCtVal(f, k, s, okxInst(symbol));
+    if (!x) return null;
+    const step = lvN(x.d.lotSz) * x.cs;
+    const minQty = lvN(x.d.minSz) * x.cs;
+    if (!(step > 0) || !(minQty > 0)) return null;
+    return { symbol, minQty, qtyStep: step, qtyDecimals: lvDec(step), maxLeverage: lvN(x.d.lever) || 20, priceDecimals: lvDec(lvN(x.d.tickSz)), contractSize: x.cs };
+  },
+  async positions(f, k, s) {
+    const r = await okCall(f, "GET", "/api/v5/account/positions", { instType: "SWAP" }, null, s, k);
+    if (!r.ok) return null;
+    const out: LvPos[] = [];
+    const sizes: Record<string, number> = {};
+    for (const p of (r.data as any[]) ?? []) {
+      const n = Math.abs(lvN(p.pos));
+      if (!(n > 0)) continue;
+      const id = String(p.instId);
+      if (!(id in sizes)) sizes[id] = (await okCtVal(f, k, s, id))?.cs ?? 0;
+      out.push({ symbol: okxFrom(id), qty: Number((n * sizes[id]).toFixed(12)), positionId: id, raw: p });
+    }
+    return out;
+  },
+  async setup(f, k, s, symbol, leverage) {
+    const warn: string[] = [];
+    const cfg = await okCall(f, "GET", "/api/v5/account/config", {}, null, s, k);
+    if ((cfg.data as any[])?.[0]?.posMode === "long_short_mode") {
+      const m = await okCall(f, "POST", "/api/v5/account/set-position-mode", {}, { posMode: "net_mode" }, s, k);
+      if (!m.ok) warn.push(`modo de posición neto: ${m.msg || m.code}`);
+    }
+    const l = await okCall(f, "POST", "/api/v5/account/set-leverage", {}, { instId: okxInst(symbol), lever: String(leverage), mgnMode: "isolated" }, s, k);
+    if (!l.ok) warn.push(`apalancamiento: ${l.msg || l.code}`);
+    return warn;
+  },
+  order: (sig, qty, clientId, pair) => ({
+    instId: okxInst(sig.symbol),
+    tdMode: "isolated",
+    side: sig.direction === "LONG" ? "buy" : "sell",
+    ordType: "market",
+    sz: String(Math.round(qty / (pair.contractSize || 1))),
+    clOrdId: lvId(clientId, 32),
+    attachAlgoOrds: [{ tpTriggerPx: String(lvPx(sig.tp, pair.priceDecimals)), tpOrdPx: "-1", tpTriggerPxType: "mark", slTriggerPx: String(lvPx(sig.sl, pair.priceDecimals)), slOrdPx: "-1", slTriggerPxType: "mark" }],
+  }),
+  place: (f, k, s, body) => okCall(f, "POST", "/api/v5/trade/order", {}, body, s, k),
+  close: (f, k, s, p) => okCall(f, "POST", "/api/v5/trade/close-position", {}, { instId: p.positionId, mgnMode: "isolated", ...(p.raw?.posSide && p.raw.posSide !== "net" ? { posSide: p.raw.posSide } : {}) }, s, k),
+  async cancelAll(f, k, s) {
+    let ok = true;
+    let msg = "";
+    const pend = await okCall(f, "GET", "/api/v5/trade/orders-pending", { instType: "SWAP" }, null, s, k);
+    if (!pend.ok) ok = false;
+    const orders = ((pend.data as any[]) ?? []).map((o) => ({ instId: o.instId, ordId: o.ordId }));
+    if (orders.length) {
+      const c = await okCall(f, "POST", "/api/v5/trade/cancel-batch-orders", {}, orders, s, k);
+      if (!c.ok) (ok = false), (msg = c.msg);
+    }
+    for (const ordType of ["conditional", "oco"]) {
+      const al = await okCall(f, "GET", "/api/v5/trade/orders-algo-pending", { ordType }, null, s, k);
+      if (!al.ok) {
+        ok = false;
+        continue;
+      }
+      const algos = ((al.data as any[]) ?? []).map((o) => ({ algoId: o.algoId, instId: o.instId }));
+      if (algos.length) {
+        const c = await okCall(f, "POST", "/api/v5/trade/cancel-algos", {}, algos, s, k);
+        if (!c.ok) (ok = false), (msg = c.msg);
+      }
+    }
+    return { ok, msg: msg || pend.msg, code: pend.code };
+  },
+};
+
+// ─── Bitget (mix v2, USDT-FUTURES) ──────────────────────────────────────────
+
+async function bgCall(f: FetchFn, method: "GET" | "POST", path: string, params: Record<string, string | number>, body: unknown, packed: string, key: string): Promise<LvReply> {
+  const [secret, pass] = lvSplit(packed);
+  const query = lvQs(lvSorted(params));
+  const full = `${path}${method === "GET" && query ? `?${query}` : ""}`;
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const ts = String(Date.now());
+  const sign = lvB64(await lvHmac(secret, ts + method + full + bodyStr, "SHA-256"));
+  const r = await lvFetch(f, `https://api.bitget.com${full}`, {
+    method,
+    headers: { "ACCESS-KEY": key, "ACCESS-SIGN": sign, "ACCESS-TIMESTAMP": ts, "ACCESS-PASSPHRASE": pass, "Content-Type": "application/json", locale: "en-US" },
+    ...(method === "POST" ? { body: bodyStr } : {}),
+  });
+  if (!r) return lvNoConn("Bitget");
+  const code = r.j?.code === undefined ? null : Number(r.j.code);
+  return { ok: r.status < 400 && String(r.j?.code) === "00000", code, msg: String(r.j?.msg ?? lvBad(r)), data: r.j?.data };
+}
+const BG = "USDT-FUTURES";
+const bitget: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await bgCall(f, "GET", "/api/v2/mix/account/accounts", { productType: BG }, null, s, k);
+    const d: any = ((r.data as any[]) ?? []).find((x) => x.marginCoin === "USDT");
+    return { ok: r.ok && !!d, available: lvN(d?.available), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const r = await bgCall(f, "GET", "/api/v2/mix/market/contracts", { productType: BG, symbol }, null, s, k);
+    const d: any = ((r.data as any[]) ?? []).find((x) => String(x.symbol).toUpperCase() === symbol.toUpperCase());
+    if (!r.ok || !d) return null;
+    const qtyDecimals = Number(d.volumePlace);
+    const step = lvN(d.sizeMultiplier) || 10 ** -qtyDecimals;
+    const minQty = lvN(d.minTradeNum);
+    if (!(step > 0) || !(minQty > 0) || !Number.isInteger(qtyDecimals)) return null;
+    return { symbol, minQty, qtyStep: step, qtyDecimals, maxLeverage: lvN(d.maxLever) || 20, priceDecimals: Number.isInteger(Number(d.pricePlace)) ? Number(d.pricePlace) : null };
+  },
+  async positions(f, k, s) {
+    const r = await bgCall(f, "GET", "/api/v2/mix/position/all-position", { productType: BG, marginCoin: "USDT" }, null, s, k);
+    if (!r.ok) return null;
+    return ((r.data as any[]) ?? []).filter((p) => lvN(p.total) > 0).map((p) => ({ symbol: String(p.symbol), qty: lvN(p.total), positionId: `${p.symbol}:${p.holdSide}`, raw: p }));
+  },
+  async setup(f, k, s, symbol, leverage) {
+    const warn: string[] = [];
+    // Las órdenes se mandan en modo «hedge» (abrir/cerrar): se pide ese modo; si hay posiciones abiertas puede no dejar cambiarlo.
+    const pm = await bgCall(f, "POST", "/api/v2/mix/account/set-position-mode", {}, { productType: BG, posMode: "hedge_mode" }, s, k);
+    if (!pm.ok) warn.push(`modo de posición: ${pm.msg || pm.code}`);
+    const m = await bgCall(f, "POST", "/api/v2/mix/account/set-margin-mode", {}, { symbol, productType: BG, marginCoin: "USDT", marginMode: "isolated" }, s, k);
+    if (!m.ok) warn.push(`margen aislado: ${m.msg || m.code}`);
+    const l = await bgCall(f, "POST", "/api/v2/mix/account/set-leverage", {}, { symbol, productType: BG, marginCoin: "USDT", leverage: String(leverage) }, s, k);
+    if (!l.ok) warn.push(`apalancamiento: ${l.msg || l.code}`);
+    return warn;
+  },
+  order: (sig, qty, clientId, pair) => ({
+    symbol: sig.symbol,
+    productType: BG,
+    marginMode: "isolated",
+    marginCoin: "USDT",
+    size: String(qty),
+    side: sig.direction === "LONG" ? "buy" : "sell",
+    tradeSide: "open",
+    orderType: "market",
+    clientOid: lvId(clientId, 40),
+    presetStopSurplusPrice: String(lvPx(sig.tp, pair.priceDecimals)),
+    presetStopLossPrice: String(lvPx(sig.sl, pair.priceDecimals)),
+  }),
+  place: (f, k, s, body) => bgCall(f, "POST", "/api/v2/mix/order/place-order", {}, body, s, k),
+  close: (f, k, s, p) => bgCall(f, "POST", "/api/v2/mix/order/close-positions", {}, { symbol: p.symbol, productType: BG, holdSide: p.raw?.holdSide }, s, k),
+  async cancelAll(f, k, s) {
+    const a = await bgCall(f, "POST", "/api/v2/mix/order/cancel-all-orders", {}, { productType: BG, marginCoin: "USDT" }, s, k);
+    const b = await bgCall(f, "POST", "/api/v2/mix/order/cancel-plan-order", {}, { productType: BG, marginCoin: "USDT" }, s, k);
+    return a.ok && b.ok ? a : { ...(a.ok ? b : a), ok: false };
+  },
+};
+
+// ─── BingX (swap v2) ────────────────────────────────────────────────────────
+
+const bxSym = (symbol: string) => (symbol.includes("-") ? symbol : symbol.replace(/(USDT|USDC)$/, "-$1"));
+const bxFrom = (symbol: string) => symbol.replace(/-/g, "");
+async function bnxCall(f: FetchFn, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string | number>, key: string, secret: string): Promise<LvReply> {
+  const all = lvSorted({ ...params, recvWindow: 10000, timestamp: Date.now() });
+  const raw = Object.entries(all).map(([k, v]) => `${k}=${v}`).join("&");
+  const sign = lvHex(await lvHmac(secret, raw, "SHA-256"));
+  const r = await lvFetch(f, `https://open-api.bingx.com${path}?${lvQs(all)}&signature=${sign}`, { method, headers: { "X-BX-APIKEY": key } });
+  if (!r) return lvNoConn("BingX");
+  const code = r.j?.code === undefined ? null : Number(r.j.code);
+  return { ok: r.status < 400 && code === 0, code, msg: String(r.j?.msg ?? lvBad(r)), data: r.j?.data };
+}
+const bingx: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await bnxCall(f, "GET", "/openApi/swap/v2/user/balance", {}, k, s);
+    const d: any = (r.data as any)?.balance;
+    return { ok: r.ok && !!d, available: lvN(d?.availableMargin), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const r = await bnxCall(f, "GET", "/openApi/swap/v2/quote/contracts", { symbol: bxSym(symbol) }, k, s);
+    const d: any = ((r.data as any[]) ?? []).find((x) => String(x.symbol).toUpperCase() === bxSym(symbol).toUpperCase());
+    if (!r.ok || !d) return null;
+    const qtyDecimals = Number(d.quantityPrecision);
+    const minQty = lvN(d.tradeMinQuantity);
+    if (!Number.isInteger(qtyDecimals) || qtyDecimals < 0 || qtyDecimals > 12 || !(minQty > 0)) return null;
+    return { symbol, minQty, qtyDecimals, maxLeverage: 20, priceDecimals: Number.isInteger(Number(d.pricePrecision)) ? Number(d.pricePrecision) : null };
+  },
+  async positions(f, k, s) {
+    const r = await bnxCall(f, "GET", "/openApi/swap/v2/user/positions", {}, k, s);
+    if (!r.ok) return null;
+    return ((r.data as any[]) ?? []).filter((p) => Math.abs(lvN(p.positionAmt)) > 0).map((p) => ({ symbol: bxFrom(String(p.symbol)), qty: Math.abs(lvN(p.positionAmt)), positionId: String(p.positionId), raw: p }));
+  },
+  async setup(f, k, s, symbol, leverage) {
+    const warn: string[] = [];
+    const sym = bxSym(symbol);
+    const m = await bnxCall(f, "POST", "/openApi/swap/v2/trade/marginType", { symbol: sym, marginType: "ISOLATED" }, k, s);
+    if (!m.ok) warn.push(`margen aislado: ${m.msg || m.code}`);
+    for (const side of ["LONG", "SHORT"]) {
+      const l = await bnxCall(f, "POST", "/openApi/swap/v2/trade/leverage", { symbol: sym, side, leverage }, k, s);
+      if (!l.ok) warn.push(`apalancamiento ${side}: ${l.msg || l.code}`);
+    }
+    return warn;
+  },
+  order: (sig, qty, clientId, pair) => {
+    const stop = (type: string, px: number) => JSON.stringify({ type, stopPrice: lvPx(px, pair.priceDecimals), workingType: "MARK_PRICE" });
+    return {
+      symbol: bxSym(sig.symbol),
+      type: "MARKET",
+      side: sig.direction === "LONG" ? "BUY" : "SELL",
+      positionSide: sig.direction,
+      quantity: qty,
+      clientOrderID: lvId(clientId, 40),
+      takeProfit: stop("TAKE_PROFIT_MARKET", sig.tp),
+      stopLoss: stop("STOP_MARKET", sig.sl),
+    };
+  },
+  place: (f, k, s, body) => bnxCall(f, "POST", "/openApi/swap/v2/trade/order", body as Record<string, string | number>, k, s),
+  close: (f, k, s, p) => bnxCall(f, "POST", "/openApi/swap/v2/trade/closePosition", { positionId: p.positionId }, k, s),
+  cancelAll: (f, k, s) => bnxCall(f, "DELETE", "/openApi/swap/v2/trade/allOpenOrders", {}, k, s),
+};
+
+// ─── Gate (futuros USDT v4) ─────────────────────────────────────────────────
+// El tamaño va en contratos con signo (positivo compra, negativo venta). Stop y objetivo son dos órdenes por disparador aparte.
+
+const gtSym = (symbol: string) => (symbol.includes("_") ? symbol : symbol.replace(/(USDT|USDC)$/, "_$1"));
+const gtFrom = (symbol: string) => symbol.replace(/_/g, "");
+async function gtCall(f: FetchFn, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string | number>, body: unknown, key: string, secret: string): Promise<LvReply> {
+  const query = lvQs(params);
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sign = lvHex(await lvHmac(secret, [method, `/api/v4${path}`, query, await lvSha512(bodyStr), ts].join("\n"), "SHA-512"));
+  const r = await lvFetch(f, `https://api.gateio.ws/api/v4${path}${query ? `?${query}` : ""}`, {
+    method,
+    headers: { KEY: key, Timestamp: ts, SIGN: sign, Accept: "application/json", "Content-Type": "application/json" },
+    ...(method === "POST" ? { body: bodyStr } : {}),
+  });
+  if (!r) return lvNoConn("Gate");
+  const failed = r.status >= 400 || typeof r.j?.label === "string";
+  return { ok: !failed && r.j !== null, code: null, msg: String(r.j?.message ?? r.j?.label ?? lvBad(r)), data: r.j };
+}
+const gtMult = async (f: FetchFn, k: string, s: string, contract: string) => {
+  const r = await gtCall(f, "GET", `/futures/usdt/contracts/${contract}`, {}, null, k, s);
+  const d: any = r.data;
+  return r.ok && lvN(d?.quanto_multiplier) > 0 ? { cs: lvN(d.quanto_multiplier), d } : null;
+};
+const gtClose = (f: FetchFn, k: string, s: string, contract: string) => gtCall(f, "POST", "/futures/usdt/orders", {}, { contract, size: 0, close: true, price: "0", tif: "ioc" }, k, s);
+const gate: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await gtCall(f, "GET", "/futures/usdt/accounts", {}, null, k, s);
+    const d: any = r.data;
+    return { ok: r.ok && d != null && d.available !== undefined, available: lvN(d?.available), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const x = await gtMult(f, k, s, gtSym(symbol));
+    if (!x) return null;
+    const minQty = (lvN(x.d.order_size_min) || 1) * x.cs;
+    return { symbol, minQty, qtyStep: x.cs, qtyDecimals: lvDec(x.cs), maxLeverage: lvN(x.d.leverage_max) || 20, priceDecimals: lvDec(lvN(x.d.order_price_round)), contractSize: x.cs };
+  },
+  async positions(f, k, s) {
+    const r = await gtCall(f, "GET", "/futures/usdt/positions", {}, null, k, s);
+    if (!r.ok || !Array.isArray(r.data)) return null;
+    const out: LvPos[] = [];
+    for (const p of r.data as any[]) {
+      const size = lvN(p.size);
+      if (!size) continue;
+      const m = await gtMult(f, k, s, String(p.contract));
+      out.push({ symbol: gtFrom(String(p.contract)), qty: Number((Math.abs(size) * (m?.cs ?? 0)).toFixed(12)), positionId: String(p.contract), raw: p });
+    }
+    return out;
+  },
+  async setup(f, k, s, symbol, leverage) {
+    // Con apalancamiento mayor que cero el margen queda aislado.
+    const l = await gtCall(f, "POST", `/futures/usdt/positions/${gtSym(symbol)}/leverage`, { leverage }, null, k, s);
+    return l.ok ? [] : [`apalancamiento: ${l.msg || l.code}`];
+  },
+  order: (sig, qty, clientId, pair) => {
+    const long = sig.direction === "LONG";
+    const n = Math.round(qty / (pair.contractSize || 1));
+    const contract = gtSym(sig.symbol);
+    const trig = (price: number, rule: 1 | 2) => ({ initial: { contract, size: 0, close: true, price: "0", tif: "ioc" }, trigger: { strategy_type: 0, price_type: 1, price: String(lvPx(price, pair.priceDecimals)), rule, expiration: 2592000 } });
+    return { contract, size: long ? n : -n, price: "0", tif: "ioc", text: `t-${lvId(clientId, 26)}`, _after: [trig(sig.sl, long ? 2 : 1), trig(sig.tp, long ? 1 : 2)] };
+  },
+  async place(f, k, s, body) {
+    const { _after, ...main } = body as any;
+    const r = await gtCall(f, "POST", "/futures/usdt/orders", {}, main, k, s);
+    if (!r.ok) return r;
+    for (const t of (_after as unknown[]) ?? []) {
+      const q = await gtCall(f, "POST", "/futures/usdt/price_orders", {}, t, k, s);
+      if (!q.ok) {
+        await gtClose(f, k, s, String(main.contract));
+        return { ok: false, code: null, msg: `No se pudo colocar el stop o el objetivo (${q.msg}): se cerró la posición.` };
+      }
+    }
+    return r;
+  },
+  close: (f, k, s, p) => gtClose(f, k, s, p.positionId),
+  async cancelAll(f, k, s) {
+    const pos = await gate.positions(f, k, s);
+    if (pos == null) return { ok: false, code: null, msg: "No se pudieron leer las posiciones." };
+    let ok = true;
+    let msg = "";
+    for (const p of pos) {
+      for (const path of ["/futures/usdt/price_orders", "/futures/usdt/orders"]) {
+        const c = await gtCall(f, "DELETE", path, { contract: p.positionId }, null, k, s);
+        if (!c.ok) (ok = false), (msg = c.msg);
+      }
+    }
+    return { ok, code: null, msg };
+  },
+};
+
+// ─── KuCoin (futuros, contratos USDTM) ──────────────────────────────────────
+// El tamaño va en lotes (cada lote vale «multiplier» de la moneda base). Stop y objetivo son órdenes condicionales aparte.
+
+const kcSym = (symbol: string) => (symbol.endsWith("USDTM") ? symbol : symbol.replace(/^BTC/, "XBT").replace(/USDT$/, "USDTM"));
+const kcFrom = (symbol: string) => symbol.replace(/^XBT/, "BTC").replace(/USDTM$/, "USDT");
+async function kcCall(f: FetchFn, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string | number>, body: unknown, packed: string, key: string): Promise<LvReply> {
+  const [secret, pass] = lvSplit(packed);
+  const query = lvQs(params);
+  const full = `${path}${query ? `?${query}` : ""}`;
+  const bodyStr = body ? JSON.stringify(body) : "";
+  const ts = String(Date.now());
+  const sign = lvB64(await lvHmac(secret, ts + method + full + bodyStr, "SHA-256"));
+  const passSigned = lvB64(await lvHmac(secret, pass, "SHA-256"));
+  const r = await lvFetch(f, `https://api-futures.kucoin.com${full}`, {
+    method,
+    headers: { "KC-API-KEY": key, "KC-API-SIGN": sign, "KC-API-TIMESTAMP": ts, "KC-API-PASSPHRASE": passSigned, "KC-API-KEY-VERSION": "2", "Content-Type": "application/json" },
+    ...(method === "POST" ? { body: bodyStr } : {}),
+  });
+  if (!r) return lvNoConn("KuCoin");
+  const code = r.j?.code === undefined ? null : Number(r.j.code);
+  return { ok: r.status < 400 && code === 200000, code, msg: String(r.j?.msg ?? lvBad(r)), data: r.j?.data };
+}
+const kcMult = async (f: FetchFn, k: string, s: string, symbol: string) => {
+  const r = await kcCall(f, "GET", `/api/v1/contracts/${symbol}`, {}, null, s, k);
+  const d: any = r.data;
+  return r.ok && lvN(d?.multiplier) > 0 ? { m: lvN(d.multiplier), d } : null;
+};
+const kcCloseOrder = (f: FetchFn, k: string, s: string, symbol: string, side: "buy" | "sell") =>
+  kcCall(f, "POST", "/api/v1/orders", {}, { clientOid: lvId(`vxclose${Date.now()}`, 32), symbol, side, type: "market", closeOrder: true }, s, k);
+const kucoin: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await kcCall(f, "GET", "/api/v1/account-overview", { currency: "USDT" }, null, s, k);
+    const d: any = r.data;
+    return { ok: r.ok && d != null, available: lvN(d?.availableBalance), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const x = await kcMult(f, k, s, kcSym(symbol));
+    if (!x) return null;
+    const step = (lvN(x.d.lotSize) || 1) * x.m;
+    return { symbol, minQty: step, qtyStep: step, qtyDecimals: lvDec(step), maxLeverage: lvN(x.d.maxLeverage) || 20, priceDecimals: lvDec(lvN(x.d.tickSize)), contractSize: x.m };
+  },
+  async positions(f, k, s) {
+    const r = await kcCall(f, "GET", "/api/v1/positions", {}, null, s, k);
+    if (!r.ok) return null;
+    const out: LvPos[] = [];
+    for (const p of (Array.isArray(r.data) ? r.data : []) as any[]) {
+      const lots = lvN(p.currentQty);
+      if (!lots) continue;
+      const m = await kcMult(f, k, s, String(p.symbol));
+      out.push({ symbol: kcFrom(String(p.symbol)), qty: Number((Math.abs(lots) * (m?.m ?? 0)).toFixed(12)), positionId: String(p.symbol), raw: p });
+    }
+    return out;
+  },
+  async setup(f, k, s, symbol) {
+    const m = await kcCall(f, "POST", "/api/v2/position/changeMarginMode", {}, { symbol: kcSym(symbol), marginMode: "ISOLATED" }, s, k);
+    return m.ok ? [] : [`margen aislado: ${m.msg || m.code}`];
+  },
+  order: (sig, qty, clientId, pair, leverage) => {
+    const long = sig.direction === "LONG";
+    const symbol = kcSym(sig.symbol);
+    const cond = (px: number, stop: "up" | "down") => ({ clientOid: lvId(`${clientId}${stop}`, 32), symbol, side: long ? "sell" : "buy", type: "market", closeOrder: true, stop, stopPriceType: "MP", stopPrice: String(lvPx(px, pair.priceDecimals)) });
+    return {
+      clientOid: lvId(clientId, 32),
+      symbol,
+      side: long ? "buy" : "sell",
+      type: "market",
+      size: Math.round(qty / (pair.contractSize || 1)),
+      leverage,
+      marginMode: "ISOLATED",
+      _after: [cond(sig.sl, long ? "down" : "up"), cond(sig.tp, long ? "up" : "down")],
+    };
+  },
+  async place(f, k, s, body) {
+    const { _after, ...main } = body as any;
+    const r = await kcCall(f, "POST", "/api/v1/orders", {}, main, s, k);
+    if (!r.ok) return r;
+    for (const t of (_after as unknown[]) ?? []) {
+      const q = await kcCall(f, "POST", "/api/v1/orders", {}, t, s, k);
+      if (!q.ok) {
+        await kcCloseOrder(f, k, s, String(main.symbol), main.side === "buy" ? "sell" : "buy");
+        await kcCall(f, "DELETE", "/api/v1/stopOrders", { symbol: String(main.symbol) }, null, s, k);
+        return { ok: false, code: q.code, msg: `No se pudo colocar el stop o el objetivo (${q.msg || q.code}): se cerró la posición.` };
+      }
+    }
+    return r;
+  },
+  close: (f, k, s, p) => kcCloseOrder(f, k, s, p.positionId, lvN(p.raw?.currentQty) > 0 ? "sell" : "buy"),
+  async cancelAll(f, k, s) {
+    const a = await kcCall(f, "DELETE", "/api/v1/orders", {}, null, s, k);
+    const b = await kcCall(f, "DELETE", "/api/v1/stopOrders", {}, null, s, k);
+    return a.ok && b.ok ? a : { ...(a.ok ? b : a), ok: false };
+  },
+};
+
+// ─── Binance (futuros USDⓈ-M) ───────────────────────────────────────────────
+// Stop y objetivo van como órdenes condicionales aparte (cierran la posición entera).
+
+async function bnCall(f: FetchFn, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string | number>, key: string, secret: string): Promise<LvReply> {
+  const all = lvSorted({ ...params, recvWindow: 10000, timestamp: Date.now() });
+  const q = lvQs(all);
+  const sign = lvHex(await lvHmac(secret, q, "SHA-256"));
+  const r = await lvFetch(f, `https://fapi.binance.com${path}?${q}&signature=${sign}`, { method, headers: { "X-MBX-APIKEY": key } });
+  if (!r) return lvNoConn("Binance");
+  const code = typeof r.j?.code === "number" ? r.j.code : null;
+  return { ok: r.status < 400 && r.j !== null && !(code !== null && code < 0), code, msg: String(r.j?.msg ?? lvBad(r)), data: r.j };
+}
+const bnClose = (f: FetchFn, k: string, s: string, symbol: string, side: "BUY" | "SELL", qty: number | string) => bnCall(f, "POST", "/fapi/v1/order", { symbol, side, type: "MARKET", quantity: String(qty), reduceOnly: "true" }, k, s);
+const binance: LvAdapter = {
+  async balance(f, k, s) {
+    const r = await bnCall(f, "GET", "/fapi/v2/balance", {}, k, s);
+    const d: any = Array.isArray(r.data) ? (r.data as any[]).find((x) => x.asset === "USDT") : null;
+    return { ok: r.ok && !!d, available: lvN(d?.availableBalance), msg: r.msg, code: r.code };
+  },
+  async pair(f, k, s, symbol) {
+    const r = await bnCall(f, "GET", "/fapi/v1/exchangeInfo", {}, k, s);
+    const d: any = ((r.data as any)?.symbols ?? []).find((x: any) => x.symbol === symbol.toUpperCase());
+    if (!r.ok || !d) return null;
+    const lot = (d.filters ?? []).find((x: any) => x.filterType === "LOT_SIZE");
+    const tick = (d.filters ?? []).find((x: any) => x.filterType === "PRICE_FILTER");
+    const step = lvN(lot?.stepSize);
+    const minQty = lvN(lot?.minQty);
+    if (!(step > 0) || !(minQty > 0)) return null;
+    return { symbol, minQty, qtyStep: step, qtyDecimals: lvDec(step), maxLeverage: 20, priceDecimals: lvDec(lvN(tick?.tickSize)) };
+  },
+  async positions(f, k, s) {
+    const r = await bnCall(f, "GET", "/fapi/v2/positionRisk", {}, k, s);
+    if (!r.ok || !Array.isArray(r.data)) return null;
+    return (r.data as any[]).filter((p) => lvN(p.positionAmt) !== 0).map((p) => ({ symbol: String(p.symbol), qty: Math.abs(lvN(p.positionAmt)), positionId: `${p.symbol}:${p.positionSide ?? "BOTH"}`, raw: p }));
+  },
+  async setup(f, k, s, symbol, leverage) {
+    const warn: string[] = [];
+    const dual = await bnCall(f, "GET", "/fapi/v1/positionSide/dual", {}, k, s);
+    if ((dual.data as any)?.dualSidePosition === true) {
+      const m = await bnCall(f, "POST", "/fapi/v1/positionSide/dual", { dualSidePosition: "false" }, k, s);
+      if (!m.ok) warn.push(`modo de posición único: ${m.msg || m.code}`);
+    }
+    const m = await bnCall(f, "POST", "/fapi/v1/marginType", { symbol, marginType: "ISOLATED" }, k, s);
+    if (!m.ok && m.code !== -4046) warn.push(`margen aislado: ${m.msg || m.code}`);
+    const l = await bnCall(f, "POST", "/fapi/v1/leverage", { symbol, leverage }, k, s);
+    if (!l.ok) warn.push(`apalancamiento: ${l.msg || l.code}`);
+    return warn;
+  },
+  order: (sig, qty, clientId, pair) => {
+    const opp = lvOpp(sig);
+    const algo = (type: string, px: number) => ({ algoType: "CONDITIONAL", symbol: sig.symbol, side: opp, type, triggerPrice: String(lvPx(px, pair.priceDecimals)), closePosition: "true", workingType: "MARK_PRICE" });
+    return { symbol: sig.symbol, side: sig.direction === "LONG" ? "BUY" : "SELL", type: "MARKET", quantity: String(qty), newClientOrderId: lvId(clientId, 36), _after: [algo("STOP_MARKET", sig.sl), algo("TAKE_PROFIT_MARKET", sig.tp)] };
+  },
+  async place(f, k, s, body) {
+    const { _after, ...main } = body as any;
+    const r = await bnCall(f, "POST", "/fapi/v1/order", main as Record<string, string | number>, k, s);
+    if (!r.ok) return r;
+    for (const t of (_after as Array<Record<string, string>>) ?? []) {
+      const q = await bnCall(f, "POST", "/fapi/v1/algoOrder", t, k, s);
+      if (!q.ok) {
+        await bnClose(f, k, s, String(main.symbol), t.side as "BUY" | "SELL", main.quantity as string);
+        await bnCall(f, "DELETE", "/fapi/v1/algoOpenOrders", { symbol: String(main.symbol) }, k, s);
+        return { ok: false, code: q.code, msg: `No se pudo colocar el stop o el objetivo (${q.msg || q.code}): se cerró la posición.` };
+      }
+    }
+    return r;
+  },
+  close: (f, k, s, p) => bnClose(f, k, s, p.symbol, lvN(p.raw?.positionAmt) > 0 ? "SELL" : "BUY", p.qty),
+  async cancelAll(f, k, s) {
+    const pos = await binance.positions(f, k, s);
+    if (pos == null) return { ok: false, code: null, msg: "No se pudieron leer las posiciones." };
+    let ok = true;
+    let msg = "";
+    for (const p of pos) {
+      for (const path of ["/fapi/v1/allOpenOrders", "/fapi/v1/algoOpenOrders"]) {
+        const c = await bnCall(f, "DELETE", path, { symbol: p.symbol }, k, s);
+        if (!c.ok) (ok = false), (msg = c.msg);
+      }
+    }
+    return { ok, code: null, msg };
+  },
+};
+
+const LV_ADAPTERS = { binance, bybit, okx, bitget, bingx, gate, kucoin } as const;
+type LvExchangeId = keyof typeof LV_ADAPTERS;
+
+// ─── VELTRIX · Bot real: un mismo molde para cada exchange ──────────────────
+// La función «trade» (topes, prueba en seco, orden de prueba, botón de pánico) no sabe de qué exchange se trata:
+// habla con este molde. Para sumar otro exchange se escribe su módulo (como bitunixTrade.ts o mexcTrade.ts) y se agrega acá.
+
+
+
+type LiveExchangeId = "bitunix" | "mexc" | "binance" | "bybit" | "okx" | "bitget" | "bingx" | "gate" | "kucoin";
+const LIVE_EXCHANGES: LiveExchangeId[] = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"];
+const LIVE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
+/** Los que además de la clave y la secreta piden una contraseña de la API. */
+const LIVE_NEEDS_PASS: LiveExchangeId[] = ["okx", "bitget", "kucoin"];
+const isLiveExchange = (x: unknown): x is LiveExchangeId => typeof x === "string" && (LIVE_EXCHANGES as string[]).includes(x);
+
+interface LivePos {
+  symbol: string;
+  qty: number;
+  /** El resto de los datos que el exchange necesita para cerrarla. */
+  raw: unknown;
+  positionId: string;
+}
+interface LiveReply {
+  ok: boolean;
+  msg: string;
+  code: number | null;
+  data?: unknown;
+}
+
+interface LiveEx {
+  id: LiveExchangeId;
+  name: string;
+  /** Pedido de claves que se muestra en la pantalla. */
+  balance(f: FetchFn, key: string, secret: string): Promise<{ ok: boolean; available: number; msg: string; code: number | null }>;
+  pair(f: FetchFn, key: string, secret: string, symbol: string): Promise<(BxPair & Record<string, unknown>) | null>;
+  positions(f: FetchFn, key: string, secret: string): Promise<LivePos[] | null>;
+  /** Margen aislado y apalancamiento. Devuelve avisos de lo que no se pudo cambiar. */
+  setup(f: FetchFn, key: string, secret: string, symbol: string, leverage: number): Promise<string[]>;
+  order(sig: BxSignal, qty: number, clientId: string, pair: BxPair & Record<string, unknown>, leverage: number): Record<string, unknown>;
+  place(f: FetchFn, key: string, secret: string, body: Record<string, unknown>): Promise<LiveReply>;
+  close(f: FetchFn, key: string, secret: string, pos: LivePos): Promise<LiveReply>;
+  cancelAll(f: FetchFn, key: string, secret: string): Promise<LiveReply>;
+}
+
+const bitunix: LiveEx = {
+  id: "bitunix",
+  name: "Bitunix",
+  balance: bxBalance,
+  pair: bxPair as LiveEx["pair"],
+  positions: async (f, k, s) => (await bxPositions(f, k, s))?.map((p) => ({ symbol: p.symbol, qty: p.qty, positionId: p.positionId, raw: p })) ?? null,
+  setup: bxSetup,
+  order: (sig, qty, clientId, pair) => orderBody(sig, qty, clientId, pair.priceDecimals ?? null),
+  place: bxPlace,
+  close: (f, k, s, pos) => bxFlashClose(f, k, s, pos.positionId),
+  cancelAll: bxCancelAll,
+};
+
+const mexc: LiveEx = {
+  id: "mexc",
+  name: "MEXC",
+  balance: mxBalance,
+  pair: mxPair as LiveEx["pair"],
+  positions: async (f, k, s) => (await mxPositions(f, k, s))?.map((p) => ({ symbol: p.symbol, qty: p.qty, positionId: p.positionId, raw: p })) ?? null,
+  // MEXC recibe el margen aislado y el apalancamiento dentro de la propia orden.
+  setup: async () => [],
+  order: (sig, qty, clientId, pair, leverage) => mexcOrderBody(sig, qty, clientId, { contractSize: Number(pair.contractSize), priceDecimals: pair.priceDecimals ?? null }, leverage),
+  place: mxPlace,
+  close: (f, k, s, pos) => mxClose(f, k, s, pos.raw as MxPosition),
+  cancelAll: mxCancelAll,
+};
+
+const more = (id: keyof typeof LV_ADAPTERS): LiveEx => ({ id, name: LIVE_NAMES[id], ...(LV_ADAPTERS[id] as unknown as Omit<LiveEx, "id" | "name">) });
+const REGISTRY: Record<LiveExchangeId, LiveEx> = { bitunix, mexc, binance: more("binance"), bybit: more("bybit"), okx: more("okx"), bitget: more("bitget"), bingx: more("bingx"), gate: more("gate"), kucoin: more("kucoin") };
+const liveEx = (id: unknown): LiveEx => REGISTRY[isLiveExchange(id) ? id : "bitunix"];
+
+// Envío de notificaciones push a través del servicio Expo Push
+// (https://exp.host/--/api/v2/push/send). Expo se encarga de reenviarlas a
+// APNs (iOS) o FCM (Android) según el token.
+
+interface PushMessage {
+  to: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+async function sendExpoPush(messages: PushMessage[]): Promise<void> {
+  if (!messages.length) return;
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  });
+}
+
+// VELTRIX · bot con dinero real (prueba mínima) en cualquiera de los 8 exchanges, a elección de cada persona.
+//
+//   POST /functions/v1/trade   (con la sesión de la persona en Authorization)
+//     { action: "status" }
+//     { action: "connect_key", exchange?, apiKey, apiSecret }     ← exchange: bitunix (por defecto), mexc, binance, bybit, okx, bitget, bingx o gate; apiPassphrase en okx y bitget; pide el código de 2FA si la persona lo activó
+//     { action: "disconnect_key", exchange? }                      ← no pide código (borrar una clave no puede costar plata)
+//     { action: "test_order", confirm?: boolean }       ← sin confirm: solo muestra lo que enviaría; con confirm: orden mínima real + cierre
+//     { action: "panic" }                               ← apaga el bot real, cancela órdenes y cierra posiciones (no pide 2FA)
+//
+//   POST /functions/v1/trade   (con x-cron-secret: la función del bot)
+//     { action: "execute", userId, tradeId }            ← abre (o arma en seco) la orden de una operación nueva del bot
+//
+// Todo está limitado por los topes de la tabla bot_live (CHECK en la base) y solo funciona en cuentas con bot_beta.
+
+
+const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+const MAX_ERRORS = 3; // errores seguidos: el bot real se apaga solo
+const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, max_open, daily_loss_usdt, errors, last_error";
+// Si todavía no se corrió el SQL del piso de apalancamiento, se lee sin esa columna (queda en 1x).
+const LIVE_COLUMNS_OLD = LIVE_COLUMNS.replace(" min_leverage,", "");
+
+interface Live {
+  user_id: string;
+  exchange?: string | null;
+  enabled: boolean;
+  dry_run: boolean;
+  verified: boolean;
+  max_margin_usdt: number;
+  risk_usdt: number;
+  max_leverage: number;
+  min_leverage?: number | null;
+  max_open: number;
+  daily_loss_usdt: number;
+  errors: number;
+  last_error: string | null;
+}
+
+const cfgOf = (l: Live): BxCfg => ({ risk_usdt: Number(l.risk_usdt), max_margin_usdt: Number(l.max_margin_usdt), max_leverage: Number(l.max_leverage), min_leverage: Number(l.min_leverage ?? 1) });
+
+function same(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
+
+/** Marcas de la sesión (la firma ya la verificó auth.getUser): acá solo se leen las del 2FA. */
+function claimsOf(token: string): Record<string, unknown> {
+  try {
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4)));
+  } catch {
+    return {};
+  }
+}
+
+/** true = se puede seguir (sin 2FA, o con un código reciente). */
+async function stepOk(userId: string, token: string): Promise<boolean> {
+  const { data, error } = await admin.rpc("mfa_step_ok", { uid: userId, claims: claimsOf(token) });
+  if (error) return /mfa_step_ok/i.test(error.message ?? ""); // sin la migración del 2FA nadie lo tiene activado
+  return data !== false;
+}
+
+/** Precio actual. Binance y Bybit bloquean el servidor de Supabase (errores 451 y 403), así que después se prueba OKX y Gate. */
+async function livePrice(symbol: string): Promise<number | null> {
+  const base = symbol.endsWith("USDT") ? symbol.slice(0, -4) : symbol;
+  for (const url of [
+    `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`,
+    `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`,
+    `https://www.okx.com/api/v5/market/ticker?instId=${base}-USDT-SWAP`,
+    `https://api.gateio.ws/api/v4/futures/usdt/tickers?contract=${base}_USDT`,
+  ]) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      const j = (await res.json()) as { price?: string; result?: { list?: Array<{ lastPrice?: string }> }; data?: Array<{ last?: string }> } | Array<{ last?: string }>;
+      const p = Array.isArray(j) ? Number(j[0]?.last) : Number(j.price ?? j.result?.list?.[0]?.lastPrice ?? j.data?.[0]?.last);
+      if (Number.isFinite(p) && p > 0) return p;
+    } catch {
+      /* se prueba con el siguiente proveedor */
+    }
+  }
+  return null;
+}
+
+async function isBeta(userId: string): Promise<boolean> {
+  const { data } = await admin.from("profiles").select("bot_beta").eq("id", userId).maybeSingle();
+  return (data as { bot_beta?: boolean } | null)?.bot_beta === true;
+}
+
+async function loadLive(userId: string): Promise<Live | null> {
+  let { data, error } = await admin.from("bot_live").select(LIVE_COLUMNS).eq("user_id", userId).maybeSingle();
+  if (error) ({ data } = await admin.from("bot_live").select(LIVE_COLUMNS_OLD).eq("user_id", userId).maybeSingle());
+  return (data as Live | null) ?? null;
+}
+
+async function loadKey(userId: string, exchange: LiveExchangeId): Promise<{ key: string; secret: string; hint: string } | null> {
+  const master = Deno.env.get("EXCHANGE_ENC_KEY");
+  if (!master || master.length < 16) return null;
+  const { data } = await admin.from("trade_keys").select("api_key, secret_enc, key_hint").eq("user_id", userId).eq("exchange", exchange).maybeSingle();
+  if (!data) return null;
+  try {
+    return { key: data.api_key, secret: await decryptSecret(data.secret_enc, master), hint: data.key_hint };
+  } catch {
+    return null;
+  }
+}
+
+interface OrderLog {
+  user_id: string;
+  exchange?: LiveExchangeId;
+  trade_id?: string | null;
+  symbol: string;
+  side: string;
+  qty?: number | null;
+  leverage?: number | null;
+  kind: "bot" | "test" | "panic";
+  dry_run: boolean;
+  status: "dry_run" | "sent" | "rejected" | "skipped" | "error";
+  note?: string;
+  request?: unknown;
+  response?: unknown;
+}
+const logOrder = async (o: OrderLog) => {
+  const { error } = await admin.from("live_orders").insert({ ...o, trade_id: o.trade_id ?? null, exchange: o.exchange ?? "bitunix" });
+  if (error) console.error("live_orders:", error.message);
+};
+
+async function pushTo(userId: string, title: string, body: string) {
+  try {
+    const { data: tokens } = await admin.from("device_tokens").select("expo_push_token").eq("user_id", userId);
+    if (tokens?.length) await sendExpoPush(tokens.map((t: { expo_push_token: string }) => ({ to: t.expo_push_token, title, body })));
+  } catch {
+    /* el aviso es un extra */
+  }
+}
+
+/** Cuenta un error seguido; con MAX_ERRORS se apaga el bot real y se avisa. */
+async function recordFailure(userId: string, live: Live, message: string) {
+  const errors = (live.errors ?? 0) + 1;
+  const off = errors >= MAX_ERRORS;
+  await admin.from("bot_live").update({ errors, last_error: message.slice(0, 300), ...(off ? { enabled: false } : {}) }).eq("user_id", userId);
+  await pushTo(userId, off ? "⛔ Bot real apagado" : "⚠️ Orden real con problemas", off ? `Se apagó solo tras ${MAX_ERRORS} errores seguidos: ${message}` : message);
+}
+
+// ─── Orden del bot (la llama la función del bot con el secreto compartido) ───
+
+async function execute(userId: string, tradeId: string) {
+  const live = await loadLive(userId);
+  if (!live?.enabled || !(await isBeta(userId))) return { status: "off" };
+  const ex = liveEx(live.exchange);
+  const { data: trade } = await admin.from("trades").select("id, symbol, direction, entry, sl, tp").eq("id", tradeId).eq("user_id", userId).eq("source", "bot").eq("outcome", "ABIERTA").maybeSingle();
+  if (!trade) return { status: "skipped", note: "La operación ya no está abierta." };
+  const { data: done } = await admin.from("live_orders").select("id").eq("trade_id", tradeId).eq("kind", "bot").in("status", ["sent", "dry_run"]).limit(1);
+  if (done?.length) return { status: "skipped", note: "Ya se procesó." };
+
+  const sig: BxSignal = { symbol: trade.symbol, direction: trade.direction, entry: Number(trade.entry), sl: Number(trade.sl), tp: Number(trade.tp) };
+  const base = { user_id: userId, exchange: ex.id, trade_id: tradeId, symbol: sig.symbol, side: sig.direction === "LONG" ? "BUY" : "SELL", kind: "bot" as const, dry_run: live.dry_run };
+  const skip = async (note: string) => {
+    await logOrder({ ...base, status: "skipped", note });
+    return { status: "skipped", note };
+  };
+
+  // Tope diario: la pérdida máxima posible del día (órdenes enviadas × riesgo de cada una) no puede pasar el límite.
+  const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString();
+  const { count: sentToday } = await admin.from("live_orders").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("kind", "bot").eq("status", "sent").gte("created_at", dayAgo);
+  if (((sentToday ?? 0) + 1) * Number(live.risk_usdt) > Number(live.daily_loss_usdt) + 1e-9) return skip("Tope diario alcanzado: por hoy no se envían más órdenes reales.");
+
+  const creds = await loadKey(userId, ex.id);
+  if (!creds) return skip("Falta la clave con permiso de operar.");
+  const price = await livePrice(sig.symbol);
+  if (price == null) return skip("No se pudo leer el precio actual.");
+  const pair = await ex.pair(fetch, creds.key, creds.secret, sig.symbol);
+  if (!pair) return skip(`No se pudieron leer las reglas del par en ${ex.name}: no se opera.`);
+  const plan = planOrder(sig, price, pair, cfgOf(live));
+  if (!plan.ok) return skip(plan.reason);
+
+  const body = ex.order(sig, plan.qty, `vx${tradeId.replace(/-/g, "").slice(0, 16)}`, pair, plan.leverage);
+  const summary = `${sig.symbol} ${base.side} ${plan.qty} · x${plan.leverage} · margen ${plan.margin.toFixed(2)} · riesgo ${plan.risk.toFixed(3)} USDT`;
+  if (live.dry_run) {
+    await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "dry_run", note: `En seco: ${summary}`, request: body });
+    await pushTo(userId, `🧪 En seco · ${sig.symbol}`, `Habría enviado: ${summary}`);
+    return { status: "dry_run", plan, body };
+  }
+
+  // Envío real: antes, una mirada a la cuenta (saldo y posiciones abiertas).
+  const bal = await ex.balance(fetch, creds.key, creds.secret);
+  if (!bal.ok) {
+    await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "error", note: `No se pudo leer el saldo: ${bal.msg || bal.code}` });
+    await recordFailure(userId, live, `No se pudo leer el saldo de ${ex.name}: ${bal.msg || bal.code}`);
+    return { status: "error" };
+  }
+  if (bal.available < plan.margin * 1.05) return skip(`Saldo insuficiente (${bal.available.toFixed(2)} USDT disponibles).`);
+  const open = await ex.positions(fetch, creds.key, creds.secret);
+  if (open == null) {
+    await recordFailure(userId, live, `No se pudieron leer las posiciones abiertas de ${ex.name}.`);
+    return skip("No se pudieron leer las posiciones abiertas: por seguridad no se opera.");
+  }
+  if (open.length >= Number(live.max_open)) return skip(`Ya hay ${open.length} posición(es) abierta(s) (máximo ${live.max_open}).`);
+
+  const warnings = await ex.setup(fetch, creds.key, creds.secret, sig.symbol, plan.leverage);
+  const r = await ex.place(fetch, creds.key, creds.secret, body);
+  if (!r.ok) {
+    await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "rejected", note: `${ex.name} rechazó la orden: ${r.msg || r.code}`, request: body, response: { code: r.code, msg: r.msg } });
+    await recordFailure(userId, live, `${ex.name} rechazó la orden de ${sig.symbol}: ${r.msg || r.code}`);
+    return { status: "rejected", msg: r.msg };
+  }
+  await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "sent", note: [summary, ...warnings].join(" · "), request: body, response: r.data });
+  await admin.from("bot_live").update({ errors: 0, last_error: null }).eq("user_id", userId);
+  await pushTo(userId, `🟢 Orden real enviada · ${sig.symbol}`, summary);
+  return { status: "sent", plan };
+}
+
+// ─── Orden de prueba (mínima, confirmada a mano) ─────────────────────────────
+
+async function testOrder(userId: string, confirm: boolean) {
+  const live = await loadLive(userId);
+  const ex = liveEx(live?.exchange);
+  if (!live) return { ok: false, error: `Primero conectá la clave de ${ex.name}.` };
+  const creds = await loadKey(userId, ex.id);
+  if (!creds) return { ok: false, error: `Primero conectá la clave de ${ex.name}.` };
+  const steps: string[] = [];
+  const bal = await ex.balance(fetch, creds.key, creds.secret);
+  steps.push(bal.ok ? `Saldo de futuros leído: ${bal.available.toFixed(2)} USDT.` : `⚠️ No se pudo leer el saldo: ${bal.msg || bal.code}.`);
+  const price = await livePrice("BTCUSDT");
+  const pair = await ex.pair(fetch, creds.key, creds.secret, "BTCUSDT");
+  steps.push(pair ? `Reglas de BTCUSDT leídas: mínimo ${pair.minQty}, ${pair.qtyDecimals} decimales.` : "⚠️ No se pudieron leer las reglas del par BTCUSDT.");
+  if (!bal.ok || price == null || !pair) return { ok: false, steps, error: "No se pudo preparar la prueba. Revisá los avisos." };
+  // Señal de prueba con stop y objetivo a ±1 % del precio (si con eso no entra en tus topes, a ±0,5 %); el tamaño sale de tus topes.
+  let sig: BxSignal = { symbol: "BTCUSDT", direction: "LONG", entry: price, sl: price * 0.99, tp: price * 1.01 };
+  let plan = planOrder(sig, price, pair, cfgOf(live));
+  if (!plan.ok) {
+    sig = { ...sig, sl: price * 0.995, tp: price * 1.005 };
+    plan = planOrder(sig, price, pair, cfgOf(live));
+  }
+  if (!plan.ok) return { ok: false, steps, error: `Con tus topes no entra una orden de prueba: ${plan.reason}` };
+  if (bal.available < plan.margin * 1.05) return { ok: false, steps, error: `Saldo insuficiente para la prueba (hacen falta unos ${plan.margin.toFixed(2)} USDT de margen).` };
+  const body = ex.order(sig, plan.qty, `vxtest${Date.now()}`, pair, plan.leverage);
+  steps.push(`Orden armada: comprar ${plan.qty} BTC (≈ ${plan.notional.toFixed(2)} USDT) con apalancamiento x${plan.leverage}, margen ${plan.margin.toFixed(2)} USDT, stop y objetivo pegados al precio. Riesgo: ${plan.risk.toFixed(3)} USDT.`);
+  const base = { user_id: userId, exchange: ex.id, symbol: "BTCUSDT", side: "BUY", qty: plan.qty, leverage: plan.leverage, kind: "test" as const };
+
+  if (!confirm) {
+    await logOrder({ ...base, dry_run: true, status: "dry_run", note: "Vista previa de la orden de prueba.", request: body });
+    return { ok: true, preview: true, steps, request: body };
+  }
+
+  const warnings = await ex.setup(fetch, creds.key, creds.secret, "BTCUSDT", plan.leverage);
+  if (warnings.length) steps.push(`⚠️ ${warnings.join("; ")}`);
+  const placed = await ex.place(fetch, creds.key, creds.secret, body);
+  if (!placed.ok) {
+    await logOrder({ ...base, dry_run: false, status: "rejected", note: `${ex.name} rechazó la orden de prueba: ${placed.msg || placed.code}`, request: body, response: { code: placed.code, msg: placed.msg } });
+    steps.push(`❌ ${ex.name} rechazó la orden: ${placed.msg || placed.code}.`);
+    return { ok: false, steps, error: "La orden de prueba no salió. No se habilitó nada." };
+  }
+  steps.push(`✅ ${ex.name} aceptó la orden de prueba.`);
+  await new Promise((r) => setTimeout(r, 2500));
+  const pos = await ex.positions(fetch, creds.key, creds.secret);
+  const mine = pos?.find((p) => p.symbol === "BTCUSDT");
+  steps.push(mine ? `✅ La posición aparece abierta (${mine.qty} BTC).` : "⚠️ No se encontró la posición abierta (puede haberse cerrado sola o no leerse).");
+  let closed = false;
+  if (mine) {
+    const c = await ex.close(fetch, creds.key, creds.secret, mine);
+    await new Promise((r) => setTimeout(r, 2000));
+    const after = await ex.positions(fetch, creds.key, creds.secret);
+    closed = c.ok && !!after && !after.some((p) => p.symbol === "BTCUSDT");
+    steps.push(closed ? "✅ La posición se cerró." : `❌ No se pudo confirmar el cierre (${c.msg || c.code}). CERRALA A MANO en ${ex.name} ahora.`);
+  }
+  await logOrder({ ...base, dry_run: false, status: "sent", note: steps.join(" | "), request: body, response: placed.data });
+  const verified = placed.ok && !!mine && closed;
+  if (verified) {
+    await admin.from("bot_live").update({ verified: true, errors: 0, last_error: null }).eq("user_id", userId);
+    // La prueba queda guardada junto a la clave de ese exchange: al volver a él no hay que repetirla.
+    await admin.from("trade_keys").update({ verified: true }).eq("user_id", userId).eq("exchange", ex.id);
+  }
+  return { ok: verified, verified, steps, error: verified ? undefined : "La prueba no salió completa: el modo automático sigue sin habilitarse." };
+}
+
+// ─── Apagado total ───────────────────────────────────────────────────────────
+
+async function panic(userId: string) {
+  // Lo primero y lo más importante: que no se abra nada nuevo.
+  await admin.from("bot_live").update({ enabled: false, dry_run: true }).eq("user_id", userId);
+  const steps = ["⛔ El bot real quedó apagado."];
+  const ex = liveEx((await loadLive(userId))?.exchange);
+  const creds = await loadKey(userId, ex.id);
+  if (!creds) return { ok: true, steps: [...steps, "No hay clave guardada: no hay nada más que cerrar desde acá."] };
+  const c = await ex.cancelAll(fetch, creds.key, creds.secret);
+  steps.push(c.ok ? "Órdenes pendientes canceladas." : `⚠️ No se pudieron cancelar las órdenes pendientes (${c.msg || c.code}).`);
+  const pos = await ex.positions(fetch, creds.key, creds.secret);
+  if (pos == null) steps.push(`⚠️ No se pudieron leer las posiciones: revisalas a mano en ${ex.name}.`);
+  else if (!pos.length) steps.push("No hay posiciones abiertas.");
+  let failed = pos == null;
+  for (const p of pos ?? []) {
+    const r = await ex.close(fetch, creds.key, creds.secret, p);
+    if (!r.ok) failed = true;
+    steps.push(r.ok ? `✅ Cerrada ${p.symbol}.` : `❌ No se pudo cerrar ${p.symbol} (${r.msg || r.code}): cerrala a mano en ${ex.name}.`);
+  }
+  await logOrder({ user_id: userId, exchange: ex.id, symbol: "-", side: "-", kind: "panic", dry_run: false, status: failed ? "error" : "sent", note: steps.join(" | ") });
+  return { ok: !failed, steps };
+}
+
+// ─── Entrada ────────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = await req.json();
+  } catch {
+    return json({ ok: false, error: "Pedido no válido." }, 400);
+  }
+
+  // La función del bot (con el secreto compartido) solo puede pedir «execute».
+  const cronGiven = req.headers.get("x-cron-secret");
+  if (cronGiven !== null) {
+    // La función del bot usa BOT_CRON_SECRET (o, si no existe, EXCHANGE_CRON_SECRET).
+    const secrets = [Deno.env.get("BOT_CRON_SECRET"), Deno.env.get("EXCHANGE_CRON_SECRET")].filter((x): x is string => !!x && x.length >= 16);
+    if (!secrets.some((x) => same(cronGiven, x))) return json({ ok: false, error: "No autorizado." }, 401);
+    if (body.action !== "execute" || typeof body.userId !== "string" || typeof body.tradeId !== "string") return json({ ok: false, error: "Pedido no válido." }, 400);
+    try {
+      return json({ ok: true, ...(await execute(body.userId, body.tradeId)) });
+    } catch (e) {
+      console.error("execute:", e instanceof Error ? e.message : e);
+      return json({ ok: false, error: "Error al preparar la orden." }, 500);
+    }
+  }
+
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: auth } = await admin.auth.getUser(token);
+  const user = auth?.user;
+  if (!user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
+  if (!(await isBeta(user.id))) return json({ ok: false, error: "El bot con dinero real todavía no está disponible para tu cuenta." }, 403);
+
+  const master = Deno.env.get("EXCHANGE_ENC_KEY");
+  const needMfa = () => json({ ok: false, code: "mfa_required", error: "Confirmá con el código de Google Authenticator para hacer este cambio." }, 403);
+
+  try {
+    switch (body.action) {
+      case "status": {
+        const { data: ks } = await admin.from("trade_keys").select("exchange, key_hint").eq("user_id", user.id);
+        const keys: Record<string, string> = {};
+        for (const k of (ks ?? []) as Array<{ exchange: string; key_hint: string }>) keys[k.exchange] = k.key_hint;
+        const live = await loadLive(user.id);
+        const cur = liveEx(live?.exchange).id;
+        return json({ ok: true, exchanges: LIVE_EXCHANGES, exchange: cur, keys, hasKey: cur in keys, keyHint: keys[cur] ?? null, live });
+      }
+      case "connect_key": {
+        if (body.exchange !== undefined && !isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);
+        const ex = liveEx(body.exchange);
+        if (!master || master.length < 16) return json({ ok: false, code: "not_configured", error: "Falta EXCHANGE_ENC_KEY en el servidor." }, 500);
+        if (!(await stepOk(user.id, token))) return needMfa();
+        const apiKey = String(body.apiKey ?? "").trim();
+        const apiSecretOnly = String(body.apiSecret ?? "").trim();
+        const apiPass = String(body.apiPassphrase ?? "").trim();
+        if (LIVE_NEEDS_PASS.includes(ex.id) && (apiPass.length < 1 || apiPass.length > 200 || apiPass.includes(LV_PASS_SEP))) return json({ ok: false, error: `${ex.name} pide también la contraseña de la API (la que elegiste al crear la clave).` }, 400);
+        const apiSecret = LIVE_NEEDS_PASS.includes(ex.id) ? apiSecretOnly + LV_PASS_SEP + apiPass : apiSecretOnly;
+        if (apiKey.length < 8 || apiKey.length > 200 || apiSecretOnly.length < 8 || apiSecretOnly.length > 400) return json({ ok: false, error: "Revisá la clave y la clave secreta: parecen incompletas." }, 400);
+        const bal = await ex.balance(fetch, apiKey, apiSecret);
+        if (!bal.ok) return json({ ok: false, error: `${ex.name} no aceptó la clave (${bal.msg || (bal.code ?? "sin respuesta")}). Revisá que tenga permiso de futuros y de operar, y que esté bien copiada.` }, 400);
+        const { error } = await admin.from("trade_keys").upsert({ user_id: user.id, exchange: ex.id, key_hint: apiKey.slice(-4), api_key: apiKey, secret_enc: await encryptSecret(apiSecret, master), verified: false }, { onConflict: "user_id,exchange" });
+        if (error) return json({ ok: false, error: "No se pudo guardar la clave." }, 500);
+        // Una clave nueva siempre empieza apagada, en seco y sin verificar.
+        const { error: lerr } = await admin.from("bot_live").upsert({ user_id: user.id, exchange: ex.id, enabled: false, dry_run: true, verified: false, errors: 0, last_error: null }, { onConflict: "user_id" });
+        if (lerr) return json({ ok: false, error: "No se pudo preparar el bot real." }, 500);
+        return json({ ok: true, available: bal.available, keyHint: apiKey.slice(-4), exchange: ex.id });
+      }
+      case "use_exchange": {
+        // Cambiar a un exchange que ya tiene clave guardada: queda apagado y en seco; la prueba mínima ya hecha en ese exchange se conserva.
+        if (!isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);
+        const { data: k } = await admin.from("trade_keys").select("key_hint, verified").eq("user_id", user.id).eq("exchange", body.exchange).maybeSingle();
+        if (!k) return json({ ok: false, error: "Primero conectá la clave de ese exchange." }, 400);
+        const { error } = await admin.from("bot_live").upsert({ user_id: user.id, exchange: body.exchange, enabled: false, dry_run: true, verified: !!(k as { verified?: boolean }).verified, errors: 0, last_error: null }, { onConflict: "user_id" });
+        if (error) return json({ ok: false, error: "No se pudo cambiar de exchange." }, 500);
+        return json({ ok: true, exchange: body.exchange, verified: !!(k as { verified?: boolean }).verified });
+      }
+      case "disconnect_key": {
+        if (body.exchange !== undefined && !isLiveExchange(body.exchange)) return json({ ok: false, error: "Ese exchange todavía no está disponible para el bot real." }, 400);
+        // Borrar una clave no pide código: solo quita permisos, no puede costar plata.
+        const live = await loadLive(user.id);
+        const target = liveEx(body.exchange ?? live?.exchange).id;
+        // Solo se apaga el bot si la clave que se borra es la del exchange activo.
+        if (liveEx(live?.exchange).id === target) await admin.from("bot_live").update({ enabled: false, dry_run: true, verified: false }).eq("user_id", user.id);
+        await admin.from("trade_keys").delete().eq("user_id", user.id).eq("exchange", target);
+        return json({ ok: true });
+      }
+      case "test_order": {
+        const confirm = body.confirm === true;
+        if (confirm && !(await stepOk(user.id, token))) return needMfa();
+        return json(await testOrder(user.id, confirm));
+      }
+      case "panic":
+        return json(await panic(user.id));
+      default:
+        return json({ ok: false, error: "Acción desconocida." }, 400);
+    }
+  } catch (e) {
+    console.error("trade:", e instanceof Error ? e.message : e);
+    return json({ ok: false, error: "Algo salió mal. Probá de nuevo en un momento." }, 500);
+  }
+});
