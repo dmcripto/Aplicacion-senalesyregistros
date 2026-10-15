@@ -112,7 +112,7 @@ async function shareOpened(userId: string, t: { symbol: string; direction: "LONG
       userId,
       (l) => `${signalCardHtml(t, l, { header: l === "en" ? "🤖 Automatic bot signal" : "🤖 Señal automática del bot", disclaimer: true })}\n\n<i>${esc(noteOf(l))}</i>`,
       async (l) => {
-        const img = await signalCardImage(t, l);
+        const img = await signalCardImage(t, l, { auto: true });
         return img ? { png: img.png, caption: `${img.caption}\n\n<i>${esc(noteOf(l))}</i>` } : null;
       },
     );
@@ -126,7 +126,7 @@ async function shareClosed(userId: string, t: { symbol: string; entry: number; t
     if (!(await sharesCommunity(userId))) return;
     const r = rOf(t, outcome);
     const label = (l: Lang) => (l === "en" ? "Result (VELTRIX bot)" : "Resultado (bot de VELTRIX)");
-    await publishToCommunities(admin, botToken(), userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: label(l) }), (l) => resultCardImage(t.symbol, outcome, r, l, {}));
+    await publishToCommunities(admin, botToken(), userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: label(l) }), (l) => resultCardImage(t.symbol, outcome, r, l, { auto: true }));
   } catch (e) {
     console.error("comunidad bot:", e instanceof Error ? e.message : e);
   }
