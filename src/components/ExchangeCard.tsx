@@ -266,7 +266,7 @@ export default function ExchangeCard({ money, notify, onSaveMoney }: { money: Mo
           </ul>
         ) : (
           <p className="text-[12px] leading-relaxed text-fog">
-            {t("Conectá tu exchange (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin o BingX) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
+            {t("Conectá tu exchange (Binance, Bybit, Bitunix, Gate, Bitget, OKX, KuCoin o BingX) con una clave de solo lectura y VELTRIX trae tus operaciones cerradas al diario, sin copiarlas a mano.")}
           </p>
         )}
 

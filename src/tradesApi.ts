@@ -219,7 +219,7 @@ export async function saveLang(userId: string, lang: string) {
   await supabase.from("profiles").update({ lang }).eq("id", userId);
 }
 
-// ─── Exchanges (Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin): conexión de solo lectura ───────────────────
+// ─── Exchanges (Binance, Bybit, Bitunix, Gate, Bitget, OKX, KuCoin): conexión de solo lectura ───────────────────
 
 interface ConnRow {
   id: string;

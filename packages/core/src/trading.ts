@@ -1074,7 +1074,6 @@ export const EXCHANGE_LIST: Array<{ id: ExchangeId; name: string; passphrase?: b
   { id: "binance", name: "Binance" },
   { id: "bybit", name: "Bybit" },
   { id: "bitunix", name: "Bitunix" },
-  { id: "mexc", name: "MEXC" },
   { id: "gate", name: "Gate" },
   { id: "bitget", name: "Bitget", passphrase: true }, // pide una contraseña de la API (passphrase)
   { id: "okx", name: "OKX", passphrase: true },
@@ -1359,7 +1358,7 @@ export function welcomeContent(): { headline: string; lead: string; chips: strin
     features: [
       { icon: "📡", title: tr("Señales en vivo"), text: tr("Conectá tus alertas de TradingView: cada señal llega sola a tu celular y a Telegram, con una tarjeta lista para compartir.") },
       { icon: "🎯", title: tr("Targets y cierre automático"), text: tr("TP1, TP2, TP3: te avisamos cada vez que el precio toca un target, y cerramos solas tus operaciones cripto en el TP o el SL.") },
-      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix, MEXC, Gate, Bitget, OKX, KuCoin y BingX.") },
+      { icon: "📒", title: tr("Diario con estadísticas"), text: tr("Todo queda registrado: R, acierto, profit factor y tu racha diaria. También podés importar desde Binance, Bybit, Bitunix, Gate, Bitget, OKX, KuCoin y BingX.") },
       { icon: "🛡️", title: tr("Control de riesgo"), text: tr("Calculá cuánto arriesgar en cada operación y poné límites diarios para cuidar tu capital.") },
       { icon: "🗺️", title: tr("Mapa de liquidaciones"), text: tr("Mirá dónde se concentran las liquidaciones del mercado para leer mejor el precio.") },
       { icon: "👥", title: tr("Tu comunidad"), text: tr("Publicá tus señales y resultados en tu grupo o canal de Telegram, sin copiar y pegar.") },
@@ -1807,10 +1806,9 @@ export const leverageRangeText = (min: number, max: number) => (min >= max ? tr(
 export const HIGH_LEVERAGE = 40;
 
 /** Exchanges donde puede operar el bot real: cada persona elige el suyo (según el país donde viva, algunos no le dejan crear la clave). */
-// MEXC está para una última prueba: suele bloquear el envío de órdenes de futuros por API («Access Denied»); si pasa, el bot lo avisa y se usa otro exchange.
-export const LIVE_EXCHANGES = ["bitunix", "mexc", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
+export const LIVE_EXCHANGES = ["bitunix", "binance", "bybit", "okx", "bitget", "bingx", "gate", "kucoin"] as const;
 export type LiveExchangeId = (typeof LIVE_EXCHANGES)[number];
-export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", mexc: "MEXC", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
+export const LIVE_EXCHANGE_NAMES: Record<LiveExchangeId, string> = { bitunix: "Bitunix", binance: "Binance", bybit: "Bybit", okx: "OKX", bitget: "Bitget", bingx: "BingX", gate: "Gate", kucoin: "KuCoin" };
 /** Los que piden además una contraseña de la API (passphrase). */
 export const liveNeedsPass = (id: string | null | undefined) => id === "okx" || id === "bitget" || id === "kucoin";
 export const liveExchangeName = (id: string | null | undefined) => LIVE_EXCHANGE_NAMES[id && id in LIVE_EXCHANGE_NAMES ? (id as LiveExchangeId) : "bitunix"];
