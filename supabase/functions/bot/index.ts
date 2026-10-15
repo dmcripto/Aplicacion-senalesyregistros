@@ -13,7 +13,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate, stepRunner, RUNNER_PARAMS } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate, stepRunner, RUNNER_PARAMS, PARALLEL_PARAMS } from "../_shared/botStrategy.ts";
 import { cleanUnlock, unlockNote } from "../_shared/unlockFilter.ts";
 import type { UnlockEvent } from "../_shared/unlockFilter.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
@@ -47,6 +47,11 @@ const TAG = "Bot simulado";
 /** Prueba paralela «corredor»: operaciones simuladas aparte del perfil elegido (que sigue siendo el del bot real). Nunca llegan al bot real ni a la comunidad. */
 const RUN_TAG = "Corredor";
 const isRunner = (t: { tags?: unknown }) => Array.isArray(t.tags) && (t.tags as unknown[]).includes(RUN_TAG);
+/** La prueba paralela actual: velas de 4 horas con el filtro de entradas estiradas, con objetivo y stop comunes. */
+const PAR_TAG = "Filtro 4h";
+const isPar = (t: { tags?: unknown }) => Array.isArray(t.tags) && (t.tags as unknown[]).includes(PAR_TAG);
+const isSide = (t: { tags?: unknown }) => isRunner(t) || isPar(t);
+const PAR_NOTE = "🧪 Bot simulado · prueba paralela «filtro de entradas estiradas» (velas de 4 horas): ruptura a favor de la tendencia, sin entrar si el precio ya se alejó más de 3 ATR de su media rápida. No se operó en ningún exchange.";
 const RUN_NOTE = "🏃 Bot simulado · prueba paralela «corredor» (velas de 4 horas): cobra la mitad en 2R, sube el stop a la entrada y deja correr el resto hasta 4R. No se operó en ningún exchange.";
 
 // ─── Avisos personales ──────────────────────────────────────────────────────
@@ -183,6 +188,32 @@ async function notifyRunnerClosed(userId: string, tradeId: string, symbol: strin
     await notifyTelegram(admin, userId, (l) => resultCardHtml(symbol, r > 0 ? "TP" : "SL", r, l, { label: l === "en" ? "Result (runner test)" : "Resultado (prueba corredor)" }));
   } catch (e) {
     console.error("aviso corredor:", e instanceof Error ? e.message : e);
+  }
+}
+
+// Avisos de la prueba paralela actual (solo a la propia persona).
+async function notifyParOpened(userId: string, tradeId: string, t: { symbol: string; direction: "LONG" | "SHORT"; entry: number; tp: number; sl: number }) {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const en = (await langOf(userId)) === "en";
+    const side = t.direction === "LONG" ? (en ? "BUY" : "COMPRA") : en ? "SELL" : "VENTA";
+    await push(userId, `🧪 ${t.symbol} · ${side} (${en ? "parallel test" : "prueba paralela"})`, `${en ? "Entry" : "Entrada"} ${t.entry} · TP ${t.tp} · SL ${t.sl}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => `${signalCardHtml(t, l, { header: "🧪", disclaimer: false })}\n\n<i>${esc(l === "en" ? "Parallel test (simulated): 4-hour candles with the stretched-entry filter. Nothing was traded." : "Prueba paralela (simulada): velas de 4 horas con el filtro de entradas estiradas. No se operó nada.")}</i>`);
+  } catch (e) {
+    console.error("aviso prueba paralela:", e instanceof Error ? e.message : e);
+  }
+}
+
+async function notifyParClosed(userId: string, tradeId: string, t: { symbol: string; entry: number; tp: number; sl: number }, outcome: "TP" | "SL") {
+  try {
+    if (!(await wantsNotify(userId))) return;
+    const en = (await langOf(userId)) === "en";
+    const r = rOf(t, outcome);
+    const rs = `${r > 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
+    await push(userId, `🧪 ${t.symbol} · ${outcome === "TP" ? (en ? "TP hit" : "TP alcanzado") : en ? "SL hit" : "SL alcanzado"} (${en ? "parallel test" : "prueba paralela"})`, `${en ? "Result" : "Resultado"}: ${rs}`, tradeId);
+    await notifyTelegram(admin, userId, (l) => resultCardHtml(t.symbol, outcome, r, l, { label: l === "en" ? "Result (parallel test)" : "Resultado (prueba paralela)" }));
+  } catch (e) {
+    console.error("aviso prueba paralela:", e instanceof Error ? e.message : e);
   }
 }
 
@@ -489,8 +520,9 @@ async function tick() {
   // Las operaciones simuladas abiertas se siguen cerrando aunque la persona apague el bot.
   const { data: openRows } = await admin.from("trades").select("id, user_id, symbol, direction, entry, sl, tp, external_id, tags, targets, targets_hit").eq("source", "bot").eq("outcome", "ABIERTA").limit(2000);
   const allOpen = (openRows ?? []) as OpenBotTrade[];
-  const open = allOpen.filter((t) => !isRunner(t));
-  const openRun = allOpen.filter((t) => isRunner(t)); // las de la prueba paralela «corredor»: se siguen aparte
+  const open = allOpen.filter((t) => !isSide(t));
+  const openRun = allOpen.filter((t) => isRunner(t)); // las que quedaron de la prueba «corredor» (ya no se abren nuevas): se siguen aparte
+  const openPar = allOpen.filter((t) => isPar(t)); // las de la prueba paralela actual: se siguen aparte
   // Quien escanea el mercado mira además los futuros más operados (la lista es la misma para todos y se baja una vez).
   const failed: string[] = [];
   const scanMax = Math.max(0, ...settings.map((s) => scanSizeOf(s.scan_top)));
@@ -508,7 +540,7 @@ async function tick() {
   for (const s of settings) for (const sym of watchOf(s)) need.add(`${sym}|${tfOfSettings(s)}`);
   for (const t of open) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|${tfOfTrade(t)}`);
   for (const s of settings) if (s.runner_test === true) for (const sym of watchOf(s)) need.add(`${sym}|4h`);
-  for (const t of openRun) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|4h`);
+  for (const t of [...openRun, ...openPar]) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|4h`);
   if (!need.size) return { ok: true, users: 0, opened: 0, closed: 0 };
 
   const bars = new Map<string, Bar[]>(); // clave: «ACTIVO|1h» o «ACTIVO|4h»
@@ -592,6 +624,28 @@ async function tick() {
     }
   }
 
+  // 1c) Prueba paralela actual: objetivo y stop comunes, con las velas cerradas de 4 horas desde la entrada.
+  for (const t of openPar) {
+    const b0 = bars.get(`${t.symbol}|4h`);
+    const candle = Number(String(t.external_id ?? "").split(":")[1]);
+    if (!b0 || !Number.isFinite(candle)) continue;
+    const b = closedBars(b0, Date.now(), RUN_BAR);
+    const from = b.findIndex((x) => x.t >= candle + RUN_BAR);
+    if (from < 0) continue;
+    const hit = resolveFrom(b, from, t);
+    if (!hit) continue;
+    const { data: upd } = await admin
+      .from("trades")
+      .update({ outcome: hit.outcome, closed_at: new Date(b[hit.index].t + RUN_BAR).toISOString(), auto_closed: true })
+      .eq("id", t.id)
+      .eq("outcome", "ABIERTA")
+      .select("id");
+    if (upd?.length) {
+      closed++;
+      await notifyParClosed(t.user_id, t.id, t, hit.outcome);
+    }
+  }
+
   // 2) Señales nuevas.
   let opened = 0;
   const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
@@ -634,9 +688,9 @@ async function tick() {
     const barMs = barMsOf({ tf });
     const rules: BotAction[] = cleanActions(s.rules);
     const { data: openNow } = await admin.from("trades").select("symbol, tags").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
-    const openSymbols = new Set((openNow ?? []).filter((r: { tags?: unknown }) => !isRunner(r)).map((r: { symbol: string }) => r.symbol));
+    const openSymbols = new Set((openNow ?? []).filter((r: { tags?: unknown }) => !isSide(r)).map((r: { symbol: string }) => r.symbol));
     const { data: recent } = await admin.from("trades").select("entry, sl, tp, outcome, tags").eq("user_id", s.user_id).eq("source", "bot").neq("outcome", "ABIERTA").gte("closed_at", since);
-    const lossToday = (recent ?? []).filter((r: { tags?: unknown }) => !isRunner(r)).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
+    const lossToday = (recent ?? []).filter((r: { tags?: unknown }) => !isSide(r)).reduce((a: number, r: { entry: number; sl: number; tp: number; outcome: "TP" | "SL" }) => a + rOf(r, r.outcome), 0);
     await admin.from("bot_settings").update({ last_tick_at: new Date().toISOString() }).eq("user_id", s.user_id);
     const pause = activeNewsPause(newsEvents, pauseCfgOf(pauseRows.get(s.user_id)), nowMs);
     await markNewsPause(s.user_id, pause, pauseRows.get(s.user_id)?.paused_until ?? null);
@@ -647,7 +701,7 @@ async function tick() {
     const { data: today } = maxPerDay != null || stopAfter != null
       ? await admin.from("trades").select("outcome, closed_at, date, tags").eq("user_id", s.user_id).eq("source", "bot").gte("date", since).order("date", { ascending: false })
       : { data: [] as Array<{ outcome: string; closed_at: string | null; date: string; tags?: unknown }> };
-    const todayMine = (today ?? []).filter((r: { tags?: unknown }) => !isRunner(r));
+    const todayMine = (today ?? []).filter((r: { tags?: unknown }) => !isSide(r));
     let openedToday = todayMine.length;
     if (stopAfter != null) {
       const closedRows = todayMine.filter((r: { outcome: string }) => r.outcome !== "ABIERTA").sort((a: { closed_at: string | null }, b: { closed_at: string | null }) => String(b.closed_at).localeCompare(String(a.closed_at)));
@@ -718,14 +772,14 @@ async function tick() {
       openedToday++;
     }
   }
-  // 3) Prueba paralela «corredor» (opcional, solo simulada): entra por su cuenta, sin tocar el perfil elegido ni el bot real.
-  const runInds = new Map<string, Indicators>();
+  // 3) Prueba paralela (opcional, solo simulada): entra por su cuenta, sin tocar el perfil elegido ni el bot real.
+  const parInds = new Map<string, Indicators>();
   for (const s of settings) {
     if (s.runner_test !== true) continue;
     if (Date.now() - t0 > BUDGET_MS) break;
     if (activeNewsPause(newsEvents, pauseCfgOf(pauseRows.get(s.user_id)), nowMs)) continue;
     const { data: mine } = await admin.from("trades").select("symbol, tags").eq("user_id", s.user_id).eq("source", "bot").eq("outcome", "ABIERTA");
-    const openSym = new Set((mine ?? []).filter((r: { tags?: unknown }) => isRunner(r)).map((r: { symbol: string }) => r.symbol));
+    const openSym = new Set((mine ?? []).filter((r: { tags?: unknown }) => isPar(r)).map((r: { symbol: string }) => r.symbol));
     let count = openSym.size;
     const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
     for (const symbol of watchOf(s)) {
@@ -735,31 +789,28 @@ async function tick() {
       const done = closedBars(b, Date.now(), RUN_BAR);
       const i = done.length - 1;
       if (i < 0) continue;
-      const key = `${symbol}:runner`;
-      if (!runInds.has(key)) runInds.set(key, indicators(done, RUNNER_PARAMS));
-      const sig = signalAt(done, runInds.get(key)!, i, RUNNER_PARAMS);
+      const key = `${symbol}:par`;
+      if (!parInds.has(key)) parInds.set(key, indicators(done, PARALLEL_PARAMS));
+      const sig = signalAt(done, parInds.get(key)!, i, PARALLEL_PARAMS);
       if (sig && sig.t === done[i].t) found.push({ symbol, sig: roundSig(sig) });
     }
     found.sort((a, b) => b.sig.strength - a.sig.strength);
     for (const { symbol, sig } of found) {
       if (count >= s.max_open) break;
       if (Date.now() - (sig.t + RUN_BAR) > 2 * BAR_MS) continue; // señal vieja: no se persigue
-      const externalId = `${symbol}:${sig.t}:4h:run`;
+      const externalId = `${symbol}:${sig.t}:4h:par`;
       const { data: already } = await admin.from("trades").select("id").eq("user_id", s.user_id).eq("external_id", externalId).maybeSingle();
       if (already) continue;
-      const dir = sig.direction === "LONG" ? 1 : -1;
-      const risk = Math.abs(sig.entry - sig.sl);
-      const tp2 = px(sig.entry + dir * risk * RUNNER_PARAMS.runner!.tp2);
       const { data: trade, error: trErr } = await admin
         .from("trades")
-        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: tp2, targets: [sig.tp], source: "bot", external_id: externalId, notes: RUN_NOTE, tags: [TAG, RUN_TAG] })
+        .insert({ user_id: s.user_id, symbol, direction: sig.direction, entry: sig.entry, sl: sig.sl, tp: sig.tp, source: "bot", external_id: externalId, notes: PAR_NOTE, tags: [TAG, PAR_TAG] })
         .select("id")
         .single();
       if (trErr || !trade) {
-        console.error("bot corredor:", trErr?.message);
+        console.error("bot prueba paralela:", trErr?.message);
         continue;
       }
-      await notifyRunnerOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp1: sig.tp, tp2, sl: sig.sl });
+      await notifyParOpened(s.user_id, trade.id, { symbol, direction: sig.direction, entry: sig.entry, tp: sig.tp, sl: sig.sl });
       opened++;
       count++;
     }

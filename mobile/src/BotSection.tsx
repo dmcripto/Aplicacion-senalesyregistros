@@ -167,8 +167,8 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
       {s.runnerSupported && (
         <View style={st.row}>
           <View style={{ flex: 1 }}>
-            <Text style={st.name}>{t("Prueba paralela «corredor» (solo simulada)")}</Text>
-            <Text style={st.dim}>{t("Corre sola, aparte de tu perfil y de tu bot con dinero real: cobra la mitad en 2R, sube el stop a la entrada y deja correr el resto hasta 4R, con velas de 4 horas. Sus operaciones llevan la etiqueta «Corredor» en el Diario y nunca se envían a un exchange ni a la comunidad.")}</Text>
+            <Text style={st.name}>{t("Prueba paralela «entradas filtradas» (solo simulada)")}</Text>
+            <Text style={st.dim}>{t("Corre sola, aparte de tu perfil y de tu bot con dinero real: velas de 4 horas, sin entrar cuando el precio ya se estiró más de 3 ATR de su media. Sus operaciones llevan la etiqueta «Filtro 4h» en el Diario y nunca se envían a un exchange ni a la comunidad.")}</Text>
           </View>
           <Switch value={s.runnerTest} onValueChange={(v) => update({ runnerTest: v })} trackColor={{ true: colors.bull + "88", false: colors.line }} thumbColor={s.runnerTest ? colors.bull : colors.fog} />
         </View>

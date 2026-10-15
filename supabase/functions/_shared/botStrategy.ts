@@ -670,6 +670,9 @@ export interface LabVariant {
 /** Prueba paralela «corredor» del bot simulado: velas de 4 horas, 50 % cobrado en 2R, stop a la entrada y el resto hasta 4R. Nunca opera en real. */
 export const RUNNER_PARAMS: BotParams = { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5 } };
 
+/** Prueba paralela del bot simulado: velas de 4 horas con el filtro de entradas estiradas (la mejor candidata del Laboratorio). Nunca opera en real. */
+export const PARALLEL_PARAMS: BotParams = { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3 } };
+
 export const LAB_DAYS = 360;
 /** Días de historia por tamaño de vela: con velas de 15 minutos un año son demasiadas velas para pedir en una sola prueba. */
 export const LAB_DAYS_BY_TF: Record<BotTimeframe, number> = { "15m": 90, "1h": LAB_DAYS, "4h": LAB_DAYS };
@@ -685,7 +688,7 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-runner-be", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5, beAt: 0.5 } } },
   { id: "h4-wide-runner", params: { ...BOT_PROFILES.slowwide, runner: { tp2: 6, partial: 0.5 } } },
   // Filtros de entrada (ver EntryFilter): ¿evitar las entradas tardías o pegadas a un soporte/resistencia mejora el resultado?
-  { id: "h4-ext", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3 } } },
+  { id: "h4-ext", params: PARALLEL_PARAMS },
   { id: "h4-room", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { minRoom: 1.5 } } },
   { id: "h4-filter", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3, minRoom: 1.5 } } },
   { id: "h4-runner-filter", params: { ...RUNNER_PARAMS, filter: { maxExt: 3, minRoom: 1.5 } } },
