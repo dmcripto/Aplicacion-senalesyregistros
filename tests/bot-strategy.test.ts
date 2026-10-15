@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, parseBitunixBars, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
+import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, parseBitunixBars, parseBitgetBars, parseBingxBars, parseKucoinBars, isBarExchange, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -724,5 +724,62 @@ describe("velas de Bitunix (las del exchange donde opera el bot real)", () => {
     const { fetchFn, calls } = api(400);
     await fetchBars("BTCUSDT", 1000, fetchFn).catch(() => null);
     expect(calls).not.toContain("fapi.bitunix.com");
+  });
+});
+
+describe("velas del exchange que elige cada persona", () => {
+  const H = 3_600_000;
+  const T = 1_700_000_000_000;
+  it("lee el formato de Bitget, BingX y KuCoin y descarta lo que no sirve", () => {
+    expect(parseBitgetBars([[String(T + H), "2", "3", "1", "2.5", "9", "9"], [String(T), "1", "2", "0.5", "1.5", "9", "9"]]).map((b) => b.o)).toEqual([1, 2]);
+    expect(parseBingxBars([{ time: T + H, open: "2", high: "3", low: "1", close: "2.5" }, [T, "1", "2", "0.5", "1.5"], { time: "x" }]).map((b) => b.o)).toEqual([1, 2]);
+    expect(parseKucoinBars([[T + H, 2, 3, 1, 2.5, 7], [T, 1, 2, 0.5, 1.5, 7], [T, 1, 2, 0.5, 1.5, 7]]).map((b) => b.o)).toEqual([1, 2]);
+  });
+  it("reconoce los exchanges de los que sabe bajar velas", () => {
+    for (const x of ["bitunix", "binance", "bybit", "okx", "gate", "bitget", "bingx", "kucoin"]) expect(isBarExchange(x)).toBe(true);
+    expect(isBarExchange("mexc")).toBe(false);
+    expect(isBarExchange(null)).toBe(false);
+  });
+
+  const host = (calls: string[]) => calls[0];
+  const mk = (ok: Record<string, (u: URL) => unknown>) => {
+    const calls: string[] = [];
+    const fetchFn = (async (url: any) => {
+      const u = new URL(String(url));
+      calls.push(u.hostname);
+      const f = ok[u.hostname];
+      return f ? new Response(JSON.stringify(f(u))) : new Response("no", { status: 451 });
+    }) as unknown as typeof fetch;
+    return { fetchFn, calls };
+  };
+  const many = (n: number, ms = H) => Array.from({ length: n }, (_, i) => ({ t: Date.now() - (n - i) * ms, o: 100 + i * 0.01, h: 101 + i * 0.01, l: 99 + i * 0.01, c: 100.2 + i * 0.01 }));
+
+  it("prueba primero el exchange elegido (Bitget) y devuelve sus velas", async () => {
+    const rows = many(300);
+    const { fetchFn, calls } = mk({ "api.bitget.com": () => ({ code: "00000", data: rows.map((b) => [String(b.t), String(b.o), String(b.h), String(b.l), String(b.c), "1", "1"]) }) });
+    const bars = await fetchBars("BTCUSDT", 285, fetchFn, "1h", "bitget");
+    expect(host(calls)).toBe("api.bitget.com");
+    expect(bars).toHaveLength(285);
+  });
+  it("con KuCoin usa el nombre XBT para el bitcoin", async () => {
+    const rows = many(300);
+    let symbol = "";
+    const { fetchFn, calls } = mk({ "api-futures.kucoin.com": (u) => { symbol = u.searchParams.get("symbol")!; return { code: "200000", data: u.searchParams.get("to") && rows.length ? rows.map((b) => [b.t, b.o, b.h, b.l, b.c, 1]) : [] }; } });
+    await fetchBars("BTCUSDT", 285, fetchFn, "1h", "kucoin");
+    expect(host(calls)).toBe("api-futures.kucoin.com");
+    expect(symbol).toBe("XBTUSDTM");
+  });
+  it("si el exchange elegido bloquea o falla, sigue con los demás", async () => {
+    const rows = many(300);
+    const { fetchFn, calls } = mk({ "www.okx.com": () => ({ code: "0", data: rows.slice().reverse().map((b) => [String(b.t), "1", "2", "0.5", "1.5"]) }) });
+    const bars = await fetchBars("BTCUSDT", 285, fetchFn, "1h", "binance");
+    expect(host(calls)).toBe("fapi.binance.com");
+    expect(calls).toContain("www.okx.com");
+    expect(bars.length).toBeGreaterThanOrEqual(285);
+  });
+  it("sin exchange elegido todo sigue como antes (Bitunix primero)", async () => {
+    const { fetchFn, calls } = mk({});
+    await fetchBars("BTCUSDT", 285, fetchFn, "1h").catch(() => null);
+    expect(host(calls)).toBe("fapi.bitunix.com");
   });
 });

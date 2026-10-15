@@ -296,13 +296,27 @@ async function getJson(fetchFn: Fetch, url: string): Promise<unknown> {
   return res.json();
 }
 
-/** Velas de 1 hora (o de 4), de más viejas a más nuevas. Prueba Binance (futuros) y, si falla (bloqueo regional), Bybit, OKX y Gate. */
-export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch, tf: BotTimeframe = "1h"): Promise<Bar[]> {
+/** Exchanges de los que el bot sabe bajar velas (los mismos donde una persona puede operar con dinero real, menos los que no tienen futuros públicos). */
+export const BAR_EXCHANGES = ["bitunix", "binance", "bybit", "okx", "gate", "bitget", "bingx", "kucoin"] as const;
+export type BarExchange = (typeof BAR_EXCHANGES)[number];
+export const isBarExchange = (x: unknown): x is BarExchange => typeof x === "string" && (BAR_EXCHANGES as readonly string[]).includes(x);
+
+type BarProvider = (symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe) => Promise<Bar[]>;
+
+/**
+ * Velas de 1 hora (o de 4 o de 15 minutos), de más viejas a más nuevas.
+ * Con `exchange` (el que eligió la persona para operar) se prueban primero las velas de ese exchange: así los máximos y mínimos que activan
+ * un stop son los mismos que ve su cuenta. Si ese exchange falla o bloquea el servidor, sigue con los demás (Binance y Bybit suelen devolver
+ * 451 y 403 desde la región del servidor). Sin `exchange`, las corridas cortas usan Bitunix primero y las pruebas largas, el resto.
+ */
+export async function fetchBars(symbol: string, count: number, fetchFn: Fetch = fetch, tf: BotTimeframe = "1h", exchange?: string | null): Promise<Bar[]> {
   const errors: string[] = [];
-  // Para las corridas en vivo (pocas velas) se prefieren las velas de Bitunix, el exchange donde opera el bot real: así los máximos y mínimos
-  // que activan un stop son los mismos que ve la cuenta real. Las pruebas largas (laboratorio, historial) siguen con el resto.
-  const providers = count <= BITUNIX_MAX_BARS ? [bitunixBars, binanceBars, bybitBars, okxBars, gateBars] : [binanceBars, bybitBars, okxBars, gateBars];
-  for (const provider of providers) {
+  const chain: BarProvider[] = [];
+  if (isBarExchange(exchange)) chain.push(BAR_PROVIDERS[exchange]);
+  // Para las corridas en vivo (pocas velas) se prefieren las de Bitunix; las pruebas largas (laboratorio, historial) siguen con el resto.
+  if (count <= BITUNIX_MAX_BARS) chain.push(bitunixBars);
+  chain.push(binanceBars, bybitBars, okxBars, gateBars, bitgetBars, bingxBars, kucoinBars);
+  for (const provider of [...new Set(chain)]) {
     try {
       const bars = await provider(symbol, count, fetchFn, tf);
       if (bars.length >= Math.min(count, 300)) return bars;
@@ -345,6 +359,80 @@ async function bitunixBars(symbol: string, count: number, fetchFn: Fetch, tf: Bo
   }
   throw new Error("Bitunix sin velas");
 }
+
+// Bitget, BingX y KuCoin: datos públicos de futuros. Las filas se leen con cuidado (cada exchange cambia el formato y el orden) y, si algo no
+// cuadra, el proveedor falla y el bot sigue con el siguiente.
+
+/** Velas de Bitget ([hora, apertura, máximo, mínimo, cierre, …] como texto) → velas de más vieja a más nueva. */
+export function parseBitgetBars(rows: string[][]): Bar[] {
+  return parseBitunixBars((rows ?? []).map((r) => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] })));
+}
+
+/** Velas de BingX (objetos {time, open, high, low, close} o filas [hora, apertura, máximo, mínimo, cierre]) → velas de más vieja a más nueva. */
+export function parseBingxBars(rows: Array<Record<string, unknown> | unknown[]>): Bar[] {
+  return parseBitunixBars((rows ?? []).map((r) => (Array.isArray(r) ? { time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] } : (r as Record<string, unknown>))));
+}
+
+/** Velas de KuCoin Futuros ([hora, apertura, máximo, mínimo, cierre, volumen]) → velas de más vieja a más nueva. */
+export function parseKucoinBars(rows: unknown[][]): Bar[] {
+  return parseBitunixBars((rows ?? []).map((r) => ({ time: r[0], open: r[1], high: r[2], low: r[3], close: r[4] })));
+}
+
+async function bitgetBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const g = tf === "4h" ? "4H" : tf === "15m" ? "15m" : "1H";
+  const out: Bar[] = [];
+  let end = Date.now();
+  for (let page = 0; out.length < count && page < 4; page++) {
+    const j = (await getJson(fetchFn, `https://api.bitget.com/api/v2/mix/market/candles?symbol=${symbol}&productType=USDT-FUTURES&granularity=${g}&limit=1000&endTime=${end}`)) as { code?: string; data?: string[][] };
+    if (j.code != null && String(j.code) !== "00000") break;
+    const bars = parseBitgetBars(j.data ?? []);
+    if (!bars.length || (out.length && bars[0].t >= out[0].t)) break;
+    out.unshift(...bars);
+    end = bars[0].t - 1;
+  }
+  const bars = dedupe(out).slice(-count);
+  if (!bars.length) throw new Error("Bitget sin velas");
+  return bars;
+}
+
+async function bingxBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const pair = `${symbol.slice(0, -4)}-USDT`;
+  const j = (await getJson(fetchFn, `https://open-api.bingx.com/openApi/swap/v3/quote/klines?symbol=${pair}&interval=${tf}&limit=${Math.min(count, 1000)}`)) as { code?: number | string; data?: Array<Record<string, unknown> | unknown[]> };
+  if (j.code != null && Number(j.code) !== 0) throw new Error("BingX sin velas");
+  const bars = parseBingxBars(j.data ?? []).slice(-count);
+  if (!bars.length) throw new Error("BingX sin velas");
+  return bars;
+}
+
+async function kucoinBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
+  const base = symbol.slice(0, -4);
+  const contract = `${base === "BTC" ? "XBT" : base}USDTM`; // en KuCoin Futuros el bitcoin se llama XBT
+  const gran = tf === "4h" ? 240 : tf === "15m" ? 15 : 60;
+  const out: Bar[] = [];
+  let to = Date.now();
+  for (let page = 0; out.length < count && page < 4; page++) {
+    const j = (await getJson(fetchFn, `https://api-futures.kucoin.com/api/v1/kline/query?symbol=${contract}&granularity=${gran}&from=${to - 200 * gran * 60_000}&to=${to}`)) as { code?: string; data?: unknown[][] };
+    if (j.code != null && String(j.code) !== "200000") break;
+    const bars = parseKucoinBars(j.data ?? []);
+    if (!bars.length || (out.length && bars[0].t >= out[0].t)) break;
+    out.unshift(...bars);
+    to = bars[0].t - 1;
+  }
+  const bars = dedupe(out).slice(-count);
+  if (!bars.length) throw new Error("KuCoin sin velas");
+  return bars;
+}
+
+const BAR_PROVIDERS: Record<BarExchange, BarProvider> = {
+  bitunix: bitunixBars,
+  binance: binanceBars,
+  bybit: bybitBars,
+  okx: okxBars,
+  gate: gateBars,
+  bitget: bitgetBars,
+  bingx: bingxBars,
+  kucoin: kucoinBars,
+};
 
 async function binanceBars(symbol: string, count: number, fetchFn: Fetch, tf: BotTimeframe): Promise<Bar[]> {
   const out: Bar[] = [];

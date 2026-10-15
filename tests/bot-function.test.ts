@@ -703,6 +703,25 @@ describe("función bot · escaneo del mercado", () => {
   });
 });
 
+describe("función bot · velas del exchange elegido", () => {
+  it("cada persona decide con las velas del exchange donde opera y las bajadas se comparten", async () => {
+    const calls: string[] = [];
+    const base = (globalThis as any).fetch;
+    vi.stubGlobal("fetch", async (url: any, init?: any) => {
+      calls.push(new URL(String(url)).hostname);
+      return base(url, init);
+    });
+    enable({ symbols: ["BTCUSDT"] });
+    db.tables.bot_settings.push({ user_id: "u2", enabled: true, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3 });
+    db.tables.bot_live = [{ user_id: "u1", exchange: "okx", enabled: false }, { user_id: "u2", exchange: "okx", enabled: false }];
+    await tick();
+    const candleHosts = calls.filter((h) => ["www.okx.com", "fapi.bitunix.com", "fapi.binance.com"].includes(h));
+    expect(candleHosts[0]).toBe("www.okx.com"); // el exchange elegido va primero
+    // los dos usan el mismo exchange y activo: la bajada principal no se repite por persona
+    expect(calls.filter((h) => h === "www.okx.com").length).toBeLessThanOrEqual(3);
+  });
+});
+
 describe("función bot · perfil lento (velas de 4 horas)", () => {
   const FOUR = 4 * BAR_MS;
 
