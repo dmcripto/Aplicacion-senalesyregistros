@@ -50,7 +50,7 @@ import {
   insertFullTrades,
   insertTrades,
   markTradeOutcome,
-  reopenTradeById, sendTestSignal } from "./tradesApi";
+  reopenTradeById, sendTestSignal, syncExchanges } from "./tradesApi";
 import type { NewTrade } from "./lib";
 import { legalUrl } from "./lang";
 import Auth from "./components/Auth";
@@ -469,6 +469,19 @@ type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 
 function Dashboard({ userId, email }: { userId: string; email?: string }) {
   const { trades, loading, removeLocal, restoreLocal } = useTrades(userId);
+  // El diario con el exchange conectado se actualiza solo: al abrir y cada 3 minutos mientras la pestaña está a la vista (el servidor además lo hace cada ~10 minutos sin que abras nada).
+  useEffect(() => {
+    const run = () => {
+      if (document.visibilityState === "visible") syncExchanges().catch(() => {});
+    };
+    run();
+    const id = window.setInterval(run, 3 * 60_000);
+    document.addEventListener("visibilitychange", run);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", run);
+    };
+  }, [userId]);
   // La guía de inicio se muestra mientras no hay operaciones; después se puede volver a abrir desde el pie.
   const [guide, setGuide] = useState(false);
   // Con el diario vacío se esconden las secciones que no tendrían nada que mostrar; aparecen solas al haber operaciones.
