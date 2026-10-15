@@ -1911,6 +1911,14 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
       return { name: tr("Velas de 4 horas · conservador"), blurb: tr("Espera rupturas grandes y deja más espacio al stop.") };
     case "h4-wide":
       return { name: tr("Velas de 4 horas · objetivo amplio"), blurb: tr("Acierta menos veces, pero busca ganar el triple de lo que arriesga.") };
+    case "h1-runner":
+      return { name: tr("Velas de 1 hora · corredor"), blurb: tr("Cobra la mitad en el primer objetivo, sube el stop a la entrada y deja correr el resto hasta 4 veces lo arriesgado.") };
+    case "h4-runner":
+      return { name: tr("Velas de 4 horas · corredor"), blurb: tr("Cobra la mitad en el primer objetivo, sube el stop a la entrada y deja correr el resto hasta 4 veces lo arriesgado.") };
+    case "h4-runner-be":
+      return { name: tr("Velas de 4 horas · corredor con protección temprana"), blurb: tr("Como el corredor, pero el stop sube a la entrada cuando el precio recorre la mitad del camino al primer objetivo.") };
+    case "h4-wide-runner":
+      return { name: tr("Velas de 4 horas · objetivo amplio y corredor"), blurb: tr("Objetivo amplio: cobra la mitad en 3 veces lo arriesgado y deja correr el resto hasta 6.") };
     case "m15-balanced":
       return { name: tr("Velas de 15 minutos · equilibrado"), blurb: tr("Más operaciones y más comisiones. Solo se miden los últimos 90 días: evidencia más débil.") };
     case "m15-wide":

@@ -27,6 +27,18 @@ export interface BotParams {
   rr: number; // objetivo, en múltiplos del riesgo
   feePct: number; // costo de ida y vuelta (comisión + deslizamiento), en % del precio, solo para la prueba
   tf?: BotTimeframe; // tamaño de vela; sin indicar, 1 hora
+  runner?: RunnerParams; // modo «corredor» (solo en las pruebas con historial por ahora): ver RunnerParams
+}
+
+/**
+ * Modo «corredor»: al llegar al primer objetivo (`rr`) se cobra una parte (`partial`, 0 a 1), el stop sube a la entrada (break even) y el resto
+ * sigue hasta `tp2` (en R). Si vuelve a la entrada, el resto sale en cero. `beAt` (0 a 1, opcional) sube el stop a la entrada antes, apenas el
+ * precio recorre esa fracción del camino al primer objetivo.
+ */
+export interface RunnerParams {
+  tp2: number;
+  partial: number;
+  beAt?: number;
 }
 
 export type BotTimeframe = "15m" | "1h" | "4h";
@@ -512,6 +524,35 @@ export interface SimTrade {
 interface OpenSim {
   sig: BotSignal;
   openedAt: number;
+  stage?: "be"; // modo corredor: el stop ya está en la entrada
+  banked?: number; // modo corredor: R ya cobrados en el primer objetivo
+}
+
+/**
+ * Una vela más para una operación abierta en modo corredor. Criterio conservador: dentro de una misma vela el stop va primero, y el stop
+ * que se acaba de mover a la entrada recién cuenta desde la vela siguiente. Devuelve el R bruto (sin comisión) si la operación cerró.
+ */
+export function stepRunner(o: OpenSim, bar: Bar, rn: RunnerParams, rr: number): { r: number; outcome: "TP" | "SL" } | null {
+  const long = o.sig.direction === "LONG";
+  const { entry, sl, tp } = o.sig;
+  const hit = (level: number, above: boolean) => (above ? bar.h >= level : bar.l <= level);
+  const stopLevel = o.stage === "be" ? entry : sl;
+  if (hit(stopLevel, !long)) return o.stage === "be" ? { r: o.banked ?? 0, outcome: "TP" } : { r: -1, outcome: "SL" };
+  if (o.stage === "be") {
+    const risk = Math.abs(entry - sl);
+    const tp2 = long ? entry + risk * rn.tp2 : entry - risk * rn.tp2;
+    return hit(tp2, long) ? { r: (o.banked ?? 0) + (1 - rn.partial) * rn.tp2, outcome: "TP" } : null;
+  }
+  if (hit(tp, long)) {
+    o.stage = "be";
+    o.banked = rn.partial * rr;
+    return null;
+  }
+  if (rn.beAt && hit(entry + (tp - entry) * rn.beAt, long)) {
+    o.stage = "be";
+    o.banked = 0;
+  }
+  return null;
 }
 
 const DAY_MS = 24 * 3_600_000;
@@ -539,10 +580,15 @@ export function simulate(barsBySymbol: Record<string, Bar[]>, s: SimSettings, p:
       const i = at.get(symbol)!.get(T);
       if (!o || i == null) continue;
       const bar = barsBySymbol[symbol][i];
-      const hit = resolveFrom([bar], 0, o.sig);
+      let hit: { r: number; outcome: "TP" | "SL" } | null;
+      if (p.runner && p.runner.tp2 > p.rr) hit = stepRunner(o, bar, p.runner, p.rr);
+      else {
+        const h = resolveFrom([bar], 0, o.sig);
+        hit = h && { outcome: h.outcome, r: h.outcome === "TP" ? p.rr : -1 };
+      }
       if (!hit) continue;
       open.delete(symbol);
-      done.push({ symbol, t: o.sig.t, direction: o.sig.direction, outcome: hit.outcome, r: (hit.outcome === "TP" ? p.rr : -1) - costR(o.sig), closedAt: now });
+      done.push({ symbol, t: o.sig.t, direction: o.sig.direction, outcome: hit.outcome, r: hit.r - costR(o.sig), closedAt: now });
     }
     // 2) señales nuevas con los límites de la persona
     const recent = done.filter((d) => d.closedAt > now - DAY_MS && d.closedAt <= now);
@@ -602,6 +648,11 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
   { id: "h4-wide", params: { ...BOT_PROFILES.slowwide } },
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
+  // Modo «corredor»: cobrar la mitad en el primer objetivo, subir el stop a la entrada y dejar correr el resto (ver RunnerParams).
+  { id: "h1-runner", params: { ...DEFAULT_PARAMS, runner: { tp2: 4, partial: 0.5 } } },
+  { id: "h4-runner", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5 } } },
+  { id: "h4-runner-be", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5, beAt: 0.5 } } },
+  { id: "h4-wide-runner", params: { ...BOT_PROFILES.slowwide, runner: { tp2: 6, partial: 0.5 } } },
   // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
   { id: "m15-balanced", params: { ...DEFAULT_PARAMS, tf: "15m" } },
   { id: "m15-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 3, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "15m" } },
