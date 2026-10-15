@@ -860,7 +860,8 @@ export function calcPosition(i: PositionInput): PositionResult | null {
 // ─── Formateo ───────────────────────────────────────────────────────────────
 
 export const fmtPrice = (n: number) =>
-  n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 5 : 2 });
+  // Los precios muy chicos (PEPE, SHIB…) se muestran con 4 cifras significativas: con 5 decimales fijos salían como «0».
+  n > 0 && n < 0.01 ? n.toLocaleString("en-US", { maximumSignificantDigits: 4, maximumFractionDigits: 12 }) : n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 5 : 2 });
 
 export const fmtR = (r: number, dec = 1) =>
   (r >= 0 ? "+" : "−") + Math.abs(r).toFixed(dec).replace(/\.0$/, "");
