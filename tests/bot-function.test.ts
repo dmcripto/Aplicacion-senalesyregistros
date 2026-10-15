@@ -616,15 +616,15 @@ describe("función bot · laboratorio de variantes", () => {
     expect((await call({ action: "lab", symbols: ["doge-usd"] })).status).toBe(400);
   });
 
-  it("devuelve las siete variantes (las de 15 minutos con 90 días) con el período completo y las mitades", async () => {
+  it("devuelve las once variantes (las de 15 minutos con 90 días) con el período completo y las mitades", async () => {
     klines = series(3000, true);
     klines4h = series(3000, true, {}, 4 * BAR_MS);
     const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
     expect(r.body.days).toBe(360);
-    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h1-balanced", "h4-balanced", "h4-conservative", "h4-wide", "h4-fast", "m15-balanced", "m15-wide"]);
-    expect(r.body.variants.map((v: any) => v.days)).toEqual([360, 360, 360, 360, 360, 90, 90]);
+    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h1-balanced", "h4-balanced", "h4-conservative", "h4-wide", "h4-fast", "h1-runner", "h4-runner", "h4-runner-be", "h4-wide-runner", "m15-balanced", "m15-wide"]);
+    expect(r.body.variants.map((v: any) => v.days)).toEqual([360, 360, 360, 360, 360, 360, 360, 360, 360, 90, 90]);
     expect(r.body.variants.map((v: any) => v.tf).slice(-2)).toEqual(["15m", "15m"]);
     for (const v of r.body.variants) expect(v.first.n + v.second.n).toBe(v.whole.n);
   });
@@ -635,7 +635,7 @@ describe("función bot · laboratorio de variantes", () => {
     db.tables.bot_settings.push({ user_id: "u1", enabled: false, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, scan_top: 20 });
     const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
     expect(r.body.ok).toBe(true);
-    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h4-balanced", "h4-conservative", "h4-wide", "h4-fast"]);
+    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h4-balanced", "h4-conservative", "h4-wide", "h4-fast", "h4-runner", "h4-runner-be", "h4-wide-runner"]);
     expect(r.body.scanned).toBe(6);
     expect(r.body.symbols).toHaveLength(6);
   });

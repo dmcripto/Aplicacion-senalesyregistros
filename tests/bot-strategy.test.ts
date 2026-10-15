@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate } from "../supabase/functions/_shared/botStrategy";
+import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -427,6 +427,19 @@ describe("velas de 4 horas y laboratorio", () => {
     return out;
   }
 
+  it("simulate con corredor cierra las operaciones, con comisión, y no pierde más de 1R + comisión", () => {
+    const four = market4h(9);
+    const set = { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 99, rules: [], timeZone: "UTC" };
+    const base = simulate({ BTCUSDT: four }, set, { ...DEFAULT_PARAMS, tf: "4h" });
+    const run = simulate({ BTCUSDT: four }, set, { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5 } });
+    expect(base.trades.length).toBeGreaterThan(0);
+    expect(run.trades.length).toBeGreaterThan(0);
+    for (const t of run.trades) {
+      expect(Number.isFinite(t.r)).toBe(true);
+      expect(t.r).toBeLessThanOrEqual(1 + 2 + 0.01); // 0,5 x 2R cobrado + 0,5 x 4R
+      expect(t.r).toBeGreaterThan(-1.5);
+    }
+  });
   it("la simulación con velas de 4 horas cierra siempre en un cierre de vela de 4 horas", () => {
     const bars = market4h(5);
     const r = simulate({ BTCUSDT: bars }, { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, rules: [], timeZone: "UTC" }, { ...BOT_PROFILES.balanced, tf: "4h" });
@@ -440,7 +453,7 @@ describe("velas de 4 horas y laboratorio", () => {
     const mid = T0 + (2600 * 4 * BAR_MS) / 2;
     const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
     expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
-    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "15m", "15m"]);
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "15m", "15m"]);
     for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
     expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
     expect(LAB_DAYS).toBe(360);
@@ -573,4 +586,43 @@ describe("velas de OKX y Gate (cuando Binance y Bybit bloquean)", () => {
     expect(parseOkxBars([["x", "1", "1", "1", "1"]])).toEqual([]);
     expect(parseGateBars([])).toEqual([]);
   });
+});
+
+describe("modo corredor (cobrar parte, stop a la entrada y dejar correr)", () => {
+  const bar = (h: number, l: number) => ({ t: 0, o: 100, h, l, c: 100 });
+  const mk = () => ({ sig: { direction: "LONG" as const, entry: 100, sl: 98, tp: 104, t: 0, strength: 1 }, openedAt: 0 } as any);
+  const rn = { tp2: 4, partial: 0.5 };
+
+  it("el stop original corta en -1R", () => {
+    expect(stepRunner(mk(), bar(101, 97.9), rn, 2)).toEqual({ r: -1, outcome: "SL" });
+  });
+  it("llega al primer objetivo: cobra la mitad, sube el stop y recién en la vela siguiente puede cerrar", () => {
+    const o = mk();
+    expect(stepRunner(o, bar(104.1, 99), rn, 2)).toBeNull(); // esa vela solo mueve el stop
+    expect(o.stage).toBe("be");
+    expect(stepRunner(o, bar(101, 99.9), rn, 2)).toEqual({ r: 1, outcome: "TP" }); // vuelve a la entrada: queda lo cobrado
+  });
+  it("si sigue hasta el segundo objetivo cobra el resto", () => {
+    const o = mk();
+    stepRunner(o, bar(104.5, 100.5), rn, 2);
+    expect(stepRunner(o, bar(108.1, 103), rn, 2)).toEqual({ r: 1 + 0.5 * 4, outcome: "TP" });
+  });
+  it("en una vela que toca el stop de entrada y el segundo objetivo, gana el stop (conservador)", () => {
+    const o = mk();
+    stepRunner(o, bar(104.5, 100.5), rn, 2);
+    expect(stepRunner(o, bar(109, 99), rn, 2)).toEqual({ r: 1, outcome: "TP" });
+  });
+  it("beAt: sube el stop a la entrada antes del primer objetivo y la operación sale en cero", () => {
+    const o = mk();
+    expect(stepRunner(o, bar(102.5, 99.5), { ...rn, beAt: 0.5 }, 2)).toBeNull();
+    expect(o.stage).toBe("be");
+    expect(stepRunner(o, bar(101, 99.9), { ...rn, beAt: 0.5 }, 2)).toEqual({ r: 0, outcome: "TP" });
+  });
+  it("en corto funciona espejado", () => {
+    const o = { sig: { direction: "SHORT", entry: 100, sl: 102, tp: 96, t: 0, strength: 1 }, openedAt: 0 } as any;
+    stepRunner(o, bar(100, 95.9), rn, 2);
+    expect(stepRunner(o, bar(100.1, 99), rn, 2)).toEqual({ r: 1, outcome: "TP" });
+  });
+
+
 });
