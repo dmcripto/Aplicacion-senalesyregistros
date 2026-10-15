@@ -13,7 +13,7 @@
 // Nunca opera en un exchange: solo escribe en el diario de la persona.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate, stepRunner, RUNNER_PARAMS, PARALLEL_PARAMS } from "../_shared/botStrategy.ts";
+import { BAR_MS, BOT_PROFILES, LAB_DAYS, LAB_DAYS_BY_TF, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILE_IDS, BOT_SYMBOLS, WARMUP, allowedByActions, botStats, capOf, cleanActions, closedBars, describeParams, fetchBars, fetchUniverse, indicators, isBarExchange, isBotSymbol, isTradableSymbol, mapPool, scanSizeOf, isProfileId, localParts, paramsOf, resolveFrom, signalAt, signalWithUnlock, simulate, stepRunner, RUNNER_PARAMS, PARALLEL_PARAMS } from "../_shared/botStrategy.ts";
 import { cleanUnlock, unlockNote } from "../_shared/unlockFilter.ts";
 import type { UnlockEvent } from "../_shared/unlockFilter.ts";
 import type { BotParams, BotProfileId, BotTimeframe, Indicators } from "../_shared/botStrategy.ts";
@@ -535,19 +535,24 @@ async function tick() {
     }
   }
   const watchOf = (s: Settings) => [...new Set([...s.symbols, ...top.slice(0, scanSizeOf(s.scan_top))])].filter(isTradableSymbol);
+  // Cada persona decide y cierra con las velas del exchange donde eligió operar (el del bot con dinero real); sin eso, las de siempre.
+  const exUsers = [...new Set([...settings.map((x) => x.user_id), ...allOpen.map((t) => t.user_id)])];
+  const { data: exRows } = exUsers.length ? await admin.from("bot_live").select("user_id, exchange").in("user_id", exUsers) : { data: [] as Array<{ user_id: string; exchange: string | null }> };
+  const exOf = new Map(((exRows ?? []) as Array<{ user_id: string; exchange: string | null }>).filter((r) => isBarExchange(r.exchange)).map((r) => [r.user_id, r.exchange as string]));
+  const barsKey = (userId: string, symbol: string, tf: string) => `${exOf.get(userId) ?? ""}|${symbol}|${tf}`;
   // Qué velas hacen falta: de cada activo, las del tamaño que usa cada perfil (1 o 4 horas) y las de sus operaciones abiertas.
   const need = new Set<string>();
-  for (const s of settings) for (const sym of watchOf(s)) need.add(`${sym}|${tfOfSettings(s)}`);
-  for (const t of open) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|${tfOfTrade(t)}`);
-  for (const s of settings) if (s.runner_test === true) for (const sym of watchOf(s)) need.add(`${sym}|4h`);
-  for (const t of [...openRun, ...openPar]) if (isTradableSymbol(t.symbol)) need.add(`${t.symbol}|4h`);
+  for (const s of settings) for (const sym of watchOf(s)) need.add(barsKey(s.user_id, sym, tfOfSettings(s)));
+  for (const t of open) if (isTradableSymbol(t.symbol)) need.add(barsKey(t.user_id, t.symbol, tfOfTrade(t)));
+  for (const s of settings) if (s.runner_test === true) for (const sym of watchOf(s)) need.add(barsKey(s.user_id, sym, "4h"));
+  for (const t of [...openRun, ...openPar]) if (isTradableSymbol(t.symbol)) need.add(barsKey(t.user_id, t.symbol, "4h"));
   if (!need.size) return { ok: true, users: 0, opened: 0, closed: 0 };
 
-  const bars = new Map<string, Bar[]>(); // clave: «ACTIVO|1h» o «ACTIVO|4h»
+  const bars = new Map<string, Bar[]>(); // clave: «EXCHANGE|ACTIVO|1h» (el exchange vacío es la cadena de siempre); una bajada por exchange y activo
   await mapPool([...need], 8, async (key) => {
-    const [sym, tf] = key.split("|") as [string, BotTimeframe];
+    const [ex, sym, tf] = key.split("|") as [string, string, BotTimeframe];
     try {
-      bars.set(key, await fetchBars(sym, TICK_BARS, fetch, tf));
+      bars.set(key, await fetchBars(sym, TICK_BARS, fetch, tf, ex || null));
     } catch (e) {
       failed.push(`${sym}: ${e instanceof Error ? e.message : "error"}`);
     }
@@ -561,7 +566,7 @@ async function tick() {
   const candleOf = new Map((sigRows ?? []).map((r) => [r.trade_id, new Date(r.candle_time).getTime()]));
   for (const t of open) {
     const tf = tfOfTrade(t);
-    const b = bars.get(`${t.symbol}|${tf}`);
+    const b = bars.get(barsKey(t.user_id, t.symbol, tf));
     const candle = candleOf.get(t.id);
     if (!b || candle == null) continue;
     const barMs = barMsOf({ tf });
@@ -585,7 +590,7 @@ async function tick() {
   // 1b) Prueba paralela «corredor»: se repasan las velas desde la entrada (siempre da lo mismo) y se cierra lo que corresponda.
   const RUN_BAR = barMsOf({ tf: "4h" });
   for (const t of openRun) {
-    const b0 = bars.get(`${t.symbol}|4h`);
+    const b0 = bars.get(barsKey(t.user_id, t.symbol, "4h"));
     const candle = Number(String(t.external_id ?? "").split(":")[1]);
     const tp1 = Number(t.targets?.[0]);
     if (!b0 || !Number.isFinite(candle) || !Number.isFinite(tp1)) continue;
@@ -626,7 +631,7 @@ async function tick() {
 
   // 1c) Prueba paralela actual: objetivo y stop comunes, con las velas cerradas de 4 horas desde la entrada.
   for (const t of openPar) {
-    const b0 = bars.get(`${t.symbol}|4h`);
+    const b0 = bars.get(barsKey(t.user_id, t.symbol, "4h"));
     const candle = Number(String(t.external_id ?? "").split(":")[1]);
     if (!b0 || !Number.isFinite(candle)) continue;
     const b = closedBars(b0, Date.now(), RUN_BAR);
@@ -718,7 +723,7 @@ async function tick() {
     const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>>; near: boolean; boosted: boolean }> = [];
     for (const symbol of watchOf(s)) {
       if (openSymbols.has(symbol)) continue;
-      const b = bars.get(`${symbol}|${tf}`);
+      const b = bars.get(barsKey(s.user_id, symbol, tf));
       if (!b) continue;
       const done = closedBars(b, Date.now(), barMs);
       const i = done.length - 1;
@@ -784,7 +789,7 @@ async function tick() {
     const found: Array<{ symbol: string; sig: NonNullable<ReturnType<typeof signalAt>> }> = [];
     for (const symbol of watchOf(s)) {
       if (openSym.has(symbol)) continue;
-      const b = bars.get(`${symbol}|4h`);
+      const b = bars.get(barsKey(s.user_id, symbol, "4h"));
       if (!b) continue;
       const done = closedBars(b, Date.now(), RUN_BAR);
       const i = done.length - 1;
