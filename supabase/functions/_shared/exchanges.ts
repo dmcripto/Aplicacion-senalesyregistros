@@ -1217,8 +1217,75 @@ async function bitunixLevels(fetchFn: FetchFn, key: string, secret: string, posi
   }
 }
 
-/** Posiciones abiertas ahora (Bitunix, Binance y Bybit). Los demás exchanges devuelven vacío: sus operaciones se importan al cerrarse. */
-export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch): Promise<OpenPosition[]> {
+const openRow = (symbol: string, direction: "LONG" | "SHORT", qty: number, entry: number, openedAt: unknown, leverage: unknown): OpenPosition | null => {
+  if (!symbol || !(entry > 0) || !(qty > 0)) return null;
+  const t = Number(openedAt);
+  return { externalId: `open:${symbol}:${direction}`, symbol, direction, qty, entry, openedAt: Number.isFinite(t) && t > 0 ? t : Date.now(), leverage: lev(leverage) };
+};
+const compact = (rows: Array<OpenPosition | null>): OpenPosition[] => rows.filter((r): r is OpenPosition => r != null);
+
+/** MEXC: tamaño en contratos (holdVol) por el valor de cada contrato. */
+export function parseMexcOpen(list: any[], sizes: Record<string, number>): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const direction = Number(r.positionType) === 1 ? "LONG" : Number(r.positionType) === 2 ? "SHORT" : null;
+    const size = sizes[String(r.symbol)];
+    if (!direction || !(size > 0)) return null;
+    return openRow(String(r.symbol).replace(/_/g, ""), direction, num(r.holdVol) * size, num(r.holdAvgPrice), r.createTime, r.leverage);
+  }));
+}
+
+/** Gate: size con signo (positivo = largo), en contratos; se multiplica por quanto_multiplier. */
+export function parseGateOpen(list: any[], multipliers: Record<string, number>): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const size = num(r.size);
+    const m = multipliers[String(r.contract)];
+    if (size === 0 || !(m > 0)) return null;
+    return openRow(String(r.contract).replace(/_/g, ""), size > 0 ? "LONG" : "SHORT", Math.abs(size) * m, num(r.entry_price), Number(r.open_time) * 1000, r.leverage);
+  }));
+}
+
+export function parseBitgetOpen(list: any[]): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const side = String(r.holdSide ?? "").toLowerCase();
+    const direction = side === "long" ? "LONG" : side === "short" ? "SHORT" : null;
+    return direction ? openRow(String(r.symbol), direction, num(r.total), num(r.openPriceAvg), r.cTime, r.leverage) : null;
+  }));
+}
+
+/** OKX: pos en contratos (con signo si la cuenta es «net»); solo perpetuos en USDT. */
+export function parseOkxOpen(list: any[], values: Record<string, number>): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const inst = String(r.instId ?? "");
+    if (!/-USDT-SWAP$/.test(inst)) return null;
+    const pos = num(r.pos);
+    const side = String(r.posSide ?? "net").toLowerCase();
+    const direction = side === "long" ? "LONG" : side === "short" ? "SHORT" : pos > 0 ? "LONG" : pos < 0 ? "SHORT" : null;
+    const v = values[inst];
+    if (!direction || !(v > 0)) return null;
+    return openRow(inst.replace(/-SWAP$/, "").replace(/-/g, ""), direction, Math.abs(pos) * v, num(r.avgPx), r.cTime, r.lever);
+  }));
+}
+
+/** KuCoin: currentQty con signo, en contratos; se multiplica por el valor del contrato. */
+export function parseKucoinOpen(list: any[], multipliers: Record<string, number>): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const q = num(r.currentQty);
+    const m = multipliers[String(r.symbol)];
+    if (q === 0 || !(m > 0)) return null;
+    return openRow(String(r.symbol).replace(/M$/, "").replace(/^XBT/, "BTC"), q > 0 ? "LONG" : "SHORT", Math.abs(q) * m, num(r.avgEntryPrice), r.openingTimestamp, r.realLeverage ?? r.leverage);
+  }));
+}
+
+export function parseBingxOpen(list: any[]): OpenPosition[] {
+  return compact((list ?? []).map((r) => {
+    const side = String(r.positionSide ?? "").toUpperCase();
+    const direction = side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : null;
+    return direction ? openRow(String(r.symbol).replace(/-/g, ""), direction, Math.abs(num(r.positionAmt)), num(r.avgPrice), r.updateTime, r.leverage) : null;
+  }));
+}
+
+/** Posiciones abiertas ahora, en todos los exchanges conectados. */
+export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fetchFn: FetchFn = fetch, pass = ""): Promise<OpenPosition[]> {
   if (ex === "bitunix") {
     const data = await bitunixGet(fetchFn, "/api/v1/futures/position/get_pending_positions", {}, key, secret);
     const list = parseBitunixOpen(Array.isArray(data) ? data : data?.positionList ?? []);
@@ -1238,6 +1305,40 @@ export async function fetchOpen(ex: ExchangeId, key: string, secret: string, fet
       if (!cursor) break;
     }
     return out;
+  }
+  if (ex === "mexc") {
+    const list: any[] = (await mexcGet(fetchFn, "/api/v1/private/position/open_positions", {}, key, secret)) ?? [];
+    const sizes: Record<string, number> = {};
+    for (const sym of new Set(list.map((r) => String(r.symbol)))) sizes[sym] = await mexcContractSize(fetchFn, sym);
+    return parseMexcOpen(list, sizes);
+  }
+  if (ex === "gate") {
+    const list = await gateGet(fetchFn, "/api/v4/futures/usdt/positions", {}, key, secret);
+    const rows: any[] = Array.isArray(list) ? list.filter((r) => num(r.size) !== 0) : [];
+    const mults: Record<string, number> = {};
+    for (const c of new Set(rows.map((r) => String(r.contract)))) mults[c] = await gateMultiplier(fetchFn, c);
+    return parseGateOpen(rows, mults);
+  }
+  if (ex === "bitget") {
+    const data = await bitgetGet(fetchFn, "/api/v2/mix/position/all-position", { productType: "USDT-FUTURES", marginCoin: "USDT" }, key, secret, pass);
+    return parseBitgetOpen(Array.isArray(data) ? data : data?.list ?? []);
+  }
+  if (ex === "okx") {
+    const list: any[] = (await okxGet(fetchFn, "/api/v5/account/positions", { instType: "SWAP" }, key, secret, pass)) ?? [];
+    const values: Record<string, number> = {};
+    for (const inst of new Set(list.map((r) => String(r.instId)))) values[inst] = await okxContractValue(fetchFn, "SWAP", inst);
+    return parseOkxOpen(list, values);
+  }
+  if (ex === "kucoin") {
+    const data = await kucoinGet(fetchFn, "/api/v1/positions", {}, key, secret, pass);
+    const list: any[] = (Array.isArray(data) ? data : data?.items ?? []).filter((r: any) => num(r.currentQty) !== 0);
+    const mults: Record<string, number> = {};
+    for (const sym of new Set(list.map((r) => String(r.symbol)))) mults[sym] = await kucoinMultiplier(fetchFn, sym);
+    return parseKucoinOpen(list, mults);
+  }
+  if (ex === "bingx") {
+    const data = await bingxGet(fetchFn, "/openApi/swap/v2/user/positions", {}, key, secret);
+    return parseBingxOpen(Array.isArray(data) ? data : []);
   }
   return [];
 }
