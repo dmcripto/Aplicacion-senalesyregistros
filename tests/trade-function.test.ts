@@ -271,6 +271,27 @@ describe("función trade: órdenes del bot", () => {
     expect(placed()).toHaveLength(0);
   });
 
+  it("si el exchange no tiene el par, avisa por push que la señal quedó solo como simulada (y respeta el interruptor de avisos)", async () => {
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true });
+    const pushes: any[] = [];
+    const f = globalThis.fetch;
+    vi.stubGlobal("fetch", async (url: any, init: any) => {
+      if (String(url).includes("exp.host")) { pushes.push(...JSON.parse(init.body)); return new Response("{}"); }
+      return String(url).includes("trading_pairs") ? new Response(JSON.stringify({ code: 0, data: [] })) : f(url, init);
+    });
+    expect((await exec()).body.status).toBe("skipped");
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].title).toContain("BTCUSDT");
+    expect(pushes[0].body).toContain("Bitunix");
+    expect(pushes[0].body).toContain("simulada");
+    // con los avisos del bot apagados no manda nada
+    pushes.length = 0;
+    db.tables.bot_settings = [{ user_id: "u1", notify: false }];
+    db.tables.trades.push(trade({ id: "t2" }));
+    await exec("t2");
+    expect(pushes).toHaveLength(0);
+  });
+
   it("tras 3 rechazos seguidos el bot real se apaga solo", async () => {
     db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true });
     reject = true;

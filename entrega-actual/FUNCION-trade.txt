@@ -1,5 +1,75 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// ─── VELTRIX · Telegram (API de bots) ───────────────────────────────────────
+// Funciones comunes para hablar con Telegram y avisar al usuario desde cualquier función del servidor.
+
+
+type Lang = "es" | "en";
+
+const API = "https://api.telegram.org";
+
+const botToken = (): string | undefined => Deno.env.get("TELEGRAM_BOT_TOKEN") || undefined;
+
+/** Escapa el texto para usarlo dentro de mensajes con formato HTML. */
+const esc = (s: unknown) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function tgApi(token: string, method: string, payload: Record<string, unknown> = {}): Promise<any> {
+  try {
+    const res = await fetch(`${API}/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
+const sendMessage = (token: string, chatId: number, html: string, extra: Record<string, unknown> = {}) =>
+  tgApi(token, "sendMessage", { chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true, ...extra });
+
+/** Manda una imagen PNG (con texto opcional abajo). Si Telegram la rechaza, devuelve el error igual que sendMessage. */
+async function sendPhoto(token: string, chatId: number, png: Uint8Array, caption: string, extra: Record<string, string | number> = {}): Promise<any> {
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    form.append("caption", caption.slice(0, 1000));
+    form.append("parse_mode", "HTML");
+    for (const [k, v] of Object.entries(extra)) form.append(k, String(v));
+    form.append("photo", new Blob([png], { type: "image/png" }), "veltrix.png");
+    const res = await fetch(`${API}/bot${token}/sendPhoto`, { method: "POST", body: form, signal: AbortSignal.timeout(15000) });
+    return await res.json();
+  } catch {
+    return { ok: false, error_code: 0, description: "network" };
+  }
+}
+
+/**
+ * Avisa por Telegram al usuario si tiene el chat vinculado. `build` arma el texto en su idioma.
+ * Nunca lanza errores: un fallo de Telegram no debe romper el registro de la señal.
+ * Si el usuario bloqueó al bot, se borra la vinculación.
+ */
+async function notifyTelegram(
+  supabase: any,
+  userId: string,
+  build: (lang: Lang) => string,
+): Promise<void> {
+  try {
+    const token = botToken();
+    if (!token) return;
+    const { data: link } = await supabase.from("telegram_links").select("chat_id").eq("user_id", userId).maybeSingle();
+    if (!link) return;
+    const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const lang: Lang = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+    const r = await sendMessage(token, Number(link.chat_id), build(lang));
+    if (!r?.ok && r?.error_code === 403) await supabase.from("telegram_links").delete().eq("user_id", userId);
+  } catch {
+    /* sin aviso por Telegram */
+  }
+}
+
 // ─── VELTRIX · Conexión de solo lectura con exchanges ─────────────────────
 // Binance (futuros USDⓈ-M), Bybit (perpetuos lineales), Bitunix, MEXC, Gate, Bitget, OKX, KuCoin y BingX (futuros). Solo se hacen pedidos
 // GET de lectura: VELTRIX nunca opera ni mueve fondos.
@@ -2673,6 +2743,25 @@ async function recordFailure(userId: string, live: Live, message: string) {
   await pushTo(userId, off ? "⛔ Bot real apagado" : "⚠️ Orden real con problemas", off ? `Se apagó solo tras ${MAX_ERRORS} errores seguidos: ${message}` : message);
 }
 
+/**
+ * Avisa (push y Telegram, solo a la propia persona) que una señal del bot no se pudo operar porque su exchange no la tiene: así no se pierde de vista
+ * una buena señal que quedó solo como simulada. Respeta el interruptor de avisos del bot; un fallo acá nunca afecta a la orden.
+ */
+async function notifyUnavailable(userId: string, symbol: string, exchange: string) {
+  try {
+    const { data: cfg } = await admin.from("bot_settings").select("notify").eq("user_id", userId).maybeSingle();
+    if ((cfg as { notify?: boolean } | null)?.notify === false) return;
+    const { data: prof } = await admin.from("profiles").select("lang").eq("id", userId).maybeSingle();
+    const en = (prof as { lang?: string } | null)?.lang === "en";
+    const title = en ? `⚠️ ${symbol}: not traded` : `⚠️ ${symbol}: no se operó`;
+    const body = en ? `The bot spotted ${symbol}, but ${exchange} doesn't offer it (or its rules couldn't be read), so it stays as a simulated signal only.` : `El bot detectó ${symbol}, pero ${exchange} no la tiene disponible (o no se pudieron leer sus reglas): quedó solo como señal simulada.`;
+    await pushTo(userId, title, body);
+    await notifyTelegram(admin, userId, (l) => `<b>${esc(l === "en" ? `⚠️ ${symbol}: not traded` : `⚠️ ${symbol}: no se operó`)}</b>\n${esc(l === "en" ? `The bot spotted ${symbol}, but ${exchange} doesn't offer it (or its rules couldn't be read), so it stays as a simulated signal only.` : `El bot detectó ${symbol}, pero ${exchange} no la tiene disponible (o no se pudieron leer sus reglas): quedó solo como señal simulada.`)}`);
+  } catch {
+    /* el aviso es un extra */
+  }
+}
+
 // ─── Orden del bot (la llama la función del bot con el secreto compartido) ───
 
 async function execute(userId: string, tradeId: string) {
@@ -2701,7 +2790,11 @@ async function execute(userId: string, tradeId: string) {
   const price = await livePrice(sig.symbol);
   if (price == null) return skip("No se pudo leer el precio actual.");
   const pair = await ex.pair(fetch, creds.key, creds.secret, sig.symbol);
-  if (!pair) return skip(`${sig.symbol} no está disponible en ${ex.name} o no se pudieron leer sus reglas: no se opera.`);
+  if (!pair) {
+    const r = await skip(`${sig.symbol} no está disponible en ${ex.name} o no se pudieron leer sus reglas: no se opera.`);
+    await notifyUnavailable(userId, sig.symbol, ex.name);
+    return r;
+  }
   const plan = planOrder(sig, price, pair, cfgOf(live));
   if (!plan.ok) return skip(plan.reason);
 
