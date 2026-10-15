@@ -583,3 +583,28 @@ describe("posiciones abiertas de Binance y Bybit", () => {
     expect(row.notes).toContain("reales");
   });
 });
+
+import { parseBingxOpen, parseBitgetOpen, parseGateOpen, parseKucoinOpen, parseMexcOpen, parseOkxOpen } from "../supabase/functions/_shared/exchanges";
+describe("posiciones abiertas en el resto de los exchanges", () => {
+  it("MEXC: contratos por el valor del contrato", () => {
+    const [p] = parseMexcOpen([{ symbol: "BTC_USDT", positionType: 2, holdVol: 10, holdAvgPrice: "80000", leverage: 5, createTime: 1760000000000 }], { BTC_USDT: 0.0001 });
+    expect(p).toMatchObject({ externalId: "open:BTCUSDT:SHORT", direction: "SHORT", qty: 0.001, entry: 80000, leverage: 5 });
+  });
+  it("Gate: el signo del size marca el lado", () => {
+    const [p] = parseGateOpen([{ contract: "ETH_USDT", size: -20, entry_price: "3000", leverage: "3", open_time: 1760000000 }], { ETH_USDT: 0.01 });
+    expect(p).toMatchObject({ symbol: "ETHUSDT", direction: "SHORT", qty: 0.2, entry: 3000 });
+  });
+  it("Bitget y BingX", () => {
+    expect(parseBitgetOpen([{ symbol: "SOLUSDT", holdSide: "long", total: "2", openPriceAvg: "150", leverage: "10", cTime: "1760000000000" }])[0]).toMatchObject({ direction: "LONG", qty: 2, entry: 150 });
+    expect(parseBingxOpen([{ symbol: "XRP-USDT", positionSide: "SHORT", positionAmt: "100", avgPrice: "0.5", leverage: 4, updateTime: 1760000000000 }])[0]).toMatchObject({ symbol: "XRPUSDT", direction: "SHORT", qty: 100 });
+  });
+  it("OKX (cuenta net) y KuCoin", () => {
+    expect(parseOkxOpen([{ instId: "BTC-USDT-SWAP", posSide: "net", pos: "-3", avgPx: "80000", lever: "5", cTime: "1760000000000" }], { "BTC-USDT-SWAP": 0.01 })[0]).toMatchObject({ symbol: "BTCUSDT", direction: "SHORT", qty: 0.03 });
+    expect(parseOkxOpen([{ instId: "BTC-USD-SWAP", pos: "1", avgPx: "1" }], {})).toEqual([]);
+    expect(parseKucoinOpen([{ symbol: "XBTUSDTM", currentQty: 5, avgEntryPrice: "80000", realLeverage: 3, openingTimestamp: 1760000000000 }], { XBTUSDTM: 0.001 })[0]).toMatchObject({ symbol: "BTCUSDT", direction: "LONG", qty: 0.005 });
+  });
+  it("ignora filas incompletas", () => {
+    expect(parseGateOpen([{ contract: "A_USDT", size: 0 }], {})).toEqual([]);
+    expect(parseBitgetOpen([{ symbol: "X", holdSide: "?", total: 1, openPriceAvg: 1 }])).toEqual([]);
+  });
+});

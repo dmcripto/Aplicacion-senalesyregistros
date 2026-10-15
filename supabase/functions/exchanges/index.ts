@@ -64,7 +64,7 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
   let openList: OpenPosition[] = [];
   let openError: unknown = null;
   try {
-    openList = await fetchOpen(conn.exchange, secret.api_key, apiSecret);
+    openList = await fetchOpen(conn.exchange, secret.api_key, apiSecret, undefined, passphrase);
   } catch (e) {
     openError = e;
   }
