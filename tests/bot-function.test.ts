@@ -760,6 +760,97 @@ describe("función bot · perfil lento (velas de 4 horas)", () => {
     expect(new Date(t.closed_at).getTime() - rows[rows.length - 2][0]).toBe(FOUR); // cierra al final de esa vela de 4 horas
   });
 
+  describe("prueba paralela «corredor»", () => {
+    it("abre su operación aparte (tag Corredor, TP1 en targets, TP final a 4R) sin tocar la del perfil elegido", async () => {
+      enable({ profile: "balanced", runner_test: true });
+      const r = await tick();
+      expect(r.body.opened).toBe(2);
+      const normal = db.tables.trades.find((x) => !x.tags.includes("Corredor"))!;
+      const run = db.tables.trades.find((x) => x.tags.includes("Corredor"))!;
+      expect(normal.external_id.endsWith(":4h")).toBe(false);
+      expect(run.external_id.endsWith(":4h:run")).toBe(true);
+      expect(run.source).toBe("bot");
+      const risk = run.entry - run.sl;
+      expect(run.targets).toHaveLength(1);
+      expect(run.targets[0]).toBeCloseTo(run.entry + 2 * risk, 1);
+      expect(run.tp).toBeCloseTo(run.entry + 4 * risk, 1);
+      expect(run.notes).toContain("corredor");
+    });
+
+    it("no se duplica en la corrida siguiente y no cuenta contra los lugares del perfil elegido", async () => {
+      enable({ profile: "balanced", runner_test: true, max_open: 1 });
+      await tick();
+      await tick();
+      expect(db.tables.trades).toHaveLength(2); // una de cada una, aunque el tope sea 1
+    });
+
+    it("apagada no hace nada", async () => {
+      enable({ profile: "balanced" });
+      await tick();
+      expect(db.tables.trades.some((x) => x.tags.includes("Corredor"))).toBe(false);
+    });
+
+    const runTrade = (rows: number[][]) => {
+      const signalT = rows[rows.length - 6][0];
+      const entry = rows[rows.length - 6][4];
+      db.tables.trades.push({ id: "r1", user_id: "u1", symbol: "BTCUSDT", source: "bot", outcome: "ABIERTA", direction: "LONG", entry, sl: entry - 1, tp: entry + 4, targets: [entry + 2], targets_hit: 0, tags: ["Bot simulado", "Corredor"], external_id: `BTCUSDT:${signalT}:4h:run` });
+      return entry;
+    };
+
+    it("al llegar al primer objetivo sube el stop (queda abierta y avisa una sola vez)", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = runTrade(rows);
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry, entry + 2.5, entry - 0.2, entry + 2.2];
+      rows[rows.length - 2] = [rows[rows.length - 2][0], entry + 2.2, entry + 2.6, entry + 2, entry + 2.4]; // sigue arriba de la entrada
+      klines4h = rows;
+      db.tables.device_tokens = [{ user_id: "u1", expo_push_token: "ExponentPushToken[x]" }];
+      enable({ runner_test: false });
+      const r = await tick();
+      expect(r.body.closed).toBe(0);
+      expect(db.tables.trades.find((x) => x.id === "r1")).toMatchObject({ outcome: "ABIERTA", targets_hit: 1 });
+      expect(sent.push.filter((p) => String(p.title).includes("TP1"))).toHaveLength(1);
+      await tick();
+      expect(sent.push.filter((p) => String(p.title).includes("TP1"))).toHaveLength(1); // no se repite
+    });
+
+    it("tras el primer objetivo, si vuelve a la entrada cierra con +1R (la mitad cobrada)", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = runTrade(rows);
+      rows[rows.length - 4] = [rows[rows.length - 4][0], entry, entry + 2.5, entry - 0.2, entry + 2.2];
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry + 1, entry + 1.2, entry - 0.1, entry + 0.5];
+      klines4h = rows;
+      enable({ runner_test: false });
+      const r = await tick();
+      expect(r.body.closed).toBe(1);
+      const t = db.tables.trades.find((x) => x.id === "r1");
+      expect(t).toMatchObject({ outcome: "MANUAL", auto_closed: true });
+      expect(t.exit).toBeCloseTo(entry + 1, 3);
+    });
+
+    it("si el precio llega al segundo objetivo cierra con +3R mezclados", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = runTrade(rows);
+      rows[rows.length - 4] = [rows[rows.length - 4][0], entry, entry + 2.5, entry - 0.2, entry + 2.2];
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry + 2.2, entry + 4.5, entry + 2, entry + 4.2];
+      klines4h = rows;
+      enable({ runner_test: false });
+      await tick();
+      const t = db.tables.trades.find((x) => x.id === "r1");
+      expect(t).toMatchObject({ outcome: "MANUAL" });
+      expect(t.exit).toBeCloseTo(entry + 3, 3);
+    });
+
+    it("si toca el stop antes del primer objetivo cierra en SL", async () => {
+      const rows = series(285, false, {}, FOUR);
+      const entry = runTrade(rows);
+      rows[rows.length - 3] = [rows[rows.length - 3][0], entry, entry + 0.5, entry - 1.5, entry - 1.2];
+      klines4h = rows;
+      enable({ runner_test: false });
+      await tick();
+      expect(db.tables.trades.find((x) => x.id === "r1")).toMatchObject({ outcome: "SL" });
+    });
+  });
+
   it("la prueba con historial incluye el perfil lento con sus propias velas", async () => {
     klines = series(3000, true);
     klines4h = series(1500, true, {}, FOUR);

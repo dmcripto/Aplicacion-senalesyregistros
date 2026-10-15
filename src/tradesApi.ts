@@ -297,10 +297,10 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
   if (error) throw error;
   if (!data) {
     // Sin fila todavía: se mira si cada columna opcional existe preguntándole por ella.
-    const [r, p, n, sc, ul, sh] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1), supabase.from("bot_settings").select("notify").limit(1), supabase.from("bot_settings").select("scan_top").limit(1), supabase.from("bot_settings").select("unlock_mode").limit(1), supabase.from("bot_settings").select("share_community").limit(1)]);
-    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error, notifySupported: !n.error, scanSupported: !sc.error, unlockSupported: !ul.error, shareSupported: !sh.error };
+    const [r, p, n, sc, ul, sh, rn] = await Promise.all([supabase.from("bot_settings").select("rules").limit(1), supabase.from("bot_settings").select("profile").limit(1), supabase.from("bot_settings").select("notify").limit(1), supabase.from("bot_settings").select("scan_top").limit(1), supabase.from("bot_settings").select("unlock_mode").limit(1), supabase.from("bot_settings").select("share_community").limit(1), supabase.from("bot_settings").select("runner_test").limit(1)]);
+    return { ...DEFAULT_BOT, rulesSupported: !r.error, profileSupported: !p.error, notifySupported: !n.error, scanSupported: !sc.error, unlockSupported: !ul.error, shareSupported: !sh.error, runnerSupported: !rn.error };
   }
-  const row = data as { share_community?: unknown; rules?: unknown; profile?: unknown; notify?: unknown; scan_top?: unknown; unlock_mode?: unknown; unlock_window_days?: unknown; unlock_min_pct?: unknown };
+  const row = data as { runner_test?: unknown; share_community?: unknown; rules?: unknown; profile?: unknown; notify?: unknown; scan_top?: unknown; unlock_mode?: unknown; unlock_window_days?: unknown; unlock_min_pct?: unknown };
   const rulesSupported = Array.isArray(row.rules);
   const profileSupported = typeof row.profile === "string";
   const notifySupported = typeof row.notify === "boolean";
@@ -322,6 +322,8 @@ export async function fetchBotSettings(userId: string): Promise<BotLoaded> {
     unlockMinPct: unlockSupported ? Number(row.unlock_min_pct ?? DEFAULT_BOT.unlockMinPct) : DEFAULT_BOT.unlockMinPct,
     shareCommunity: typeof row.share_community === "boolean" ? row.share_community : false,
     shareSupported: typeof row.share_community === "boolean",
+    runnerTest: typeof row.runner_test === "boolean" ? row.runner_test : false,
+    runnerSupported: typeof row.runner_test === "boolean",
     rulesSupported,
     profileSupported,
     notifySupported,
@@ -337,6 +339,7 @@ export async function saveBotSettings(userId: string, s: BotSettings, caps: { ru
   if (caps.notify) row.notify = s.notify;
   if (caps.scan) row.scan_top = s.scanTop;
   if (s.shareSupported) row.share_community = s.shareCommunity;
+  if (s.runnerSupported) row.runner_test = s.runnerTest;
   if (caps.unlock) {
     row.unlock_mode = s.unlockMode;
     row.unlock_window_days = Math.round(clampLive(s.unlockWindowDays, UNLOCK_LIMITS.windowDays.min, UNLOCK_LIMITS.windowDays.max, DEFAULT_BOT.unlockWindowDays));

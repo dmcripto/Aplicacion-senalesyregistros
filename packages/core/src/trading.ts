@@ -1709,6 +1709,8 @@ export interface BotSettings {
   unlockMinPct: number; // tamaño mínimo del desbloqueo, en % de lo que ya circula
   shareCommunity: boolean; // publicar las señales y resultados del bot en la comunidad de Telegram de la persona (apagado por defecto)
   shareSupported: boolean; // la base ya tiene la columna share_community
+  runnerTest: boolean; // prueba paralela «corredor» (simulada, aparte del perfil elegido y del bot real)
+  runnerSupported: boolean; // la base ya tiene la columna runner_test
 }
 
 /** Filtro de desbloqueos: apagado · cuidadoso (no compra antes de un desbloqueo grande) · agresivo (además busca ventas). */
@@ -1858,7 +1860,7 @@ export const liveStatusLabel = (st: LiveOrder["status"]) =>
 /** Ajusta un valor al rango permitido (y a un número válido); si no es número devuelve el de reserva. */
 export const clampLive = (v: number, min: number, max: number, fallback: number) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);
 
-export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0, unlockMode: "off", unlockWindowDays: 7, unlockMinPct: 2, shareCommunity: false, shareSupported: false };
+export const DEFAULT_BOT: BotSettings = { enabled: false, symbols: ["BTCUSDT", "ETHUSDT"], maxOpen: 3, dailyLossR: 3, lastTickAt: null, rules: [], profile: "balanced", notify: true, scanTop: 0, unlockMode: "off", unlockWindowDays: 7, unlockMinPct: 2, shareCommunity: false, shareSupported: false, runnerTest: false, runnerSupported: false };
 
 /** Si el bot está encendido pero el servidor hace rato que no lo revisa, cuántos minutos van (null = está todo bien o está apagado). */
 export const BOT_STALE_MIN = 15;

@@ -193,6 +193,16 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
           </label>
         )}
 
+        {s.runnerSupported && (
+          <label className="flex items-center justify-between gap-3 rounded-md border border-line bg-ink/40 px-3.5 py-3">
+            <span>
+              <span className="block text-[12.5px] font-bold text-snow">{t("Prueba paralela «corredor» (solo simulada)")}</span>
+              <span className="block text-[11px] leading-snug text-dim">{t("Corre sola, aparte de tu perfil y de tu bot con dinero real: cobra la mitad en 2R, sube el stop a la entrada y deja correr el resto hasta 4R, con velas de 4 horas. Sus operaciones llevan la etiqueta «Corredor» en el Diario y nunca se envían a un exchange ni a la comunidad.")}</span>
+            </span>
+            <input type="checkbox" checked={s.runnerTest} onChange={(e) => update({ runnerTest: e.target.checked })} className="h-5 w-5 shrink-0 accent-[#2ec4f1]" />
+          </label>
+        )}
+
         <NewsPauseRow userId={userId} notify={notify} />
 
         <p className="rounded-md border border-gold/30 bg-golddeep/25 p-3 text-[12px] leading-relaxed text-fog">

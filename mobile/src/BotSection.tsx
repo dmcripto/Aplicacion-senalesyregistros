@@ -163,6 +163,16 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
         </View>
       )}
 
+      {s.runnerSupported && (
+        <View style={st.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.name}>{t("Prueba paralela «corredor» (solo simulada)")}</Text>
+            <Text style={st.dim}>{t("Corre sola, aparte de tu perfil y de tu bot con dinero real: cobra la mitad en 2R, sube el stop a la entrada y deja correr el resto hasta 4R, con velas de 4 horas. Sus operaciones llevan la etiqueta «Corredor» en el Diario y nunca se envían a un exchange ni a la comunidad.")}</Text>
+          </View>
+          <Switch value={s.runnerTest} onValueChange={(v) => update({ runnerTest: v })} trackColor={{ true: colors.bull + "88", false: colors.line }} thumbColor={s.runnerTest ? colors.bull : colors.fog} />
+        </View>
+      )}
+
       <View style={st.notice}>
         <Text style={st.hint}>
           {t("Por ahora el bot opera en modo simulado: cuando la estrategia da una señal la anota como una operación en tu diario (con la etiqueta «Bot simulado») y la cierra cuando el precio toca el objetivo o el stop. No toca tu exchange ni tu dinero. Así medimos si funciona antes de pensar en operaciones reales.")}
