@@ -20,11 +20,12 @@ function Tile({ name, value, tone }: { name: string; value: string; tone?: "bull
   );
 }
 
-function StatsLine({ s }: { s: BotStatsRow }) {
+function StatsLine({ s, net }: { s: BotStatsRow; net?: boolean }) {
   if (!s.n) return <span className="text-dim">{t("sin operaciones")}</span>;
   return (
     <span className="num">
-      {s.n} {t("ops")} · {Math.round(s.winRate)}% · <b className={s.expectancy > 0 ? "text-bull" : s.expectancy < 0 ? "text-bear" : "text-fog"}>{fmtR(s.expectancy)}R</b>
+      {s.n} {t("ops")} · {Math.round(s.winRate)}% · <b className={s.expectancy > 0 ? "text-bull" : s.expectancy < 0 ? "text-bear" : "text-fog"}>{fmtR(s.expectancy, net ? 2 : 1)}R</b>
+      {net && <span className="block text-dim">{t("total")} {fmtR(s.netR, 0)}R</span>}
     </span>
   );
 }
@@ -468,7 +469,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
                       {([[(v.days ?? 360) < 360 ? t("Todo el período") : t("Año completo"), v.whole], [t("1.ª mitad"), v.first], [t("2.ª mitad"), v.second]] as Array<[string, BotStatsRow]>).map(([name, st]) => (
                         <div key={name}>
                           <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-dim">{name}</p>
-                          <StatsLine s={st} />
+                          <StatsLine s={st} net />
                         </div>
                       ))}
                     </div>

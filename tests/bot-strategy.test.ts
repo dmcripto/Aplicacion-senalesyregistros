@@ -453,7 +453,7 @@ describe("velas de 4 horas y laboratorio", () => {
     const mid = T0 + (2600 * 4 * BAR_MS) / 2;
     const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
     expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
-    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "15m", "15m"]);
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "15m", "15m"]);
     for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
     expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
     expect(LAB_DAYS).toBe(360);
@@ -625,4 +625,43 @@ describe("modo corredor (cobrar parte, stop a la entrada y dejar correr)", () =>
   });
 
 
+});
+
+describe("filtro de entrada (entradas tardías)", () => {
+  // 130 velas: tendencia bajista suave, y la última CERRADA rompe a la baja.
+  function down(n = 260, finalDrop = 6): Bar[] {
+    const bars: Bar[] = [];
+    let p = 200;
+    for (let i = 0; i < n - 1; i++) {
+      const o = p;
+      const c = p - 0.2 + Math.sin(i / 2) * 0.15;
+      bars.push({ t: i * 3_600_000, o, h: Math.max(o, c) + 0.3, l: Math.min(o, c) - 0.3, c });
+      p = c;
+    }
+    const prev = bars[bars.length - 1].c;
+    bars.push({ t: (n - 1) * 3_600_000, o: prev, h: prev + 0.1, l: prev - finalDrop - 0.2, c: prev - finalDrop });
+    return bars;
+  }
+  const at = (bars: Bar[], p: typeof DEFAULT_PARAMS) => signalAt(bars, indicators(bars, p), bars.length - 1, p);
+
+  it("sin filtro la señal sale igual que siempre", () => {
+    const bars = down();
+    expect(at(bars, DEFAULT_PARAMS)?.direction).toBe("SHORT");
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: {} })).toEqual(at(bars, DEFAULT_PARAMS));
+  });
+  it("maxExt descarta una entrada muy alejada de la media rápida y deja pasar una cercana", () => {
+    const bars = down(260, 12);
+    expect(at(bars, DEFAULT_PARAMS)?.direction).toBe("SHORT");
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxExt: 0.5 } })).toBeNull();
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxExt: 50 } })?.direction).toBe("SHORT");
+  });
+  it("minRoom descarta la venta si hay un mínimo de las últimas 100 velas muy cerca, y deja pasar si ya es un mínimo nuevo", () => {
+    const bars = down(260, 6);
+    // mínimo nuevo: nada lo frena
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: { minRoom: 5 } })?.direction).toBe("SHORT");
+    // un soporte viejo apenas debajo del cierre
+    const withSupport = bars.map((b, i) => (i === 200 ? { ...b, l: bars[bars.length - 1].c - 0.2 } : b));
+    expect(at(withSupport, DEFAULT_PARAMS)?.direction).toBe("SHORT");
+    expect(at(withSupport, { ...DEFAULT_PARAMS, filter: { minRoom: 1.5 } })).toBeNull();
+  });
 });

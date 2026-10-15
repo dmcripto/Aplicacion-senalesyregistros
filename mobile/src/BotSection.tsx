@@ -12,12 +12,13 @@ import { colors } from "./theme";
 const short = (s: string) => botAssetName(s);
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
 
-function Line({ s }: { s: BotStatsRow }) {
+function Line({ s, net }: { s: BotStatsRow; net?: boolean }) {
   if (!s.n) return <Text style={st.dim}>{t("sin operaciones")}</Text>;
   return (
     <Text style={st.hint}>
       {s.n} {t("ops")} · {Math.round(s.winRate)}% ·{" "}
-      <Text style={{ color: rColor(s.expectancy), fontWeight: "800" }}>{fmtR(s.expectancy)}R</Text>
+      <Text style={{ color: rColor(s.expectancy), fontWeight: "800" }}>{fmtR(s.expectancy, net ? 2 : 1)}R</Text>
+      {net ? ` · ${t("total")} ${fmtR(s.netR, 0)}R` : ""}
     </Text>
   );
 }
@@ -393,9 +394,9 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
                 {labPasses(v) ? ` · ${t("pasa la vara")}` : ""}
               </Text>
               <Text style={st.dim}>{labVariantInfo(v.id).blurb}</Text>
-              <View style={st.row}><Text style={st.dim}>{(v.days ?? 360) < 360 ? t("Todo el período") : t("Año completo")}</Text><Line s={v.whole} /></View>
-              <View style={st.row}><Text style={st.dim}>{t("1.ª mitad")}</Text><Line s={v.first} /></View>
-              <View style={st.row}><Text style={st.dim}>{t("2.ª mitad")}</Text><Line s={v.second} /></View>
+              <View style={st.row}><Text style={st.dim}>{(v.days ?? 360) < 360 ? t("Todo el período") : t("Año completo")}</Text><Line s={v.whole} net /></View>
+              <View style={st.row}><Text style={st.dim}>{t("1.ª mitad")}</Text><Line s={v.first} net /></View>
+              <View style={st.row}><Text style={st.dim}>{t("2.ª mitad")}</Text><Line s={v.second} net /></View>
             </View>
           ))}
           <Text style={st.dim}>{t("Pasa la vara solo si gana en el año completo y en cada mitad, con operaciones suficientes. Probar muchas versiones y quedarse con la mejor engaña: por eso nada de esto se usa en serio sin confirmarlo antes en modo simulado.")}</Text>

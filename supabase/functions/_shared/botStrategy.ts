@@ -28,7 +28,21 @@ export interface BotParams {
   feePct: number; // costo de ida y vuelta (comisión + deslizamiento), en % del precio, solo para la prueba
   tf?: BotTimeframe; // tamaño de vela; sin indicar, 1 hora
   runner?: RunnerParams; // modo «corredor» (solo en las pruebas con historial por ahora): ver RunnerParams
+  filter?: EntryFilter; // filtro de entrada (solo en el laboratorio por ahora): ver EntryFilter
 }
+
+/**
+ * Filtro de entrada contra las entradas tardías. Sin indicar nada, la señal sale igual que siempre.
+ *   · `maxExt`: descarta la señal si el cierre está a más de tantos ATR de la media rápida (el movimiento ya se estiró).
+ *   · `minRoom`: descarta la señal si hay un extremo de las últimas 100 velas del lado del objetivo a menos de tantos ATR
+ *     (soporte para una venta, resistencia para una compra): el precio puede frenar ahí antes de llegar al objetivo.
+ *     Si el cierre ya está más allá de ese extremo (mínimo o máximo nuevo), no hay nada que lo frene y la señal pasa.
+ */
+export interface EntryFilter {
+  maxExt?: number;
+  minRoom?: number;
+}
+export const ROOM_LOOKBACK = 100;
 
 /**
  * Modo «corredor»: al llegar al primer objetivo (`rr`) se cobra una parte (`partial`, 0 a 1), el stop sube a la entrada (break even) y el resto
@@ -142,10 +156,24 @@ export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams =
     lo = Math.min(lo, bars[k].l);
   }
   const dist = a * p.atrMult;
-  if (c > hi && f > s && c > s) return { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t, strength: (c - hi) / a };
+  let sig: BotSignal | null = null;
+  if (c > hi && f > s && c > s) sig = { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t, strength: (c - hi) / a };
   // relaxShort (filtro de desbloqueos, modo agresivo): la venta solo exige estar bajo la media lenta, no que la rápida ya la haya cruzado.
-  if (c < lo && (opts?.relaxShort ? true : f < s) && c < s) return { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
-  return null;
+  else if (c < lo && (opts?.relaxShort ? true : f < s) && c < s) sig = { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
+  if (sig && p.filter && !passesEntryFilter(bars, i, sig.direction, f, a, p.filter)) return null;
+  return sig;
+}
+
+function passesEntryFilter(bars: Bar[], i: number, dir: "LONG" | "SHORT", fast: number, a: number, f: EntryFilter): boolean {
+  const c = bars[i].c;
+  if (f.maxExt != null && Math.abs(c - fast) / a > f.maxExt) return false;
+  if (f.minRoom != null) {
+    let ext = dir === "LONG" ? -Infinity : Infinity;
+    for (let k = Math.max(0, i - ROOM_LOOKBACK); k < i; k++) ext = dir === "LONG" ? Math.max(ext, bars[k].h) : Math.min(ext, bars[k].l);
+    const room = dir === "LONG" ? ext - c : c - ext;
+    if (room > 0 && room < f.minRoom * a) return false;
+  }
+  return true;
 }
 
 export interface FilteredSignal {
@@ -656,6 +684,11 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-runner", params: RUNNER_PARAMS },
   { id: "h4-runner-be", params: { ...DEFAULT_PARAMS, tf: "4h", runner: { tp2: 4, partial: 0.5, beAt: 0.5 } } },
   { id: "h4-wide-runner", params: { ...BOT_PROFILES.slowwide, runner: { tp2: 6, partial: 0.5 } } },
+  // Filtros de entrada (ver EntryFilter): ¿evitar las entradas tardías o pegadas a un soporte/resistencia mejora el resultado?
+  { id: "h4-ext", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3 } } },
+  { id: "h4-room", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { minRoom: 1.5 } } },
+  { id: "h4-filter", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3, minRoom: 1.5 } } },
+  { id: "h4-runner-filter", params: { ...RUNNER_PARAMS, filter: { maxExt: 3, minRoom: 1.5 } } },
   // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
   { id: "m15-balanced", params: { ...DEFAULT_PARAMS, tf: "15m" } },
   { id: "m15-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 3, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "15m" } },
