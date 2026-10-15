@@ -40,6 +40,8 @@ export interface Trade {
   tags?: string[];
   leverage?: number; // apalancamiento usado (lo informa el exchange o lo carga la persona); sin dato si falta
   sizeUsd?: number; // valor de la posición en USDT (cantidad × precio de entrada), si se conoce
+  lastPrice?: number; // último precio que vio el bot en el exchange de la persona (solo operaciones abiertas del bot)
+  lastPriceAt?: string; // ISO — cuándo se midió lastPrice
 }
 
 export type NewTrade = Omit<Trade, "id" | "outcome" | "closedAt" | "exit" | "autoClosed" | "source">;

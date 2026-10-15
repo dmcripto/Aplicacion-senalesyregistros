@@ -25,6 +25,8 @@ interface TradeRow {
   source?: string | null;
   leverage?: number | null;
   size_usd?: number | null;
+  last_price?: number | null;
+  last_price_at?: string | null;
 }
 
 export function rowToTrade(row: TradeRow): Trade {
@@ -46,6 +48,8 @@ export function rowToTrade(row: TradeRow): Trade {
     source: row.source ?? undefined,
     leverage: row.leverage == null ? undefined : Number(row.leverage),
     sizeUsd: row.size_usd == null ? undefined : Number(row.size_usd),
+    lastPrice: row.last_price == null ? undefined : Number(row.last_price),
+    lastPriceAt: row.last_price_at ?? undefined,
   };
 }
 

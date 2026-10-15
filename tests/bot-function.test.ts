@@ -704,6 +704,17 @@ describe("función bot · escaneo del mercado", () => {
 });
 
 describe("función bot · velas del exchange elegido", () => {
+  it("anota en cada operación abierta el último precio visto en las velas del exchange de la persona", async () => {
+    enable({ symbols: ["BTCUSDT"] });
+    await tick(); // abre la operación
+    db.tables.trades[0].outcome = "ABIERTA"; // la base real lo pone por defecto
+    await tick(); // la siguiente corrida le anota el precio
+    const t = db.tables.trades[0];
+    const lastClose = klines[klines.length - 1][4];
+    expect(t.last_price).toBeCloseTo(lastClose, 1);
+    expect(new Date(t.last_price_at).getTime()).toBeGreaterThan(Date.now() - 60_000);
+  });
+
   it("cada persona decide con las velas del exchange donde opera y las bajadas se comparten", async () => {
     const calls: string[] = [];
     const base = (globalThis as any).fetch;
