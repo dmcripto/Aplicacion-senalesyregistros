@@ -37,6 +37,7 @@ import { AppBackground, LiveDot, Logo, TabIcon } from "./src/ui";
 import { colors } from "./src/theme";
 import { LangProvider } from "./src/lang";
 import ErrorBoundary from "./src/ErrorBoundary";
+import AssistantChat from "./src/AssistantChat";
 import { installGlobalErrorHandlers } from "./src/errorReport";
 import { checkAppUpdate } from "./src/appUpdate";
 import type { UpdateInfo } from "@dmcripto/core";
@@ -254,6 +255,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
           );
         })}
       </View>
+      <AssistantChat />
     </View>
     </MoneyContext.Provider>
   );

@@ -9,6 +9,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
 import { coachReport } from "../_shared/coach.ts";
 import { botCoachReport } from "../_shared/botCoach.ts";
+import { ASSISTANT_MAX_TOKENS, assistantReply } from "../_shared/assistant.ts";
+import type { AssistantMessage } from "../_shared/assistant.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -22,18 +24,23 @@ const json = (body: unknown, status = 200) =>
 
 const MODEL = Deno.env.get("COACH_MODEL") || "claude-opus-5-5";
 // El resumen del bot es un texto corto de datos ya calculados: por defecto usa un modelo más económico (se cambia con BOT_COACH_MODEL).
+const ASSISTANT_MODEL = Deno.env.get("ASSISTANT_MODEL") || "claude-sonnet-5-5";
 const BOT_MODEL = Deno.env.get("BOT_COACH_MODEL") || "claude-sonnet-5-5";
 
-async function ask(system: string, user: string, model: string = MODEL): Promise<string | null> {
+// La clave se limpia de espacios y saltos de línea; si quedó con caracteres raros (al copiarla de un documento), el servicio de IA la rechaza.
+const apiKey = () => (Deno.env.get("ANTHROPIC_API_KEY") ?? "").trim();
+const keyLooksBroken = () => /[^\x21-\x7E]/.test(apiKey());
+
+async function ask(system: string, user: string | AssistantMessage[], model: string = MODEL, maxTokens = 4000): Promise<string | null> {
   // Modelos que aceptan el nivel de esfuerzo y la red de seguridad automática ante rechazos.
   const BIG = /^claude-(opus|sonnet|fable)/.test(model);
   const FALLBACK = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(model);
-  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY")! });
+  const client = new Anthropic({ apiKey: apiKey() });
   const base: Record<string, unknown> = {
     model,
-    max_tokens: 4000,
+    max_tokens: maxTokens,
     system,
-    messages: [{ role: "user", content: user }],
+    messages: typeof user === "string" ? [{ role: "user", content: user }] : user,
   };
   if (BIG) base.output_config = { effort: "low" }; // es un texto corto: no hace falta pensar mucho
   const run = (params: Record<string, unknown>) => (client as any).beta.messages.create(params);
@@ -59,14 +66,23 @@ Deno.serve(async (req) => {
   const user = auth?.user;
   if (!user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
 
-  const body = (await req.json().catch(() => ({}))) as { action?: unknown } | null;
+  const body = (await req.json().catch(() => ({}))) as { action?: unknown; messages?: unknown } | null;
   try {
-    // {"action": "bot"} = resumen semanal del bot; sin acción, el coach de disciplina de siempre.
-    if (body?.action === "bot") {
-      const r = await botCoachReport({ supabase: admin, ask: (sys, usr) => ask(sys, usr, BOT_MODEL), hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
+    if (apiKey() && keyLooksBroken()) {
+      console.error("coach: ANTHROPIC_API_KEY tiene caracteres no válidos (espacios o símbolos raros): volvé a pegarla.");
+      return json({ ok: false, reason: "bad_key" });
+    }
+    // {"action": "assistant", "messages": [...]} = chat de ayuda; {"action": "bot"} = resumen semanal del bot; sin acción, el coach de disciplina de siempre.
+    if (body?.action === "assistant") {
+      const msgs = (body as { messages?: unknown }).messages;
+      const r = await assistantReply({ supabase: admin, ask: (sys, m) => ask(sys, m, ASSISTANT_MODEL, ASSISTANT_MAX_TOKENS), hasKey: !!apiKey() }, user.id, msgs);
       return json(r);
     }
-    const r = await coachReport({ supabase: admin, ask, hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
+    if (body?.action === "bot") {
+      const r = await botCoachReport({ supabase: admin, ask: (sys, usr) => ask(sys, usr, BOT_MODEL), hasKey: !!apiKey() }, user.id);
+      return json(r);
+    }
+    const r = await coachReport({ supabase: admin, ask, hasKey: !!apiKey() }, user.id);
     return json(r);
   } catch (e) {
     console.error("coach:", e instanceof Error ? e.message : e);

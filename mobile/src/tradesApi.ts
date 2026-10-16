@@ -2,7 +2,7 @@
 // Espejo de src/tradesApi.ts de la web: convierte entre las filas de la
 // tabla `trades` (snake_case) y el tipo `Trade` de @dmcripto/core.
 
-import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, BotUnlockMode, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
+import type { AlertDraft, UserAlert, BotAction, BotBacktest, BotLab, BotLoaded, BotProfileId, SignalFeedState, LiveOrder, LiveSettings, BotScan, BotSettings, BotUnlockMode, AssistantMessage, AssistantResult, CoachResult, DailyLimits, TelegramCommunity, ExchangeConnection, ExchangeId, LiquidationMap, TelegramLink, MoneySettings, NewTrade, Outcome, Trade } from "@dmcripto/core";
 import { BOT_PROFILE_LIST, BOT_SCAN_LIST, BOT_UNLOCK_MODES, DEFAULT_BOT, DEFAULT_LIVE, LIQ_COINS, UNLOCK_LIMITS, clampLive, t } from "@dmcripto/core";
 import { supabase } from "./supabaseClient";
 
@@ -460,6 +460,8 @@ export async function setPartialAlerts(userId: string, enabled: boolean) {
 export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;
 /** Resumen semanal del bot con IA (misma función del coach, con la acción «bot»). */
 export const fetchBotCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", { action: "bot" }) as Promise<CoachResult>;
+/** Asistente con IA: manda la conversación (los últimos mensajes) y recibe la respuesta. */
+export const askAssistant = (messages: AssistantMessage[]) => callFunction<AssistantResult & { ok: boolean }>("coach", { action: "assistant", messages }) as Promise<AssistantResult>;
 
 // ─── Comunidad de Telegram (grupo o canal donde el bot publica tus señales) ─
 
