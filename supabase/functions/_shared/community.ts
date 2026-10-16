@@ -63,6 +63,14 @@ export function resultNote(outcome: "TP" | "SL", reached: number, total: number,
   return null;
 }
 
+/** Apalancamiento máximo con el que el stop queda antes de la liquidación (60 % de 1/apalancamiento): la misma cuenta que la app y que el bot real. */
+export function maxSafeLeverageOf(entry: number, sl: number): number | null {
+  if (!(entry > 0) || !(sl > 0)) return null;
+  const stopFrac = Math.abs(entry - sl) / entry;
+  if (!(stopFrac > 0)) return null;
+  return Math.max(1, Math.min(100, Math.floor(0.6 / stopFrac + 1e-9)));
+}
+
 /**
  * Señal en texto de Telegram, con un emoji por línea y cada dato bien separado: par y dirección, entrada, objetivo (TP) y stop,
  * con su distancia en % y el R:R. `header` es el emoji de arriba (📢 comunidad, 🔔 aviso privado). Sin datos personales ni dinero.
@@ -74,6 +82,7 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
   const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : 0;
   const dir = long ? 1 : -1;
   const slPct = t.entry ? ((dir * (t.sl - t.entry)) / t.entry) * 100 : 0;
+  const safeLev = maxSafeLeverageOf(t.entry, t.sl);
   const lines = [
     `${opts.header ?? "📢"} <b>${en ? "NEW SIGNAL" : "NUEVA SEÑAL"}</b>`,
     "",
@@ -85,6 +94,7 @@ export function signalCardHtml(t: CommunityTrade, lang: Lang, opts: { header?: s
     `🛑 Stoploss = <b>${t.sl}</b>  <i>(${PCT(slPct)})</i>`,
     "",
     `⚖️ R:R <b>1 : ${rr.toFixed(1)}</b>`,
+    ...(safeLev != null ? [``, `🔒 ${en ? "Max. suggested leverage" : "Apalancamiento máx. sugerido"}: <b>${safeLev}x</b>`] : []),
   ];
   if (opts.disclaimer !== false) lines.push("", `<i>${DISCLAIMER[lang]}</i>`, `<a href="${SITE}">VELTRIX</a>`);
   return lines.join("\n");

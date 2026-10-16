@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, locale, resultR, rrOf } from "../lib";
+import { cx, exchangeName, fmtCurrency, fmtDateTime, fmtPrice, leverageCheck, leverageWarning, locale, resultR, rrOf } from "../lib";
 import type { Trade } from "../lib";
 import {
   DirBadge,
@@ -29,6 +29,28 @@ interface Props {
   onLoadSample: () => void;
   /** Precio actual por id de señal abierta (opcional). */
   prices?: Record<string, number>;
+}
+
+/** El apalancamiento de la operación; en rojo o ámbar si la liquidación queda tan cerca del stop que se pierde el margen antes de llegar a él. */
+function LevPill({ trade }: { trade: Trade }) {
+  const lev = trade.leverage ?? 0;
+  const chk = leverageCheck(trade.entry, trade.sl, lev);
+  const warn = leverageWarning(chk, lev);
+  const tone = chk?.level === "danger" ? "border-bear/60 text-bear" : chk?.level === "warn" ? "border-amber-400/60 text-amber-300" : "border-line text-fog";
+  return (
+    <span title={warn ?? undefined} className={`num rounded-full border px-2 py-px text-[10.5px] font-semibold ${tone}`}>
+      {warn ? "⚠ " : ""}{lev}x
+    </span>
+  );
+}
+
+/** Frase de cuidado bajo las etiquetas de la operación (solo si el apalancamiento deja la liquidación demasiado cerca del stop). */
+function LevNote({ trade }: { trade: Trade }) {
+  const lev = trade.leverage ?? 0;
+  const chk = leverageCheck(trade.entry, trade.sl, lev);
+  const warn = leverageWarning(chk, lev);
+  if (!warn) return null;
+  return <p className={`text-[11px] leading-snug ${chk?.level === "danger" ? "text-bear" : "text-amber-300"}`}>⚠ {warn}</p>;
 }
 
 export default function TradeTable({ trades, flashId, onMark, onManual, onDelete, onReopen, onNotes, onLoadSample, prices }: Props) {
@@ -275,10 +297,11 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                   {tr.notes && <p className="text-[12px] italic leading-snug text-dim">{tr.notes}</p>}
                   {(tr.leverage != null || tr.sizeUsd != null) && (
                     <div className="flex flex-wrap gap-1">
-                      {tr.leverage != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{tr.leverage}x</span>}
+                      {tr.leverage != null && <LevPill trade={tr} />}
                       {tr.sizeUsd != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{t("Tamaño")} {fmtCurrency(tr.sizeUsd, "USD", false)}</span>}
                     </div>
                   )}
+                  {tr.leverage != null && <LevNote trade={tr} />}
                   {!!tr.tags?.length && (
                     <div className="flex flex-wrap gap-1">
                       {tr.tags.map((tag) => (
@@ -330,10 +353,11 @@ export default function TradeTable({ trades, flashId, onMark, onManual, onDelete
                       {tr.notes && <p className="mt-0.5 max-w-[220px] truncate text-[10.5px] italic text-dim" title={tr.notes}>{tr.notes}</p>}
                       {(tr.leverage != null || tr.sizeUsd != null) && (
                     <div className="flex flex-wrap gap-1">
-                      {tr.leverage != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{tr.leverage}x</span>}
+                      {tr.leverage != null && <LevPill trade={tr} />}
                       {tr.sizeUsd != null && <span className="num rounded-full border border-line px-2 py-px text-[10.5px] font-semibold text-fog">{t("Tamaño")} {fmtCurrency(tr.sizeUsd, "USD", false)}</span>}
                     </div>
                   )}
+                  {tr.leverage != null && <LevNote trade={tr} />}
                   {!!tr.tags?.length && (
                         <div className="mt-1 flex max-w-[240px] flex-wrap gap-1">
                           {tr.tags.map((tag) => (

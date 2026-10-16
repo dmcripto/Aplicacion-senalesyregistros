@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "../lib";
+import { calcPosition, cx, fmtMoney, fmtPrice, fmtQty, leverageCheck, leverageWarning, maxSafeLeverage } from "../lib";
 import { t } from "../lib";
 import Panel from "./Panel";
 
@@ -50,6 +50,11 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
       }),
     [capital, riskPct, entry, sl, tp, leverage, fee],
   );
+
+  const levNum = leverage.trim() ? n(leverage) : 0;
+  const levCheck = useMemo(() => leverageCheck(n(entry), n(sl), levNum), [entry, sl, levNum]);
+  const levMax = useMemo(() => maxSafeLeverage(n(entry), n(sl)), [entry, sl]);
+  const levWarn = leverageWarning(levCheck, levNum);
 
   const copy = async () => {
     if (!res) return;
@@ -126,6 +131,12 @@ export default function RiskCalculator({ notify }: { notify: (msg: string, kind?
               {res.fees > 0 && row(t("Comisiones estimadas"), fmtMoney(res.fees))}
               {res.profitAtTp != null && row(t("Ganás si toca el TP"), fmtMoney(res.profitAtTp), "text-bull")}
               {res.rr != null && row(t("Riesgo : beneficio"), `1 : ${res.rr.toFixed(2)}`, "text-gold")}
+              {levMax != null && row(t("Apalancamiento máximo sugerido para este stop"), `${levMax}x`, "text-gold")}
+              {levWarn && (
+                <p className={cx("rounded-md border px-3 py-2 text-[11.5px] leading-relaxed", levCheck?.level === "danger" ? "border-bear/40 bg-beardeep/40 text-bear" : "border-amber-400/40 bg-amber-400/10 text-amber-300")}>
+                  ⚠ {levWarn}
+                </p>
+              )}
               {res.warnings.map((w) => (
                 <p key={w} className="rounded-md border border-bear/30 bg-beardeep/30 px-3 py-2 text-[11.5px] leading-relaxed text-bear">
                   ⚠ {w}

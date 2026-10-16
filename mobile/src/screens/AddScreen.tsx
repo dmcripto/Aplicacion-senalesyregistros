@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { exampleAlert, fmtPrice, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
+import { exampleAlert, fmtPrice, leverageCheck, leverageWarning, parseAlerts, rrOf, sampleTrades } from "@dmcripto/core";
 import type { DailyStatus, Direction, NewTrade, ParseResult, Trade } from "@dmcripto/core";
 import { insertFullTrades, insertTrades } from "../tradesApi";
 import { colors } from "../theme";
@@ -29,6 +29,9 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
   const [tp, setTp] = useState("");
   const [sl, setSl] = useState("");
   const [leverage, setLeverage] = useState("");
+  const levNum = leverage.trim() ? Number(leverage.replace(",", ".").replace(/x$/i, "")) : 0;
+  const levCheck = leverageCheck(Number(entry.replace(",", ".")), Number(sl.replace(",", ".")), levNum);
+  const levWarn = leverageWarning(levCheck, levNum);
 
   const doSave = async (list: NewTrade[]) => {
     setBusy(true);
@@ -213,6 +216,7 @@ export default function AddScreen({ userId, onAdded, limitStatus }: { userId: st
               {field(t("STOP LOSS"), sl, setSl, { numeric: true })}
             </View>
             {field(t("APALANCAMIENTO (x, opcional)"), leverage, setLeverage, { numeric: true, placeholder: "10" })}
+            {levWarn && <Text style={{ color: levCheck?.level === "danger" ? colors.bear : "#fbbf24", fontSize: 12, lineHeight: 17 }}>⚠ {levWarn}</Text>}
             <TouchableOpacity style={[s.btn, s.btnGold]} onPress={saveManual} disabled={busy}>
               <Text style={[s.btnText, { color: colors.ink }]}>{t("Guardar operación")}</Text>
             </TouchableOpacity>

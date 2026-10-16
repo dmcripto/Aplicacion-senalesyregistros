@@ -860,6 +860,51 @@ export function calcPosition(i: PositionInput): PositionResult | null {
   return { riskAmount, stopDistance, stopPct: (stopDistance / entry) * 100, units, notional, margin, fees, profitAtTp, rr, direction, warnings };
 }
 
+// ─── Apalancamiento seguro: que la liquidación quede más lejos que el stop ───
+
+/**
+ * Con margen aislado una posición se liquida, más o menos, cuando el precio se mueve 1/apalancamiento en contra (sin contar comisiones y márgenes del exchange).
+ * Se pide que el stop esté a menos del 60 % de esa distancia: es la misma regla que usa el bot real para omitir operaciones.
+ */
+export const LIQ_SAFE_FRACTION = 0.6;
+
+/** Apalancamiento máximo con el que el stop todavía queda bien antes de la liquidación (entre 1x y 100x). null si faltan datos. */
+export function maxSafeLeverage(entry: number, sl: number): number | null {
+  if (!(entry > 0) || !(sl > 0)) return null;
+  const stopFrac = Math.abs(entry - sl) / entry;
+  if (!(stopFrac > 0)) return null;
+  return Math.max(1, Math.min(100, Math.floor(LIQ_SAFE_FRACTION / stopFrac + 1e-9)));
+}
+
+export interface LeverageCheck {
+  /** ok: el stop queda antes de la liquidación con margen · warn: queda justo · danger: se liquida antes de llegar al stop. */
+  level: "ok" | "warn" | "danger";
+  maxSafe: number;
+  /** Movimiento del precio (en %) que más o menos liquida la posición con ese apalancamiento. */
+  liqPct: number;
+  stopPct: number;
+}
+
+/** Revisa un apalancamiento contra la entrada y el stop. null si falta algún dato válido. */
+export function leverageCheck(entry: number, sl: number, leverage: number): LeverageCheck | null {
+  const maxSafe = maxSafeLeverage(entry, sl);
+  if (maxSafe == null || !(leverage >= 1)) return null;
+  const stopPct = (Math.abs(entry - sl) / entry) * 100;
+  const liqPct = 100 / leverage;
+  const level = stopPct >= liqPct * 0.95 ? "danger" : leverage > maxSafe ? "warn" : "ok";
+  return { level, maxSafe, liqPct, stopPct };
+}
+
+/** Aviso en palabras simples para un apalancamiento revisado (null si está bien). */
+export function leverageWarning(c: LeverageCheck | null, leverage: number): string | null {
+  if (!c || c.level === "ok") return null;
+  const liq = c.liqPct.toFixed(c.liqPct < 1 ? 2 : 1);
+  const stop = c.stopPct.toFixed(c.stopPct < 1 ? 2 : 1);
+  return c.level === "danger"
+    ? tr("Con {x}x la posición se liquida con un movimiento de ~{liq}% en contra, y tu stop está a {stop}%: te liquidan antes de llegar al stop y perdés todo el margen. Para este stop, el máximo seguro es {max}x.", { x: leverage, liq, stop, max: c.maxSafe })
+    : tr("Con {x}x la liquidación (~{liq}% en contra) queda muy cerca de tu stop ({stop}%). Para este stop, el máximo recomendable es {max}x.", { x: leverage, liq, stop, max: c.maxSafe });
+}
+
 // ─── Formateo ───────────────────────────────────────────────────────────────
 
 export const fmtPrice = (n: number) =>
@@ -888,6 +933,8 @@ export interface SignalGuide {
   simulated: boolean; // la generó el bot simulado: no se ejecuta en ningún exchange
   rr: number | null;
   stopPct: number | null;
+  /** Apalancamiento máximo con el que el stop queda antes de la liquidación (null si faltan datos). */
+  maxLeverage: number | null;
   /** Cuánto comprar o vender para arriesgar lo que la persona eligió (null si todavía no cargó su capital). */
   position: { units: number; notional: number; riskAmount: number; profitAtTp: number | null; base: string } | null;
   steps: string[];
@@ -906,6 +953,7 @@ export function signalGuide(t: Pick<Trade, "symbol" | "direction" | "entry" | "s
   const risk = Math.abs(t.entry - t.sl);
   const rr = risk > 0 ? Math.abs(t.tp - t.entry) / risk : null;
   const stopPct = t.entry > 0 && risk > 0 ? (risk / t.entry) * 100 : null;
+  const maxLeverage = maxSafeLeverage(t.entry, t.sl);
   const base = baseOf(t.symbol);
   const position = pos ? { units: pos.units, notional: pos.notional, riskAmount: pos.riskAmount, profitAtTp: pos.profitAtTp, base } : null;
 
@@ -924,6 +972,7 @@ export function signalGuide(t: Pick<Trade, "symbol" | "direction" | "entry" | "s
               gain: position.profitAtTp != null ? tr("; si toca el objetivo ganás unos {win}", { win: fmtCurrency(position.profitAtTp, money.currency, false) }) : "",
             })
           : tr("Cargá tu capital en «Capital y dinero» y te calculamos cuánto comprar."),
+        ...(maxLeverage != null ? [tr("Si usás apalancamiento, que no pase de {x}x: con más, la liquidación quedaría más cerca que el stop y perderías el margen antes de llegar a él.", { x: maxLeverage })] : []),
       ];
 
   const lines = [
@@ -933,8 +982,9 @@ export function signalGuide(t: Pick<Trade, "symbol" | "direction" | "entry" | "s
     `TP: ${fmtPrice(t.tp)}`,
     ...(t.targets?.length ? [t.targets.map((n, i) => `TP${i + 1}: ${fmtPrice(n)}`).join(" · ")] : []),
     ...(rr != null ? [`R:R 1:${rr.toFixed(2)}`] : []),
+    ...(maxLeverage != null ? [`${tr("Apalancamiento máx. sugerido")}: ${maxLeverage}x`] : []),
   ];
-  return { long, sideLabel, simulated, rr, stopPct, position, steps, copyText: lines.join("\n") };
+  return { long, sideLabel, simulated, rr, stopPct, maxLeverage, position, steps, copyText: lines.join("\n") };
 }
 
 /** Página para operar ese activo en futuros del exchange (para unos se abre el par exacto; para el resto, la sección de futuros). */

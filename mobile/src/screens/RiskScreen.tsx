@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
-import { calcPosition, fmtMoney, fmtPrice, fmtQty } from "@dmcripto/core";
+import { calcPosition, fmtMoney, fmtPrice, fmtQty, leverageCheck, leverageWarning, maxSafeLeverage } from "@dmcripto/core";
 import type { Trade } from "@dmcripto/core";
 import { colors } from "../theme";
 import { useMoney } from "../money";
@@ -61,6 +61,10 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
   }, [prefill, onPrefillUsed]);
 
   const n = (v: string) => Number(v.replace(",", "."));
+  const levNum = leverage.trim() ? n(leverage) : 0;
+  const levCheck = leverageCheck(n(entry), n(sl), levNum);
+  const levMax = maxSafeLeverage(n(entry), n(sl));
+  const levWarn = leverageWarning(levCheck, levNum);
   const res = useMemo(
     () =>
       calcPosition({
@@ -143,7 +147,14 @@ export default function RiskScreen({ prefill, onPrefillUsed }: { prefill: Trade 
               {res.fees > 0 && <Item label={t("Comisiones estimadas")} value={fmtMoney(res.fees)} />}
               {res.profitAtTp != null && <Item label={t("Ganás si toca el TP")} value={fmtMoney(res.profitAtTp)} color={colors.bull} />}
               {res.rr != null && <Item label={t("Riesgo : beneficio")} value={`1 : ${res.rr.toFixed(2)}`} color={colors.gold} />}
+              {levMax != null && <Item label={t("Apalancamiento máximo sugerido para este stop")} value={`${levMax}x`} color={colors.gold} />}
             </View>
+
+            {levWarn && (
+              <View style={[s.warn, levCheck?.level !== "danger" && { backgroundColor: "#f59e0b1a", borderColor: "#f59e0b66" }]}>
+                <Text style={[s.warnText, levCheck?.level !== "danger" && { color: "#fbbf24" }]}>⚠ {levWarn}</Text>
+              </View>
+            )}
 
             {res.warnings.map((w) => (
               <View key={w} style={s.warn}>
