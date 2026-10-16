@@ -2,6 +2,7 @@ import { useState } from "react";
 import { coachProblem, fmtDateTime, t } from "../lib";
 import type { CoachResult } from "../lib";
 import { fetchCoach } from "../tradesApi";
+import ChatText from "./ChatText";
 import Panel from "./Panel";
 
 /** Coach de disciplina con IA: explica tus patrones a partir de datos calculados de tu diario. */
@@ -39,7 +40,7 @@ export default function CoachCard({ closedCount }: { closedCount: number }) {
 
         {text && (
           <div className="rounded-md border border-line bg-ink/40 p-4">
-            <p className="whitespace-pre-line text-[13px] leading-relaxed text-snow">{text}</p>
+            <div className="text-[13px] leading-relaxed text-snow"><ChatText text={text} /></div>
             {result && result.ok && (
               <p className="mt-3 text-[10.5px] text-dim">
                 {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}

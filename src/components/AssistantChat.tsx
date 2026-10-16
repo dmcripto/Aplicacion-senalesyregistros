@@ -5,6 +5,7 @@ import type { AssistantMessage } from "../lib";
 import { askAssistant } from "../tradesApi";
 import { OPEN_ASSISTANT_EVENT } from "../nav";
 import { ShieldLogo } from "../ui";
+import ChatText from "./ChatText";
 import { ASSISTANT_USED_EVENT, ASSISTANT_USED_KEY } from "./GettingStarted";
 
 const Spans = ({ spans }: { spans: ChatSpan[] }) => (

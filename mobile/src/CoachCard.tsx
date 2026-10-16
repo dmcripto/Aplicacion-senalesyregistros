@@ -4,6 +4,7 @@ import { coachProblem, fmtDateTime, t } from "@dmcripto/core";
 import type { CoachResult } from "@dmcripto/core";
 import { fetchCoach } from "./tradesApi";
 import { colors } from "./theme";
+import ChatText from "./ChatText";
 
 /** Coach de disciplina con IA: explica tus patrones a partir de datos calculados de tu diario. */
 export default function CoachCard({ closedCount }: { closedCount: number }) {
@@ -37,7 +38,7 @@ export default function CoachCard({ closedCount }: { closedCount: number }) {
       )}
       {text ? (
         <View style={s.report}>
-          <Text style={s.reportText}>{text}</Text>
+          <ChatText text={text} />
           {result && result.ok && (
             <Text style={s.meta}>
               {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}

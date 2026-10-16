@@ -5,6 +5,7 @@ import type { ChatSpan } from "@dmcripto/core";
 import type { AssistantMessage } from "@dmcripto/core";
 import { askAssistant } from "./tradesApi";
 import { colors } from "./theme";
+import ChatText from "./ChatText";
 
 const spansOf = (spans: ChatSpan[]) =>
   spans.map((x, i) => (
