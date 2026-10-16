@@ -804,6 +804,9 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-balanced", params: { ...DEFAULT_PARAMS, tf: "4h" } },
   { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
   { id: "h4-wide", params: { ...BOT_PROFILES.slowwide } },
+  // Candidatas para «más operaciones sin el stop pegado»: velas de 4 horas, stop de 2 ATR y objetivo de 2R, con canal más corto (más rupturas).
+  { id: "h4-wide-active", params: { ...BOT_PROFILES.slowwide, lookback: 14, atrMult: 2, rr: 2 } },
+  { id: "h4-wide-quick", params: { ...BOT_PROFILES.slowwide, lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 2, rr: 2 } },
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
   // Modo «corredor»: cobrar la mitad en el primer objetivo, subir el stop a la entrada y dejar correr el resto (ver RunnerParams).
   { id: "h1-runner", params: { ...DEFAULT_PARAMS, runner: { tp2: 4, partial: 0.5 } } },

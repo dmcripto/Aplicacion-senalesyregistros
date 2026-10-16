@@ -2106,6 +2106,10 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
       return { name: tr("Velas de 4 horas · conservador"), blurb: tr("Espera rupturas grandes y deja más espacio al stop.") };
     case "h4-wide":
       return { name: tr("Velas de 4 horas · objetivo amplio"), blurb: tr("Acierta menos veces, pero busca ganar el triple de lo que arriesga.") };
+    case "h4-wide-active":
+      return { name: tr("Velas de 4 horas · stop amplio y más operaciones"), blurb: tr("Stop de 2 ATR y objetivo de 2R, con un canal más corto (14 velas): más rupturas que el objetivo amplio, sin dejar el stop pegado.") };
+    case "h4-wide-quick":
+      return { name: tr("Velas de 4 horas · stop amplio y tendencia rápida"), blurb: tr("Stop de 2 ATR y objetivo de 2R, con canal de 10 velas y tendencia 20/100: todavía más operaciones que la anterior.") };
     case "h1-runner":
       return { name: tr("Velas de 1 hora · corredor"), blurb: tr("Cobra la mitad en el primer objetivo, sube el stop a la entrada y deja correr el resto hasta 4 veces lo arriesgado.") };
     case "h4-runner":

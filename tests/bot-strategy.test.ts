@@ -453,7 +453,7 @@ describe("velas de 4 horas y laboratorio", () => {
     const mid = T0 + (2600 * 4 * BAR_MS) / 2;
     const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
     expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
-    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "15m", "15m"]);
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "15m", "15m"]);
     for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
     expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
     expect(LAB_DAYS).toBe(360);
