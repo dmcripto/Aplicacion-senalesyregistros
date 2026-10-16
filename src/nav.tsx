@@ -197,7 +197,7 @@ export function NavBar({
             aria-label={t("Asistente VELTRIX")}
             className="flex items-center gap-1.5 rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/20"
           >
-            <span aria-hidden>✦</span>
+            <ShieldLogo className="h-5 w-5" />
             <span className="hidden sm:inline">{t("Ayuda")}</span>
           </button>
           <span className="num hidden text-[12px] text-dim xl:inline">{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
