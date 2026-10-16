@@ -1,9 +1,41 @@
 import { useRef, useState } from "react";
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, t } from "@dmcripto/core";
+import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, parseChatText, t } from "@dmcripto/core";
+import type { ChatSpan } from "@dmcripto/core";
 import type { AssistantMessage } from "@dmcripto/core";
 import { askAssistant } from "./tradesApi";
 import { colors } from "./theme";
+
+const spansOf = (spans: ChatSpan[]) =>
+  spans.map((x, i) => (
+    <Text key={i} style={x.bold ? { fontWeight: "800", color: colors.snow } : x.code ? { color: colors.gold, fontFamily: "monospace" } : undefined}>
+      {x.text}
+    </Text>
+  ));
+
+/** La respuesta de la IA con párrafos, listas y negritas (sin HTML). */
+function ChatText({ text }: { text: string }) {
+  return (
+    <View style={{ gap: 8, flexShrink: 1 }}>
+      {parseChatText(text).map((b, i) =>
+        b.type === "p" ? (
+          <Text key={i} style={s.msgText}>
+            {spansOf(b.spans)}
+          </Text>
+        ) : (
+          <View key={i} style={{ gap: 4 }}>
+            {b.items.map((it, j) => (
+              <View key={j} style={{ flexDirection: "row", gap: 8 }}>
+                <Text style={[s.msgText, { color: colors.gold, fontWeight: "800", minWidth: 14 }]}>{b.type === "ul" ? "•" : `${j + 1}.`}</Text>
+                <Text style={[s.msgText, { flex: 1 }]}>{spansOf(it)}</Text>
+              </View>
+            ))}
+          </View>
+        ),
+      )}
+    </View>
+  );
+}
 
 /** Asistente con IA: botón flotante + chat que responde dudas de la plataforma y explica tus propios datos. */
 export default function AssistantChat() {
@@ -74,7 +106,13 @@ export default function AssistantChat() {
               {messages.map((m, i) => (
                 <View key={i} style={m.role === "user" ? s.rowUser : s.rowBot}>
                   {m.role === "assistant" && <Image source={require("../assets/logo.png")} style={s.avatar} resizeMode="contain" />}
-                  <Text style={[s.bubble, m.role === "user" ? s.bubbleUser : s.bubbleBot]}>{m.content}</Text>
+                  {m.role === "assistant" ? (
+                    <View style={[s.bubble, s.bubbleBot]}>
+                      <ChatText text={m.content} />
+                    </View>
+                  ) : (
+                    <Text style={[s.bubble, s.bubbleUser]}>{m.content}</Text>
+                  )}
                 </View>
               ))}
               {busy && <ActivityIndicator color={colors.gold} style={{ alignSelf: "flex-start" }} />}
@@ -130,6 +168,7 @@ const s = StyleSheet.create({
   rowUser: { alignItems: "flex-end" },
   rowBot: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   bubble: { fontSize: 13, lineHeight: 19, color: colors.snow, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, maxWidth: "85%", overflow: "hidden" },
+  msgText: { color: colors.snow, fontSize: 13, lineHeight: 19 },
   bubbleUser: { backgroundColor: colors.gold + "26" },
   bubbleBot: { backgroundColor: colors.ink + "88", borderWidth: 1, borderColor: colors.line },
   notice: { borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 10, backgroundColor: colors.golddeep + "44" },

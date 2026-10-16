@@ -1446,6 +1446,64 @@ export function assistantProblem(r: Exclude<AssistantResult, { ok: true }>): str
   }
 }
 
+// ─── Texto del chat: formato simple (negritas, listas) sin HTML ──────────────
+
+export interface ChatSpan {
+  text: string;
+  bold?: boolean;
+  code?: boolean;
+}
+export type ChatBlock =
+  | { type: "p"; spans: ChatSpan[] }
+  | { type: "ul" | "ol"; items: ChatSpan[][] };
+
+/** Parte una línea en tramos con negrita (**así**) o código (`así`). */
+export function chatSpans(line: string): ChatSpan[] {
+  const out: ChatSpan[] = [];
+  for (const part of line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)) {
+    if (!part) continue;
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) out.push({ text: part.slice(2, -2), bold: true });
+    else if (part.startsWith("`") && part.endsWith("`") && part.length > 2) out.push({ text: part.slice(1, -1), code: true });
+    else out.push({ text: part });
+  }
+  return out;
+}
+
+/** Lo que contesta la IA (con **negritas**, listas con «- » o «1.» y títulos con «#») convertido en bloques para mostrar prolijo. No genera HTML: es seguro. */
+export function parseChatText(text: string): ChatBlock[] {
+  const blocks: ChatBlock[] = [];
+  let para: string[] = [];
+  const flush = () => {
+    if (para.length) blocks.push({ type: "p", spans: chatSpans(para.join(" ")) });
+    para = [];
+  };
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) {
+      flush();
+      continue;
+    }
+    const ul = /^[-*•]\s+(.+)$/.exec(line);
+    const ol = /^\d+[.)]\s+(.+)$/.exec(line);
+    const head = /^#{1,6}\s+(.+)$/.exec(line);
+    if (ul || ol) {
+      flush();
+      const type = ul ? "ul" : "ol";
+      const item = chatSpans((ul ?? ol)![1]);
+      const last = blocks[blocks.length - 1];
+      if (last && last.type === type) last.items.push(item);
+      else blocks.push({ type, items: [item] });
+    } else if (head) {
+      flush();
+      blocks.push({ type: "p", spans: [{ text: head[1].replace(/\*\*/g, ""), bold: true }] });
+    } else {
+      para.push(line);
+    }
+  }
+  flush();
+  return blocks;
+}
+
 // ─── Compartir una señal ───────────────────────────────────
 
 // ─── Pantalla de bienvenida (login): qué es VELTRIX ─────────────────────────
