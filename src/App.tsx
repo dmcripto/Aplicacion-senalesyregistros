@@ -82,6 +82,7 @@ import { HomeApp, HomeHero, HomeStatus, RecentTrades } from "./components/HomeEx
 import { NavBar, useView } from "./nav";
 import type { View } from "./nav";
 const CoachCard = lazy(() => import("./components/CoachCard"));
+const AssistantChat = lazy(() => import("./components/AssistantChat"));
 import TodayCard from "./components/TodayCard";
 import EconomyCard from "./components/EconomyCard";
 import { RiskTips, SessionCard } from "./components/SideCards";
@@ -1058,6 +1059,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
 
       <ToastStack toasts={toasts} onDismiss={(id) => setToasts((t) => t.filter((x) => x.id !== id))} />
     </div>
+    <Suspense fallback={null}><AssistantChat /></Suspense>
     </MoneyContext.Provider>
   );
 }

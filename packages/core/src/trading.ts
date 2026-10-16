@@ -1323,7 +1323,7 @@ export type CoachResult =
   | { ok: true; text: string; closed: number; cached: boolean; createdAt: string }
   | { ok: false; reason: "not_enough_data"; needed: number; have: number }
   | { ok: false; reason: "limit"; createdAt: string | null; text: string | null }
-  | { ok: false; reason: "refused" | "unavailable" | "no_key" }
+  | { ok: false; reason: "refused" | "unavailable" | "no_key" | "bad_key" }
   | { ok: false; error: string; reason?: undefined };
 
 /** Mensaje para mostrar cuando el coach no pudo dar un informe. */
@@ -1336,6 +1336,8 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
       return tr("Ya hiciste varios análisis hoy. Mañana podés pedir uno nuevo.");
     case "no_key":
       return tr("El coach todavía no está activado en el servidor.");
+    case "bad_key":
+      return tr("La clave de IA del servidor tiene caracteres no válidos: hay que volver a pegarla (sin espacios ni saltos de línea).");
     case "refused":
       return tr("No pude armar un análisis con estos datos. Probá de nuevo más tarde.");
     default:
@@ -1349,6 +1351,48 @@ export function botCoachProblem(r: Exclude<CoachResult, { ok: true }>): string {
     return tr("Todavía hay pocas operaciones cerradas del bot esta semana (necesito {n}, hay {have}). Volvé cuando tenga más.", { n: r.needed, have: r.have });
   }
   return coachProblem(r);
+}
+
+// ─── Asistente con IA (chat de ayuda) ───────────────────────────────────────
+
+export interface AssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+export type AssistantResult =
+  | { ok: true; text: string; remaining: number }
+  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key" | "bad_key" }
+  | { ok: false; error: string; reason?: undefined };
+
+export const ASSISTANT_MAX_CHARS = 1000;
+
+/** Preguntas de ejemplo para empezar la conversación. */
+export function assistantSuggestions(): string[] {
+  return [
+    tr("¿Cómo conecto mi exchange?"),
+    tr("¿Qué perfil del bot me conviene para empezar?"),
+    tr("¿Cómo me fue esta semana?"),
+    tr("¿Qué significa R en mis resultados?"),
+  ];
+}
+
+/** Mensaje para mostrar cuando el asistente no pudo contestar. */
+export function assistantProblem(r: Exclude<AssistantResult, { ok: true }>): string {
+  if ("error" in r && r.error) return r.error;
+  switch (r.reason) {
+    case "limit":
+      return tr("Llegaste al límite de preguntas de hoy. Mañana podés seguir.");
+    case "no_key":
+      return tr("El asistente todavía no está activado en el servidor.");
+    case "bad_key":
+      return tr("La clave de IA del servidor tiene caracteres no válidos: hay que volver a pegarla (sin espacios ni saltos de línea).");
+    case "bad_input":
+      return tr("Escribí una pregunta para empezar.");
+    case "refused":
+      return tr("No pude contestar eso. Probá de otra forma.");
+    default:
+      return tr("No se pudo contestar ahora. Probá de nuevo en unos minutos.");
+  }
 }
 
 // ─── Compartir una señal ───────────────────────────────────

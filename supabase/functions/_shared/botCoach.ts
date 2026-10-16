@@ -218,7 +218,8 @@ export async function botCoachReport(deps: BotCoachDeps, userId: string, now = D
   let text: string | null;
   try {
     text = await deps.ask(system, user);
-  } catch {
+  } catch (e) {
+    console.error("bot-coach:", (e as { status?: number })?.status ?? "", e instanceof Error ? e.message : e);
     return { ok: false, reason: "unavailable" };
   }
   if (!text || !text.trim()) return { ok: false, reason: "refused" };
