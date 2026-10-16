@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, t } from "../lib";
 import type { AssistantMessage } from "../lib";
 import { askAssistant } from "../tradesApi";
+import { OPEN_ASSISTANT_EVENT } from "../nav";
 
 /** Asistente con IA: botón flotante + chat que responde dudas de la plataforma y explica tus propios datos. */
 export default function AssistantChat() {
@@ -11,6 +12,13 @@ export default function AssistantChat() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // El botón «Ayuda» de la barra de arriba abre este mismo chat.
+  useEffect(() => {
+    const on = () => setOpen(true);
+    window.addEventListener(OPEN_ASSISTANT_EVENT, on);
+    return () => window.removeEventListener(OPEN_ASSISTANT_EVENT, on);
+  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
