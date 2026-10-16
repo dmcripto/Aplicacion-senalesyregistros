@@ -177,6 +177,7 @@ Deno.serve(async (req) => {
   if (learnOnly) {
     if (!apiKey) return json({ ok: true, learn: "sin clave de Tokenomist: no hay nada que aprender" });
     const l = await learnStep(apiKey, Date.now()).catch((e) => ({ error: e instanceof Error ? e.message : "error", fetched: 0 }));
+    if ((l as { error?: string | null }).error) console.error("unlocks learn:", (l as { error?: string | null }).error);
     if ((l as { fetched?: number }).fetched) await projectStep(Date.now()).catch(() => 0);
     return json({ ok: !(l as { error?: string | null }).error, learn: l }, (l as { error?: string | null }).error ? 502 : 200);
   }
