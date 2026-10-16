@@ -15,7 +15,8 @@ describe("señal explicada para ejecutarla", () => {
     // arriesga 10 USD con un stop de 500 → 0,02 BTC
     expect(g.position!.units).toBeCloseTo(0.02, 6);
     expect(g.position!.riskAmount).toBe(10);
-    expect(g.steps).toHaveLength(3);
+    expect(g.steps).toHaveLength(4);
+    expect(g.steps[3]).toContain("78x"); // stop a 0,77 %: 0,6 / 0,0077 → hasta 78x
     expect(g.steps[0]).toContain("BTCUSDT");
     expect(g.steps[0]).toContain("Comprar (Long)");
     expect(g.steps[1]).toContain("65,000");
@@ -46,7 +47,7 @@ describe("señal explicada para ejecutarla", () => {
 
   it("el texto para copiar trae lo esencial en líneas claras", () => {
     const g = signalGuide({ ...btc, targets: [66000, 66500] }, money);
-    expect(g.copyText.split("\n")).toEqual(["BTCUSDT · COMPRA", "Entrada: 65,000", "Stop: 64,500", "TP: 66,500", "TP1: 66,000 · TP2: 66,500", "R:R 1:3.00"]);
+    expect(g.copyText.split("\n")).toEqual(["BTCUSDT · COMPRA", "Entrada: 65,000", "Stop: 64,500", "TP: 66,500", "TP1: 66,000 · TP2: 66,500", "R:R 1:3.00", "Apalancamiento máx. sugerido: 78x"]);
   });
 
   it("los activos con prefijo numérico o USDC calculan bien la moneda base", () => {

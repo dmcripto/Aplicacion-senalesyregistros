@@ -3,7 +3,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, exchangeTradeUrl, signalGuide} from "@dmcripto/core";
+import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, exchangeTradeUrl, signalGuide, leverageCheck, leverageWarning} from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, fetchConnections, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -481,6 +481,9 @@ export function TradeCard({ trade, onCalculate }: { trade: Trade; big?: boolean;
           <Level label="R:R" value={`1:${rrOf(trade).toFixed(2)}`} color={colors.gold} />
         </View>
         {abierta && <SignalGuideBlock trade={trade} />}
+        {trade.leverage != null && leverageWarning(leverageCheck(trade.entry, trade.sl, trade.leverage), trade.leverage) && (
+          <Text style={[s.date, { color: leverageCheck(trade.entry, trade.sl, trade.leverage)?.level === "danger" ? colors.bear : "#fbbf24" }]}>⚠ {leverageWarning(leverageCheck(trade.entry, trade.sl, trade.leverage), trade.leverage)}</Text>
+        )}
         {(trade.leverage != null || trade.sizeUsd != null) && (
           <Text style={[s.date, { color: colors.fog }]}>
             {trade.leverage != null ? `${t("Apalancamiento")} ${trade.leverage}x` : ""}

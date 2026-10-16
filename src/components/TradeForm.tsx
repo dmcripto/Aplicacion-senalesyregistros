@@ -5,6 +5,8 @@ import {
   cx,
   parseAlerts,
   toLocalInput,
+  leverageCheck,
+  leverageWarning,
 } from "../lib";
 import type { Direction, NewTrade, ParseResult } from "../lib";
 import { IconCheck, IconClipboard, IconPlus, IconAlert, TriDown, TriUp } from "../ui";
@@ -58,6 +60,12 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
     const n = (s: string) => Number(s.replace(",", "."));
     return { entry: n(entry), tp: n(tp), sl: n(sl) };
   }, [entry, tp, sl]);
+
+  // Aviso si el apalancamiento deja la liquidación más cerca que el stop (solo cuando hay entrada, stop y apalancamiento válidos).
+  const levNum = leverage.trim() ? Number(leverage.replace(",", ".").replace(/x$/i, "")) : 0;
+  const levChk = useMemo(() => leverageCheck(nums.entry, nums.sl, levNum), [nums, levNum]);
+  const levWarn = leverageWarning(levChk, levNum);
+  const levLevel = levChk?.level;
 
   const liveRR = useMemo(() => {
     const { entry: e, tp: p, sl: s } = nums;
@@ -292,6 +300,9 @@ export default function TradeForm({ onAdd, notify }: { onAdd: (t: NewTrade[]) =>
                     className={cx("field num", errors.leverage && "field-error")}
                   />
                   {errors.leverage && <p className="mt-1 text-[11px] leading-tight text-bear">{errors.leverage}</p>}
+                  {!errors.leverage && levWarn && (
+                    <p className={cx("mt-1 text-[11px] leading-tight", levLevel === "danger" ? "text-bear" : "text-amber-300")}>⚠ {levWarn}</p>
+                  )}
                 </div>
               </div>
               <div>
