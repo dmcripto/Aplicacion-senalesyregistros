@@ -66,3 +66,13 @@ describe("aprender del período de prueba", () => {
     expect(rows[0].pct).toBe(5); // mediana de los últimos tres (3, 5, 9)
   });
 });
+
+describe("rango permitido por la prueba de Tokenomist", () => {
+  it("lee las dos formas del mensaje", async () => {
+    const { parseAllowedRange } = await import("../supabase/functions/_shared/tokenomist");
+    expect(parseAllowedRange("Invalid Date Range : The available range for unlock events data are 2025-10-16 - 2026-10-16")).toEqual({ from: "2025-10-16", to: "2026-10-16" });
+    expect(parseAllowedRange("date must be within the allowed range: 2025-01-01 to 2026-01-01")).toEqual({ from: "2025-01-01", to: "2026-01-01" });
+    expect(parseAllowedRange("otra cosa")).toBeNull();
+    expect(parseAllowedRange(undefined)).toBeNull();
+  });
+});

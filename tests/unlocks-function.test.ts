@@ -94,4 +94,24 @@ describe("función unlocks: aprender del período de prueba", () => {
     expect(r.body.learn.error).toContain("403");
     expect(db.tables.unlock_history).toHaveLength(0);
   });
+
+  it("la prueba gratuita solo deja pedir el pasado: con el mensaje real de Tokenomist, ajusta el rango y reintenta", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: any) => {
+      const u = new URL(String(url));
+      urls.push(u.pathname + u.search);
+      const j = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+      if (u.pathname === "/v5/token/list") return j({ status: true, data: [{ id: "layerzero", symbol: "ZRO" }] });
+      const end = u.searchParams.get("end") ?? "";
+      if (end > "2026-10-16") return j({ status: false, statusCode: 422, errorMessage: "Invalid Date Range : The available range for unlock events data are 2025-10-16 - 2026-10-16" }, 422);
+      const now = Date.now();
+      return j({ status: true, data: [2, 1, 0].map((i) => ({ unlockDate: new Date(now - (10 + i * 30) * DAY).toISOString(), cliffUnlocks: { valueToMarketCap: 3 } })) });
+    });
+    vi.setSystemTime(new Date("2026-10-16T10:45:00Z"));
+    const r = await withTimers(call({ learn: true }));
+    expect(r.status).toBe(200);
+    expect(r.body.learn).toMatchObject({ tokens: 1, fetched: 1, events: 3 });
+    expect(urls.filter((x) => x.startsWith("/v5/unlock/events/")).pop()).toContain("start=2025-10-16&end=2026-10-16");
+    expect(db.tables.unlock_raw.filter((x) => x.kind === "events_error")).toHaveLength(0);
+  });
 });

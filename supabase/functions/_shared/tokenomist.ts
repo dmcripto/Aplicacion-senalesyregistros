@@ -41,3 +41,13 @@ export function parseUpcomingUnlocks(data: unknown): UnlockRow[] {
 
 /** Fecha YYYY-MM-DD (UTC) sumando días. */
 export const isoDay = (ms: number, addDays = 0) => new Date(ms + addDays * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * La prueba gratuita solo deja pedir cierto rango de fechas, y el mensaje de error lo dice. Se leen las dos formas que mandó Tokenomist:
+ *   «date must be within the allowed range: 2025-01-01 to 2026-01-01»
+ *   «Invalid Date Range : The available range for unlock events data are 2025-10-16 - 2026-10-16»
+ */
+export function parseAllowedRange(message: unknown): { from: string; to: string } | null {
+  const m = /(?:allowed|available) range[^0-9]*(\d{4}-\d{2}-\d{2})\s*(?:to|-|–|—)\s*(\d{4}-\d{2}-\d{2})/i.exec(String(message ?? ""));
+  return m ? { from: m[1], to: m[2] } : null;
+}
