@@ -1939,13 +1939,18 @@ export interface LiveSettings {
   maxLeverage: number;
   /** Piso de apalancamiento: el bot nunca usa menos (1 = sin piso). */
   minLeverage: number;
+  /** Distancia mínima del stop, en % del precio: las señales con el stop más pegado no se operan (0 = sin mínimo). */
+  minStopPct: number;
   maxOpen: number;
   dailyLossUsdt: number;
   errors: number;
   lastError: string | null;
 }
 
-export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2 } as const;
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, maxMinStopPct: 10 } as const;
+
+/** Valores sugeridos para la distancia mínima del stop (% del precio). 0 = sin mínimo. */
+export const MIN_STOP_PRESETS = [0, 1, 1.5, 2, 3] as const;
 
 /**
  * Rangos de apalancamiento sugeridos para el bot real, uno por perfil: se tocan y rellenan el piso y el tope (después se pueden ajustar a mano).
@@ -2005,7 +2010,7 @@ export function liveKeyGuide(id: string | null | undefined): string {
   }
 }
 
-export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
+export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
 
 export interface LiveOrder {
   id: string;

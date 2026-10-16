@@ -1490,6 +1490,8 @@ interface BxCfg {
   max_leverage: number;
   /** Piso de apalancamiento (Dinámico: 40x). Sin dato = 1x, o sea, el bot usa el mínimo que alcance. */
   min_leverage?: number;
+  /** Distancia mínima del stop (% del precio de la señal). Si el stop está más pegado, no se opera. 0 o sin dato = sin mínimo. */
+  min_stop_pct?: number;
 }
 
 interface BxSignal {
@@ -1518,6 +1520,11 @@ function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg): BxPl
   if (!(price > 0) || !(sig.entry > 0)) return { ok: false, reason: "Precio no válido." };
   if (![cfg.risk_usdt, cfg.max_margin_usdt, cfg.max_leverage, pair.minQty].every((v) => Number.isFinite(v) && v > 0)) return { ok: false, reason: "Faltan los topes de seguridad: no se opera." };
   const long = sig.direction === "LONG";
+  // Distancia mínima del stop (opcional): una señal con el stop demasiado pegado a la entrada se omite.
+  const stopPct = (Math.abs(sig.entry - sig.sl) / sig.entry) * 100;
+  if (cfg.min_stop_pct && cfg.min_stop_pct > 0 && stopPct < cfg.min_stop_pct - 1e-9) {
+    return { ok: false, reason: `El stop está a ${stopPct.toFixed(2).replace(".", ",")} % del precio, menos del mínimo que elegiste (${String(cfg.min_stop_pct).replace(".", ",")} %): no se opera.` };
+  }
   // No se persigue una entrada tardía: hasta 0,5 % de movimiento, o hasta un cuarto de la distancia al stop si es mayor (tope 1,5 %), para que
   // las señales con stop ancho no se pierdan por unos minutos de demora. El tamaño se calcula igual con el precio de ahora.
   const movedMax = Math.min(MOVED_CAP, Math.max(MOVED_MAX, (Math.abs(sig.entry - sig.sl) / sig.entry) * MOVED_STOP_FRACTION));
@@ -2615,9 +2622,10 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const MAX_ERRORS = 3; // errores seguidos: el bot real se apaga solo
-const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, max_open, daily_loss_usdt, errors, last_error";
-// Si todavía no se corrió el SQL del piso de apalancamiento, se lee sin esa columna (queda en 1x).
-const LIVE_COLUMNS_OLD = LIVE_COLUMNS.replace(" min_leverage,", "");
+const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, min_stop_pct, max_open, daily_loss_usdt, errors, last_error";
+// Si todavía no se corrieron los SQL del piso de apalancamiento o de la distancia mínima del stop, se lee sin esas columnas.
+const LIVE_COLUMNS_NO_STOP = LIVE_COLUMNS.replace(" min_stop_pct,", "");
+const LIVE_COLUMNS_OLD = LIVE_COLUMNS_NO_STOP.replace(" min_leverage,", "");
 
 interface Live {
   user_id: string;
@@ -2629,13 +2637,14 @@ interface Live {
   risk_usdt: number;
   max_leverage: number;
   min_leverage?: number | null;
+  min_stop_pct?: number | null;
   max_open: number;
   daily_loss_usdt: number;
   errors: number;
   last_error: string | null;
 }
 
-const cfgOf = (l: Live): BxCfg => ({ risk_usdt: Number(l.risk_usdt), max_margin_usdt: Number(l.max_margin_usdt), max_leverage: Number(l.max_leverage), min_leverage: Number(l.min_leverage ?? 1) });
+const cfgOf = (l: Live): BxCfg => ({ risk_usdt: Number(l.risk_usdt), max_margin_usdt: Number(l.max_margin_usdt), max_leverage: Number(l.max_leverage), min_leverage: Number(l.min_leverage ?? 1), min_stop_pct: Number(l.min_stop_pct ?? 0) });
 
 function same(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -2690,6 +2699,7 @@ async function isBeta(userId: string): Promise<boolean> {
 
 async function loadLive(userId: string): Promise<Live | null> {
   let { data, error } = await admin.from("bot_live").select(LIVE_COLUMNS).eq("user_id", userId).maybeSingle();
+  if (error) ({ data, error } = await admin.from("bot_live").select(LIVE_COLUMNS_NO_STOP).eq("user_id", userId).maybeSingle());
   if (error) ({ data } = await admin.from("bot_live").select(LIVE_COLUMNS_OLD).eq("user_id", userId).maybeSingle());
   return (data as Live | null) ?? null;
 }

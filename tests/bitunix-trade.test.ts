@@ -187,3 +187,24 @@ describe("cuánto se tolera que el precio se haya movido desde la señal", () =>
     expect(!r.ok && r.reason).toContain("0,5 %");
   });
 });
+
+describe("distancia mínima del stop (opcional)", () => {
+  // La señal base tiene el stop a 850 sobre 85000 = 1 %.
+  it("sin mínimo (0 o sin dato) opera como siempre", () => {
+    expect(planOrder(sig(), 85000, BTC, CFG).ok).toBe(true);
+    expect(planOrder(sig(), 85000, BTC, { ...CFG, min_stop_pct: 0 }).ok).toBe(true);
+  });
+  it("omite la señal si el stop está más pegado que el mínimo y dice por qué", () => {
+    const p = planOrder(sig(), 85000, BTC, { ...CFG, min_stop_pct: 1.5 });
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.reason).toMatch(/1,00 %.*mínimo.*1,5 %/);
+  });
+  it("opera si el stop cumple el mínimo (justo en el límite también)", () => {
+    expect(planOrder(sig(), 85000, BTC, { ...CFG, min_stop_pct: 1 }).ok).toBe(true);
+    expect(planOrder(sig({ sl: 83300, tp: 88400 }), 85000, BTC, { ...CFG, risk_usdt: 1, min_stop_pct: 1.5 }).ok).toBe(true); // stop a 2 %
+  });
+  it("el mínimo mira el stop de la señal, no el precio de ahora", () => {
+    const p = planOrder(sig(), 85100, BTC, { ...CFG, min_stop_pct: 1.5 });
+    expect(p.ok).toBe(false);
+  });
+});

@@ -26,6 +26,8 @@ export interface BxCfg {
   max_leverage: number;
   /** Piso de apalancamiento (Dinámico: 40x). Sin dato = 1x, o sea, el bot usa el mínimo que alcance. */
   min_leverage?: number;
+  /** Distancia mínima del stop (% del precio de la señal). Si el stop está más pegado, no se opera. 0 o sin dato = sin mínimo. */
+  min_stop_pct?: number;
 }
 
 export interface BxSignal {
@@ -54,6 +56,11 @@ export function planOrder(sig: BxSignal, price: number, pair: BxPair, cfg: BxCfg
   if (!(price > 0) || !(sig.entry > 0)) return { ok: false, reason: "Precio no válido." };
   if (![cfg.risk_usdt, cfg.max_margin_usdt, cfg.max_leverage, pair.minQty].every((v) => Number.isFinite(v) && v > 0)) return { ok: false, reason: "Faltan los topes de seguridad: no se opera." };
   const long = sig.direction === "LONG";
+  // Distancia mínima del stop (opcional): una señal con el stop demasiado pegado a la entrada se omite.
+  const stopPct = (Math.abs(sig.entry - sig.sl) / sig.entry) * 100;
+  if (cfg.min_stop_pct && cfg.min_stop_pct > 0 && stopPct < cfg.min_stop_pct - 1e-9) {
+    return { ok: false, reason: `El stop está a ${stopPct.toFixed(2).replace(".", ",")} % del precio, menos del mínimo que elegiste (${String(cfg.min_stop_pct).replace(".", ",")} %): no se opera.` };
+  }
   // No se persigue una entrada tardía: hasta 0,5 % de movimiento, o hasta un cuarto de la distancia al stop si es mayor (tope 1,5 %), para que
   // las señales con stop ancho no se pierdan por unos minutos de demora. El tamaño se calcula igual con el precio de ahora.
   const movedMax = Math.min(MOVED_CAP, Math.max(MOVED_MAX, (Math.abs(sig.entry - sig.sl) / sig.entry) * MOVED_STOP_FRACTION));
