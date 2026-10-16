@@ -1,0 +1,35 @@
+VELTRIX · PAQUETE COMPLETO (todo junto, en orden)
+Cada archivo se abre en GitHub y se copia con el icono «Copy raw file» (dos cuadrados, arriba a la derecha).
+
+═══ PASO 1 · BASE DE DATOS (1 minuto) ═══
+[ ] 01-SQL-TODO-JUNTO.txt  -> Supabase > SQL Editor > pegar todo > Run.
+    Reúne todos los SQL pendientes. Se puede repetir sin problema.
+
+═══ PASO 2 · FUNCIONES (Edge Functions > nombre > Code > Ctrl+A > pegar > Deploy) ═══
+Hacelas en este orden (las primeras son las que más importan):
+[ ] 02-FUNCION-coach.txt                -> coach       (asistente con IA + resumen del bot)
+[ ] 05-FUNCION-unlocks.txt              -> unlocks     (aprender de Tokenomist: URGENTE, la prueba vence ~28/10)
+[ ] 03-FUNCION-bot.txt                  -> bot
+[ ] 04-FUNCION-trade.txt                -> trade
+[ ] 06-FUNCION-exchanges.txt            -> exchanges
+[ ] 07-FUNCION-telegram-bot.txt         -> telegram-bot
+[ ] 08-FUNCION-auto-close.txt           -> auto-close
+[ ] 09-FUNCION-tradingview-webhook.txt  -> tradingview-webhook
+Comprobación rápida con Ctrl+F dentro del editor, antes de tocar Deploy:
+  coach -> «assistantReply» · bot, telegram-bot, auto-close, tradingview-webhook -> «Apalancamiento máx. sugerido»
+
+═══ PASO 3 · CLAVES (Edge Functions > Secrets) ═══
+[ ] ANTHROPIC_API_KEY: se crea en console.anthropic.com (con crédito cargado). Se copia con el botón «Copy» y se pega con Ctrl+V.
+    Tiene que empezar con «sk-ant-». Nunca la pegues en el chat.
+[ ] TOKENOMIST_API_KEY: ya está cargada.
+
+═══ PASO 4 · COMPROBAR ═══
+[ ] 10-CHEQUEO-despues-de-todo.txt -> SQL Editor > Run. Tiene que dar 4, 2, 2, 1 en las primeras columnas.
+[ ] Web: Ctrl+F5 > botón «✦ Ayuda» > hacer una pregunta.
+[ ] Web: Bot > «Generar resumen del bot» (necesita 5 operaciones cerradas del bot en la semana).
+
+═══ OPCIONAL ═══
+12-OPCIONAL-SQL-desbloqueos-manual.txt -> cargar a mano un desbloqueo grande cuando termine la prueba de Tokenomist.
+
+═══ APP ANDROID ═══
+La app necesita un APK nuevo para tener el botón «Ayuda» y los avisos de apalancamiento. Se compila al final, cuando la web ande bien.
