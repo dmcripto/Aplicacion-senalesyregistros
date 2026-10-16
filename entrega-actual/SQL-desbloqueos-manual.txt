@@ -1,0 +1,8 @@
+-- VELTRIX · cargar a mano un desbloqueo grande (por si alguna vez la fuente falla o termina la prueba).
+-- symbol = moneda + USDT · at = fecha y hora en UTC · pct = tamaño del desbloqueo en % de lo que ya circula.
+-- Los cargados con source = 'manual' no los borra ninguna fuente automática: solo se limpian cuando la fecha ya pasó.
+-- Ejemplo (cambialo por el tuyo y ejecutalo en el SQL Editor):
+
+insert into public.token_unlocks (symbol, at, pct, source)
+values ('ARBUSDT', '2026-11-16 13:00:00+00', 2.1, 'manual')
+on conflict (symbol, at) do update set pct = excluded.pct, source = excluded.source, updated_at = now();
