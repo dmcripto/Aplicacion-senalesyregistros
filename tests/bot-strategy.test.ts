@@ -312,7 +312,7 @@ describe("simulación del bot completo", () => {
 
 describe("perfiles de estrategia", () => {
   it("hay siete perfiles distintos y el equilibrado es el de siempre", () => {
-    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "max"]);
+    expect(BOT_PROFILE_IDS).toEqual(["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "max"]);
     expect(BOT_PROFILES.balanced).toEqual(DEFAULT_PARAMS);
     const keys = BOT_PROFILE_IDS.map((id) => JSON.stringify(BOT_PROFILES[id]));
     expect(new Set(keys).size).toBe(7);

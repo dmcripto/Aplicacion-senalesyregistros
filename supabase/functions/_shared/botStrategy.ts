@@ -66,8 +66,8 @@ export const ROUND_TRIP_COST_PCT = 0.14;
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: ROUND_TRIP_COST_PCT };
 
 /** Perfiles de estrategia que cada persona puede elegir (no se dejan los números libres: se sobreajustan con facilidad). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "max";
-export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "max"];
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "slowquick" | "max";
+export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "max"];
 export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   // menos señales: canal más largo y stop más holgado
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT },
@@ -82,6 +82,8 @@ export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   slow: { ...DEFAULT_PARAMS, tf: "4h" },
   // velas de 4 horas, stop más ancho (2,5 ATR) y objetivo de 3R: acierta menos veces, pero gana el triple de lo que arriesga
   slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
+  // velas de 4 horas, canal de 10, tendencia 20/100, stop 2 ATR y objetivo 2R: la mejor del laboratorio (ganó en las dos mitades del año, más operaciones)
+  slowquick: { lookback: 10, emaFast: 20, emaSlow: 100, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
 };
 /** La estrategia en una frase (para la nota de cada operación simulada). */
 export const describeParams = (p: BotParams) => {
@@ -806,7 +808,7 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-wide", params: { ...BOT_PROFILES.slowwide } },
   // Candidatas para «más operaciones sin el stop pegado»: velas de 4 horas, stop de 2 ATR y objetivo de 2R, con canal más corto (más rupturas).
   { id: "h4-wide-active", params: { ...BOT_PROFILES.slowwide, lookback: 14, atrMult: 2, rr: 2 } },
-  { id: "h4-wide-quick", params: { ...BOT_PROFILES.slowwide, lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 2, rr: 2 } },
+  { id: "h4-wide-quick", params: { ...BOT_PROFILES.slowquick } },
   { id: "h4-fast", params: { ...BOT_PROFILES.dynamic, tf: "4h" } },
   // Modo «corredor»: cobrar la mitad en el primer objetivo, subir el stop a la entrada y dejar correr el resto (ver RunnerParams).
   { id: "h1-runner", params: { ...DEFAULT_PARAMS, runner: { tp2: 4, partial: 0.5 } } },
