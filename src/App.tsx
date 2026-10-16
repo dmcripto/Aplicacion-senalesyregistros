@@ -83,6 +83,7 @@ import { NavBar, useView } from "./nav";
 import type { View } from "./nav";
 const CoachCard = lazy(() => import("./components/CoachCard"));
 const AssistantChat = lazy(() => import("./components/AssistantChat"));
+const GettingStarted = lazy(() => import("./components/GettingStarted"));
 import TodayCard from "./components/TodayCard";
 import EconomyCard from "./components/EconomyCard";
 import { RiskTips, SessionCard } from "./components/SideCards";
@@ -421,49 +422,6 @@ function WebhookCard({ userId, notify }: { userId: string; notify: Notify }) {
 
 // ─── Bienvenida ─────────────────────────────────────────────────────────────
 
-function WelcomeCard({ onLoadSample }: { onLoadSample?: () => void }) {
-  const steps = [
-    ["1", t("Cargá tu primera señal"), t("Pegá un mensaje de Telegram en \"Registrar operación\", o cargala a mano.")],
-    ["2", t("Conectá tu fuente"), t("Abajo, en \"Conectá tu fuente de señales\", copiá tu URL personal para TradingView u otras herramientas.")],
-    ["3", t("Mirá tus resultados"), t("VELTRIX calcula tu R neto, acierto y curva de capital. El cierre de TP y SL puede ser automático.")],
-  ];
-  return (
-    <section className="glass glow-card welcome-card rounded-lg border-gold/40 bg-golddeep/30 p-5" data-tilt="soft">
-      <div className="text-center">
-        <h2 className="font-display text-2xl font-bold tracking-wide text-snow sm:text-3xl">
-          <span className="brand-word">{t("BIENVENIDO A VELTRIX")}</span>
-        </h2>
-        <p className="mt-0.5 text-[12px] text-fog sm:text-[13px]">{t("Empezá en tres pasos.")}</p>
-      </div>
-      <ol className="mt-4 grid gap-3 md:grid-cols-3">
-        {steps.map(([n, title, text], i) => (
-          <li key={n} className="step-card flex gap-3 rounded-md border border-line bg-panel/70 p-3.5" style={{ ["--i" as string]: i } as React.CSSProperties}>
-            <span className="num flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold text-[13px] font-bold text-ink">
-              {n}
-            </span>
-            <span>
-              <b className="block text-[13px] text-snow">{title}</b>
-              <span className="text-[12px] leading-relaxed text-fog">{text}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-      {onLoadSample && (
-        <div className="mt-5 text-center">
-          <button
-            type="button"
-            onClick={onLoadSample}
-            className="rounded-md bg-gold px-5 py-2.5 text-[12px] font-bold uppercase tracking-wider text-ink transition-all hover:brightness-110 active:scale-[0.98]"
-          >
-            {t("Cargar operaciones de ejemplo")}
-          </button>
-          <p className="mt-1.5 text-[11px] text-dim">{t("O explorá la app con datos de ejemplo; después las borrás cuando quieras.")}</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
 // ─── App ────────────────────────────────────────────────────────────────────
 
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
@@ -792,7 +750,18 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         {view === "home" && (
           <>
             <HomeHero email={email} trades={trades} now={now} go={go} />
-            {!loading && (trades.length === 0 || guide) && <WelcomeCard onLoadSample={trades.length === 0 ? loadSample : undefined} />}
+            {!loading && (
+              <GettingStarted
+                go={go}
+                hasCapital={!!money.capital}
+                tradeCount={trades.length}
+                botReady={botReady}
+                botOn={botState.settings.enabled}
+                forced={guide}
+                onLoadSample={trades.length === 0 ? loadSample : undefined}
+                onClose={() => setGuide(false)}
+              />
+            )}
             <LimitBanner status={limitStatus} />
             {/* Señales para ejecutar a un lado y, al otro, tu día y la agenda económica: si no hay señales, lo demás ocupa todo el ancho */}
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,520px),1fr))] items-start gap-5">
@@ -980,21 +949,18 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
             <a href="/app" className="font-semibold text-cyan underline underline-offset-2 hover:text-snow">
               {t("App Android")}
             </a>
-            {trades.length > 0 && (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGuide((g) => !g);
-                    if (!guide) window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className="font-semibold text-cyan underline underline-offset-2 hover:text-snow"
-                >
-                  {guide ? t("Ocultar guía de inicio") : t("Ver guía de inicio")}
-                </button>
-              </>
-            )}
+            {" · "}
+            <button
+              type="button"
+              onClick={() => {
+                setGuide((g) => !g);
+                go("home");
+                if (!guide) window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="font-semibold text-cyan underline underline-offset-2 hover:text-snow"
+            >
+              {guide ? t("Ocultar guía de inicio") : t("Ver guía de inicio")}
+            </button>
           </p>
           <div className="flex flex-wrap items-center gap-2">
           {deleteArmed ? (

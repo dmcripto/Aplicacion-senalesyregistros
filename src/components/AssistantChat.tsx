@@ -4,6 +4,7 @@ import type { AssistantMessage } from "../lib";
 import { askAssistant } from "../tradesApi";
 import { OPEN_ASSISTANT_EVENT } from "../nav";
 import { ShieldLogo } from "../ui";
+import { ASSISTANT_USED_EVENT, ASSISTANT_USED_KEY } from "./GettingStarted";
 
 /** Asistente con IA: botón flotante + chat que responde dudas de la plataforma y explica tus propios datos. */
 export default function AssistantChat() {
@@ -35,7 +36,15 @@ export default function AssistantChat() {
     setBusy(true);
     try {
       const r = await askAssistant(next);
-      if (r.ok) setMessages([...next, { role: "assistant", content: r.text }]);
+      if (r.ok) {
+        setMessages([...next, { role: "assistant", content: r.text }]);
+        try {
+          localStorage.setItem(ASSISTANT_USED_KEY, "1");
+        } catch {
+          /* sin almacenamiento */
+        }
+        window.dispatchEvent(new Event(ASSISTANT_USED_EVENT)); // tilda el paso de la guía de inicio
+      }
       else setProblem(assistantProblem(r));
     } catch {
       setProblem(assistantProblem({ ok: false, reason: "unavailable" }));
