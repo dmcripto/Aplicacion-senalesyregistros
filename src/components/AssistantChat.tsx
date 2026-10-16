@@ -1,10 +1,66 @@
 import { useEffect, useRef, useState } from "react";
-import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, t } from "../lib";
+import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, parseChatText, t } from "../lib";
+import type { ChatSpan } from "../lib";
 import type { AssistantMessage } from "../lib";
 import { askAssistant } from "../tradesApi";
 import { OPEN_ASSISTANT_EVENT } from "../nav";
 import { ShieldLogo } from "../ui";
 import { ASSISTANT_USED_EVENT, ASSISTANT_USED_KEY } from "./GettingStarted";
+
+const Spans = ({ spans }: { spans: ChatSpan[] }) => (
+  <>
+    {spans.map((x, i) =>
+      x.bold ? (
+        <strong key={i} className="font-bold text-snow">
+          {x.text}
+        </strong>
+      ) : x.code ? (
+        <code key={i} className="rounded bg-line/60 px-1 py-px text-[11.5px] text-gold">
+          {x.text}
+        </code>
+      ) : (
+        <span key={i}>{x.text}</span>
+      ),
+    )}
+  </>
+);
+
+/** La respuesta de la IA con párrafos, listas y negritas (sin HTML). */
+function ChatText({ text }: { text: string }) {
+  return (
+    <div className="space-y-2">
+      {parseChatText(text).map((b, i) =>
+        b.type === "p" ? (
+          <p key={i}>
+            <Spans spans={b.spans} />
+          </p>
+        ) : b.type === "ul" ? (
+          <ul key={i} className="space-y-1">
+            {b.items.map((it, j) => (
+              <li key={j} className="flex gap-2">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden />
+                <span className="min-w-0">
+                  <Spans spans={it} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <ol key={i} className="space-y-1">
+            {b.items.map((it, j) => (
+              <li key={j} className="flex gap-2">
+                <span className="num mt-px w-4 shrink-0 text-right text-[11.5px] font-bold text-gold">{j + 1}.</span>
+                <span className="min-w-0">
+                  <Spans spans={it} />
+                </span>
+              </li>
+            ))}
+          </ol>
+        ),
+      )}
+    </div>
+  );
+}
 
 /** Asistente con IA: botón flotante + chat que responde dudas de la plataforma y explica tus propios datos. */
 export default function AssistantChat() {
@@ -104,15 +160,15 @@ export default function AssistantChat() {
             {messages.map((m, i) => (
               <div key={i} className={m.role === "user" ? "flex justify-end" : "flex items-start justify-start gap-2"}>
                 {m.role === "assistant" && <ShieldLogo className="mt-0.5 h-6 w-6 shrink-0" />}
-                <p
+                <div
                   className={
                     m.role === "user"
                       ? "max-w-[85%] whitespace-pre-line rounded-lg bg-gold/15 px-3 py-2 text-[12.5px] leading-relaxed text-snow"
-                      : "max-w-[92%] whitespace-pre-line rounded-lg border border-line bg-ink/50 px-3 py-2 text-[12.5px] leading-relaxed text-snow"
+                      : "max-w-[92%] rounded-lg border border-line bg-ink/50 px-3 py-2 text-[12.5px] leading-relaxed text-snow"
                   }
                 >
-                  {m.content}
-                </p>
+                  {m.role === "assistant" ? <ChatText text={m.content} /> : m.content}
+                </div>
               </div>
             ))}
             {busy && (
