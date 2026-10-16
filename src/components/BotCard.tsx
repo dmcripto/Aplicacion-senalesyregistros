@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { botCoachProblem, BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
 import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow, CoachResult } from "../lib";
 import { useBot } from "../botStore";
+import ChatText from "./ChatText";
 import { fetchBotCoach, runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
 import AssetPicker from "./AssetPicker";
 import Panel from "./Panel";
@@ -31,7 +32,7 @@ function BotCoach() {
       {result && !result.ok && <p className="rounded-md border border-gold/40 bg-golddeep/30 px-3 py-2.5 text-[12px] leading-relaxed text-gold">{botCoachProblem(result)}</p>}
       {text && (
         <div className="rounded-md border border-line bg-ink/50 p-3">
-          <p className="whitespace-pre-line text-[12.5px] leading-relaxed text-snow">{text}</p>
+          <div className="text-[12.5px] leading-relaxed text-snow"><ChatText text={text} /></div>
           {result && result.ok && (
             <p className="mt-2 text-[10.5px] text-dim">
               {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}

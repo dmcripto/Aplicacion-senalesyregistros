@@ -6,6 +6,7 @@ import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow, Coach
 import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
 import NewsPauseRow from "./NewsPauseRow";
+import ChatText from "./ChatText";
 import { fetchBotCoach, runBotBacktest, runBotLab } from "./tradesApi";
 import { colors } from "./theme";
 
@@ -32,7 +33,7 @@ function BotCoach() {
       {result && !result.ok && <Text style={st.coachNotice}>{botCoachProblem(result)}</Text>}
       {text ? (
         <View style={st.coachReport}>
-          <Text style={st.coachText}>{text}</Text>
+          <ChatText text={text} />
           {result && result.ok && (
             <Text style={st.dim}>
               {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}
