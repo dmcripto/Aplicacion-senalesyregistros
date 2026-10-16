@@ -1,0 +1,501 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+
+// Lectura de los desbloqueos de Tokenomist (GET /v5/unlock/events/upcoming) y paso al formato de la tabla token_unlocks.
+// Sin dependencias de Deno ni de la red, para probarlo en local.
+
+interface UnlockRow {
+  symbol: string; // par del bot, por ejemplo ZROUSDT
+  at: string; // ISO
+  pct: number; // % de lo que ya circula (valor del desbloqueo / capitalización de mercado)
+}
+
+const SYMBOL = /^[A-Z0-9]{2,15}USDT$/;
+
+const num = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : v == null || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Convierte la respuesta de Tokenomist en filas para la tabla. Lo que no se entiende se descarta (nunca se inventa un dato). */
+function parseUpcomingUnlocks(data: unknown): UnlockRow[] {
+  const out = new Map<string, UnlockRow>();
+  for (const item of Array.isArray(data) ? data : []) {
+    const it = item as any;
+    const sym = String(it?.tokenSymbol ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const symbol = `${sym}USDT`;
+    const ev = it?.upcomingEvent;
+    const t = Date.parse(String(ev?.unlockDate ?? ""));
+    const cliff = ev?.cliffUnlocks;
+    // Tamaño sobre lo que circula: «valueToMarketCap» ya viene en %; si falta, se calcula con el valor y la capitalización.
+    let pct = num(cliff?.valueToMarketCap);
+    if (pct == null) {
+      const value = num(cliff?.cliffValue), cap = num(it?.marketCap);
+      pct = value != null && cap != null && cap > 0 ? (value / cap) * 100 : null;
+    }
+    if (!SYMBOL.test(symbol) || !Number.isFinite(t) || pct == null || pct < 0) continue;
+    const at = new Date(t).toISOString();
+    const key = `${symbol}|${at}`;
+    const prev = out.get(key);
+    if (!prev || pct > prev.pct) out.set(key, { symbol, at, pct: Number(pct.toFixed(4)) });
+  }
+  return [...out.values()];
+}
+
+/** Fecha YYYY-MM-DD (UTC) sumando días. */
+const isoDay = (ms: number, addDays = 0) => new Date(ms + addDays * 86_400_000).toISOString().slice(0, 10);
+
+// Lectura de los desbloqueos de DefiLlama (calendario de emisiones abierto) y paso al formato de la tabla token_unlocks.
+// Alternativa gratuita a Tokenomist. El formato de la respuesta se lee con mucho cuidado (varios nombres posibles por dato) y lo que no se
+// entiende se descarta: nunca se inventa un dato. Sin dependencias de Deno ni de la red, para probarlo en local.
+
+
+const LL_SYMBOL = /^[A-Z0-9]{2,15}USDT$/;
+
+const llNum = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : v == null || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** Suma de tokens: un número, o una lista de números (varias categorías que se desbloquean el mismo día). */
+const llTokens = (v: unknown): number | null => {
+  if (Array.isArray(v)) {
+    const nums = v.map(llNum).filter((x): x is number => x != null && x > 0);
+    return nums.length ? nums.reduce((a, b) => a + b, 0) : null;
+  }
+  return llNum(v);
+};
+
+/** Fecha en milisegundos desde segundos, milisegundos o texto ISO. */
+const llToMs = (v: unknown): number | null => {
+  const n = llNum(v);
+  if (n != null) return n < 1e11 ? n * 1000 : n;
+  const t = Date.parse(String(v ?? ""));
+  return Number.isFinite(t) ? t : null;
+};
+
+/** El próximo desbloqueo de un activo: «nextEvent» o, si no está, el primero futuro de la lista de eventos. */
+function nextEventOf(it: any, nowMs: number): any | null {
+  const direct = it?.nextEvent ?? it?.upcomingEvent;
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) return direct;
+  const list = Array.isArray(it?.events) ? it.events : Array.isArray(it?.upcomingEvents) ? it.upcomingEvents : [];
+  const future = list
+    .map((e: any) => ({ e, t: llToMs(e?.timestamp ?? e?.date) }))
+    .filter((x: { t: number | null }) => x.t != null && x.t >= nowMs)
+    .sort((a: { t: number }, b: { t: number }) => a.t - b.t);
+  return future[0]?.e ?? null;
+}
+
+/**
+ * Convierte la respuesta de DefiLlama en filas para la tabla. `pct` es el tamaño del desbloqueo sobre lo que ya circula: con la cantidad de tokens
+ * y la oferta circulante, o con el valor en dólares y la capitalización. Solo se guardan los de los próximos `horizonDays` días y de al menos `minPct`.
+ */
+function parseLlamaEmissions(data: unknown, nowMs: number, horizonDays = 30, minPct = 0.5): UnlockRow[] {
+  const list = Array.isArray(data) ? data : Array.isArray((data as any)?.data) ? (data as any).data : [];
+  const out = new Map<string, UnlockRow>();
+  for (const it of list as any[]) {
+    const sym = String(it?.symbol ?? it?.ticker ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const symbol = `${sym}USDT`;
+    const ev = nextEventOf(it, nowMs);
+    if (!ev || !LL_SYMBOL.test(symbol)) continue;
+    const t = llToMs(ev.date ?? ev.timestamp ?? ev.unlockDate);
+    if (t == null || t < nowMs - 3_600_000 || t > nowMs + horizonDays * 86_400_000) continue;
+
+    let pct = llNum(ev.unlockPercentage ?? ev.percentOfCirculating);
+    if (pct == null) {
+      const amount = llTokens(ev.toUnlock ?? ev.noOfTokens ?? ev.tokens);
+      const circ = llNum(it.circSupply ?? it.circulatingSupply);
+      const price = llNum(it.tPrice ?? it.price);
+      const cap = llNum(it.mcap ?? it.marketCap);
+      if (amount != null && circ != null && circ > 0) pct = (amount / circ) * 100;
+      else if (amount != null && price != null && cap != null && cap > 0) pct = ((amount * price) / cap) * 100;
+    }
+    if (pct == null || !(pct >= minPct)) continue;
+    const at = new Date(t).toISOString();
+    const key = `${symbol}|${at}`;
+    const prev = out.get(key);
+    if (!prev || pct > prev.pct) out.set(key, { symbol, at, pct: Number(pct.toFixed(4)) });
+  }
+  return [...out.values()];
+}
+
+/** Qué forma tiene la respuesta (para el modo de diagnóstico): cuántos activos, y los nombres de los datos del primero. Nunca devuelve los datos en sí. */
+function describeLlama(data: unknown) {
+  const list = Array.isArray(data) ? data : Array.isArray((data as any)?.data) ? (data as any).data : [];
+  const first = list[0] as any;
+  return {
+    items: list.length,
+    keys: first && typeof first === "object" ? Object.keys(first).slice(0, 40) : [],
+    nextEventKeys: first?.nextEvent && typeof first.nextEvent === "object" ? Object.keys(first.nextEvent) : [],
+  };
+}
+
+// «Aprender» del período de prueba de Tokenomist: se guarda todo lo que la fuente entrega (respuestas completas y, aparte, cada evento ya leído) para que, cuando
+// termine la prueba, el sistema siga con lo aprendido: muchos desbloqueos se repiten con un ritmo fijo (por ejemplo, cada mes el mismo día) y se pueden proyectar.
+// Todo se lee con cuidado (los nombres de los datos pueden variar) y lo que no se entiende se descarta: nunca se inventa un dato. Sin red ni Deno, para probarlo en local.
+
+interface HistRow {
+  symbol: string; // par del bot, por ejemplo ZROUSDT
+  at: string; // ISO
+  pct: number; // % sobre lo que circula
+}
+interface TokenRef {
+  id: string; // identificador para pedir sus eventos (slug)
+  symbol: string; // símbolo, por ejemplo ZRO
+}
+
+const UL_SYMBOL = /^[A-Z0-9]{2,15}USDT$/;
+const DATE_KEYS = ["unlockDate", "date", "timestamp", "startDate"];
+
+const ulNum = (v: unknown): number | null => {
+  const n = typeof v === "number" ? v : v == null || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const ulToMs = (v: unknown): number | null => {
+  const n = ulNum(v);
+  if (n != null) return n < 1e11 ? n * 1000 : n;
+  const t = Date.parse(String(v ?? ""));
+  return Number.isFinite(t) ? t : null;
+};
+
+/** Recorre cualquier JSON y llama a `visit` con cada objeto (con tope de profundidad). */
+function ulWalk(node: unknown, visit: (o: Record<string, unknown>) => void, depth = 0) {
+  if (depth > 8 || node == null || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const x of node) ulWalk(x, visit, depth + 1);
+    return;
+  }
+  visit(node as Record<string, unknown>);
+  for (const v of Object.values(node as Record<string, unknown>)) ulWalk(v, visit, depth + 1);
+}
+
+/** El primer número que aparece con ese nombre dentro del objeto (a cualquier profundidad razonable). */
+function findNumber(node: unknown, key: string, depth = 0): number | null {
+  if (depth > 4 || node == null || typeof node !== "object") return null;
+  const o = node as Record<string, unknown>;
+  if (!Array.isArray(o) && key in o) {
+    const n = ulNum(o[key]);
+    if (n != null) return n;
+  }
+  for (const v of Object.values(o)) {
+    const n = findNumber(v, key, depth + 1);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+/** De la lista de tokens de la fuente saca {id, símbolo}: objetos que tengan algo parecido a un identificador y a un símbolo. */
+function extractTokens(json: unknown): TokenRef[] {
+  const out = new Map<string, TokenRef>();
+  ulWalk(json, (o) => {
+    const id = [o.slug, o.tokenId, o.id].find((x) => typeof x === "string" && x.trim() !== "") as string | undefined;
+    const sym = [o.tokenSymbol, o.symbol].find((x) => typeof x === "string" && x.trim() !== "") as string | undefined;
+    if (!id || !sym) return;
+    const symbol = sym.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!UL_SYMBOL.test(`${symbol}USDT`)) return;
+    if (!out.has(id)) out.set(id, { id: id.trim(), symbol });
+  });
+  return [...out.values()];
+}
+
+/**
+ * De la respuesta de los eventos de un token saca cada desbloqueo (fecha y tamaño en % de lo que circula): objetos con fecha y con «valueToMarketCap»
+ * (ya en %), o con valor en dólares y capitalización de mercado. Si hay varios el mismo día, queda el más grande.
+ */
+function extractEvents(json: unknown, symbol: string): HistRow[] {
+  const sym = `${String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, "")}USDT`;
+  if (!UL_SYMBOL.test(sym)) return [];
+  const cap = findNumber(json, "marketCap");
+  const out = new Map<string, HistRow>();
+  ulWalk(json, (o) => {
+    const dk = DATE_KEYS.find((k) => k in o && ulToMs(o[k]) != null);
+    if (!dk) return;
+    const t = ulToMs(o[dk]) as number;
+    let pct = findNumber(o, "valueToMarketCap");
+    if (pct == null) {
+      const value = findNumber(o, "cliffValue") ?? findNumber(o, "unlockValue");
+      const c = findNumber(o, "marketCap") ?? cap;
+      pct = value != null && c != null && c > 0 ? (value / c) * 100 : null;
+    }
+    if (pct == null || pct < 0) return;
+    const day = new Date(t).toISOString().slice(0, 10);
+    const key = `${sym}|${day}`;
+    const prev = out.get(key);
+    if (!prev || pct > prev.pct) out.set(key, { symbol: sym, at: new Date(t).toISOString(), pct: Number(pct.toFixed(4)) });
+  });
+  return [...out.values()];
+}
+
+const UL_DAY = 86_400_000;
+const ulMedian = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+/**
+ * Proyecta los próximos desbloqueos de los activos que se repiten con ritmo fijo: al menos 3 desbloqueos grandes (de `minPct` o más) cuyos tiempos
+ * entre uno y otro varían poco (±15 %, y no menos de 20 días de ritmo). El tamaño proyectado es la mediana de los últimos tres. Si el último evento
+ * conocido es muy viejo respecto de su ritmo, no se proyecta nada. Devuelve solo los que caen en los próximos `horizonDays` días.
+ */
+function projectRecurring(history: HistRow[], nowMs: number, horizonDays = 30, minPct = 0.5): HistRow[] {
+  const bySymbol = new Map<string, HistRow[]>();
+  for (const h of history) {
+    if (!(h.pct >= minPct) || !UL_SYMBOL.test(h.symbol)) continue;
+    const list = bySymbol.get(h.symbol) ?? [];
+    list.push(h);
+    bySymbol.set(h.symbol, list);
+  }
+  const out: HistRow[] = [];
+  for (const [symbol, rows] of bySymbol) {
+    // Se juntan los de días seguidos (un mismo desbloqueo registrado en dos fechas pegadas) y se queda el más grande.
+    const evs: Array<{ t: number; pct: number }> = [];
+    for (const r of rows.map((x) => ({ t: Date.parse(x.at), pct: x.pct })).filter((x) => Number.isFinite(x.t)).sort((a, b) => a.t - b.t)) {
+      const last = evs[evs.length - 1];
+      if (last && r.t - last.t < 3 * UL_DAY) last.pct = Math.max(last.pct, r.pct);
+      else evs.push({ ...r });
+    }
+    const recent = evs.slice(-6);
+    if (recent.length < 3) continue;
+    const gaps = recent.slice(1).map((e, i) => (e.t - recent[i].t) / UL_DAY);
+    const gap = ulMedian(gaps);
+    if (gap < 20 || gaps.some((g) => Math.abs(g - gap) > gap * 0.15)) continue;
+    const lastT = recent[recent.length - 1].t;
+    if (nowMs - lastT > gap * 2.5 * UL_DAY) continue;
+    const pct = ulMedian(recent.slice(-3).map((e) => e.pct));
+    for (let t = lastT + gap * UL_DAY; t <= nowMs + horizonDays * UL_DAY; t += gap * UL_DAY) {
+      if (t < nowMs - UL_DAY) continue;
+      out.push({ symbol, at: new Date(Math.round(t)).toISOString(), pct: Number(pct.toFixed(4)) });
+    }
+  }
+  return out;
+}
+
+// Carga el calendario de desbloqueos de tokens en la tabla token_unlocks para el filtro del bot.
+//
+//   Fuentes (se elige con el secreto UNLOCKS_SOURCE):
+//     · «defillama»  → calendario abierto de DefiLlama, sin clave y sin costo. Si UNLOCKS_SOURCE no existe y no hay clave de Tokenomist, es la que se usa.
+//     · «tokenomist» → Tokenomist (pago; necesita TOKENOMIST_API_KEY). Es la que se usa si existe la clave y no se eligió otra.
+//   Datos cargados a mano (source = 'manual') se respetan: esta función no los borra hasta que pasan.
+//
+//   Se llama una vez por día (pg_cron). Si ya se cargó hace menos de 20 horas, no hace nada. Con el encabezado x-cron-secret
+//   (= EXCHANGE_CRON_SECRET) se puede forzar una carga, y con {"probe": true} en el cuerpo se ve cómo responde la fuente sin guardar nada.
+
+
+const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+const API = "https://api.tokenomist.ai/v5/unlock/events/upcoming";
+const LLAMA_URL = Deno.env.get("LLAMA_EMISSIONS_URL") ?? "https://api.llama.fi/emissions";
+const HORIZON_DAYS = 30; // el filtro del bot mira como mucho 30 días adelante
+const MIN_VALUE_TO_MCAP = 0.5; // ignora desbloqueos menores al 0,5 % de lo que circula
+const PAGE_SIZE = 100;
+const MAX_PAGES = 6;
+const MIN_GAP_MS = 20 * 3_600_000;
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+
+// ─── Aprender del período de prueba ─────────────────────────────────────────
+// Se bajan y guardan las respuestas completas de Tokenomist (lista de tokens y eventos de cada uno, con hasta un año hacia atrás) mientras dura la prueba,
+// y cada desbloqueo leído se acumula en unlock_history. De ahí se proyectan los que se repiten con ritmo fijo (ver unlockLearn.ts).
+// Tope duro: no se vuelve a pedir un token ya bajado, así que nadie puede gastar la cuota llamando de afuera.
+
+const LEARN_BATCH = 20; // tokens por corrida (con 1,1 s entre pedidos entra en el tiempo de la función)
+const LEARN_GAP_MS = 1_100; // la fuente permite 60 pedidos por minuto
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function tokGet(apiKey: string, path: string, q: Record<string, string> = {}): Promise<{ status: number; body: any }> {
+  const qs = new URLSearchParams(q).toString();
+  const res = await fetch(`https://api.tokenomist.ai${path}${qs ? `?${qs}` : ""}`, { headers: { "x-api-key": apiKey, Accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+async function appendHistory(rows: HistRow[], source: string) {
+  const at = new Date().toISOString();
+  const payload = rows.map((r) => ({ ...r, source, seen_at: at }));
+  for (let i = 0; i < payload.length; i += 200) await admin.from("unlock_history").upsert(payload.slice(i, i + 200), { onConflict: "symbol,at,source", ignoreDuplicates: false });
+}
+
+async function learnStep(apiKey: string, now: number) {
+  const out = { tokens: 0, fetched: 0, events: 0, pending: 0, error: null as string | null, shape: null as unknown };
+  // Freno: si la fuente ya falló varias veces (ruta equivocada, clave vencida, fin de la prueba), no se sigue pidiendo (la cuota es de 1.000 por mes).
+  // Para reintentar después de arreglarlo:  delete from unlock_raw where kind in ('tokens_error', 'events_error');
+  const { count: failures } = await admin.from("unlock_raw").select("id", { count: "exact", head: true }).in("kind", ["tokens_error", "events_error"]);
+  if ((failures ?? 0) >= 3) {
+    out.error = "La fuente falló 3 veces seguidas; se frenó para no gastar la cuota. Mirá la tabla unlock_raw (kind terminado en _error) y, al arreglarlo, borrá esas filas para reintentar.";
+    return out;
+  }
+  // 1) lista de tokens (una vez por mes)
+  const { data: stored } = await admin.from("unlock_raw").select("response, fetched_at").eq("kind", "tokens").order("fetched_at", { ascending: false }).limit(1).maybeSingle();
+  let tokenJson: unknown = stored && now - new Date(stored.fetched_at as string).getTime() < 30 * 86_400_000 ? stored.response : null;
+  if (!tokenJson) {
+    const r = await tokGet(apiKey, "/v5/token/list", { page: "1", pageSize: "100" });
+    await admin.from("unlock_raw").insert({ kind: r.status === 200 && r.body ? "tokens" : "tokens_error", request: "/v5/token/list", response: { status: r.status, body: r.body } });
+    if (r.status !== 200 || !r.body) {
+      out.error = `Lista de tokens: respondió ${r.status} ${JSON.stringify(r.body ?? {}).slice(0, 200)}`;
+      return out;
+    }
+    tokenJson = { status: r.status, body: r.body };
+  }
+  const tokens = extractTokens(tokenJson);
+  out.tokens = tokens.length;
+  if (!tokens.length) {
+    out.error = "No se pudo leer ningún token de la lista (¿otro formato?).";
+    out.shape = JSON.stringify(tokenJson).slice(0, 400);
+    return out;
+  }
+  // 2) eventos de cada token que todavía no se bajó
+  const { data: done } = await admin.from("unlock_raw").select("token").eq("kind", "events").limit(5000);
+  const doneSet = new Set((done ?? []).map((r: { token: string }) => r.token));
+  const todo = tokens.filter((t) => !doneSet.has(t.id));
+  out.pending = Math.max(0, todo.length - LEARN_BATCH);
+  for (const tk of todo.slice(0, LEARN_BATCH)) {
+    await sleep(LEARN_GAP_MS);
+    const q: Record<string, string> = { start: isoDay(now, -365), end: isoDay(now, 30) };
+    let r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, q);
+    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(r.body?.errorMessage ?? ""));
+    if (r.status === 422 && allowed) {
+      await sleep(LEARN_GAP_MS);
+      r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, { start: allowed[1], end: allowed[2] });
+    }
+    const raw = JSON.stringify({ status: r.status, body: r.body });
+    if (r.status !== 200 || !r.body) {
+      // Se guarda lo que respondió (para ver el motivo) y se corta la tanda: no se sigue pidiendo si el primero ya falló.
+      await admin.from("unlock_raw").insert({ kind: "events_error", token: tk.id, request: `/v5/unlock/events/${tk.id}`, response: { status: r.status, body: r.body } });
+      out.error = `Eventos de ${tk.id}: respondió ${r.status} ${raw.slice(0, 200)}`;
+      break;
+    }
+    await admin.from("unlock_raw").insert({ kind: "events", token: tk.id, request: `/v5/unlock/events/${tk.id}`, response: raw.length < 900_000 ? JSON.parse(raw) : { status: r.status, truncated: true } });
+    out.fetched++;
+    if (r.status === 200 && r.body) {
+      const ev = extractEvents(r.body, tk.symbol);
+      out.events += ev.length;
+      await appendHistory(ev, "tokenomist");
+      if (!out.shape && ev.length === 0) out.shape = JSON.stringify(r.body).slice(0, 400); // para ver el formato si no se entendió nada
+    }
+  }
+  return out;
+}
+
+/** Proyecta los desbloqueos con ritmo fijo a partir de lo acumulado y los carga como fuente «projected» (solo donde la fuente principal no trae nada cerca). */
+async function projectStep(now: number) {
+  const { data } = await admin.from("unlock_history").select("symbol, at, pct").limit(20000);
+  const proj = projectRecurring(((data ?? []) as Array<{ symbol: string; at: string; pct: number }>).map((r) => ({ symbol: r.symbol, at: r.at, pct: Number(r.pct) })), now, HORIZON_DAYS, MIN_VALUE_TO_MCAP);
+  const { data: real } = await admin.from("token_unlocks").select("symbol, at").neq("source", "projected").gte("at", new Date(now - 86_400_000).toISOString());
+  const near = new Map<string, number[]>();
+  for (const r of (real ?? []) as Array<{ symbol: string; at: string }>) near.set(r.symbol, [...(near.get(r.symbol) ?? []), Date.parse(r.at)]);
+  const rows = proj.filter((p) => !(near.get(p.symbol) ?? []).some((t) => Math.abs(t - Date.parse(p.at)) < 5 * 86_400_000));
+  await admin.from("token_unlocks").delete().eq("source", "projected");
+  if (rows.length) {
+    const at = new Date().toISOString();
+    await admin.from("token_unlocks").upsert(rows.map((r) => ({ ...r, source: "projected", updated_at: at })), { onConflict: "symbol,at" });
+  }
+  return rows.length;
+}
+
+const stamp = () => new Date().toISOString();
+
+/** Guarda las filas de una fuente y borra las de esa misma fuente que ya no figuran (y todo lo que ya pasó). */
+async function save(rows: UnlockRow[], source: string, now: number) {
+  const at = stamp();
+  const unique = new Map(rows.map((r) => [`${r.symbol}|${r.at}`, r]));
+  const payload = [...unique.values()].map((r) => ({ ...r, source, updated_at: at }));
+  for (let i = 0; i < payload.length; i += 200) {
+    const { error } = await admin.from("token_unlocks").upsert(payload.slice(i, i + 200), { onConflict: "symbol,at" });
+    if (error) return { error: error.message, loaded: 0 };
+  }
+  await admin.from("token_unlocks").delete().lt("at", new Date(now - 86_400_000).toISOString());
+  if (payload.length) await admin.from("token_unlocks").delete().eq("source", source).lt("updated_at", at);
+  return { error: null as string | null, loaded: payload.length };
+}
+
+async function loadLlama(now: number, probe: boolean): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(LLAMA_URL, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(25_000) });
+  } catch (e) {
+    return json({ ok: false, error: `No se pudo consultar DefiLlama: ${e instanceof Error ? e.message : "error"}` }, 502);
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok || !body) return json({ ok: false, error: `DefiLlama respondió ${res.status}`, detail: JSON.stringify(body ?? {}).slice(0, 300) }, 502);
+  const rows = parseLlamaEmissions(body, now, HORIZON_DAYS, MIN_VALUE_TO_MCAP);
+  if (probe) return json({ ok: true, probe: true, source: "defillama", shape: describeLlama(body), parsed: rows.length, sample: rows.slice(0, 5) });
+  // Una respuesta vacía o que no se entiende no borra lo que ya había cargado.
+  if (!rows.length) return json({ ok: false, error: "DefiLlama respondió, pero no se pudo leer ningún desbloqueo (¿cambió el formato?). No se tocó la tabla.", shape: describeLlama(body) }, 502);
+  const r = await save(rows, "defillama", now);
+  if (r.error) return json({ ok: false, error: r.error }, 500);
+  await appendHistory(rows, "defillama");
+  const projected = await projectStep(now).catch(() => 0);
+  return json({ ok: true, source: "defillama", loaded: r.loaded, projected });
+}
+
+Deno.serve(async (req) => {
+  const cron = Deno.env.get("EXCHANGE_CRON_SECRET");
+  const force = !!cron && req.headers.get("x-cron-secret") === cron;
+  const reqBody = (await req.json().catch(() => ({}))) as { probe?: unknown; learn?: unknown } | null;
+  const probe = force && reqBody?.probe === true;
+  const learnOnly = reqBody?.learn === true;
+
+  const apiKey = Deno.env.get("TOKENOMIST_API_KEY");
+  const chosen = (Deno.env.get("UNLOCKS_SOURCE") ?? "").toLowerCase();
+  const source = chosen === "defillama" || chosen === "tokenomist" ? chosen : apiKey ? "tokenomist" : "defillama";
+
+  // Solo aprender (lo llama el cron cada 15 minutos mientras dura la prueba): baja los tokens que falten y vuelve a proyectar. Sin nada pendiente no hace ninguna llamada.
+  if (learnOnly) {
+    if (!apiKey) return json({ ok: true, learn: "sin clave de Tokenomist: no hay nada que aprender" });
+    const l = await learnStep(apiKey, Date.now()).catch((e) => ({ error: e instanceof Error ? e.message : "error", fetched: 0 }));
+    if ((l as { fetched?: number }).fetched) await projectStep(Date.now()).catch(() => 0);
+    return json({ ok: !(l as { error?: string | null }).error, learn: l }, (l as { error?: string | null }).error ? 502 : 200);
+  }
+
+  if (!force) {
+    const { data: last } = await admin.from("token_unlocks").select("updated_at").eq("source", source).order("updated_at", { ascending: false }).limit(1).maybeSingle();
+    if (last && Date.now() - new Date(last.updated_at as string).getTime() < MIN_GAP_MS) return json({ ok: true, skipped: true });
+  }
+  if (source === "defillama") return await loadLlama(Date.now(), probe);
+  if (!apiKey) return json({ ok: false, error: "Falta el secreto TOKENOMIST_API_KEY (o elegí UNLOCKS_SOURCE=defillama)." }, 500);
+
+  const now = Date.now();
+  const rows: UnlockRow[] = [];
+  let calls = 0;
+  let credit: unknown = null;
+  let end = isoDay(now, HORIZON_DAYS);
+  let retried = false;
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const q = new URLSearchParams({ start: isoDay(now), end, minValueToMarketCap: String(MIN_VALUE_TO_MCAP), page: String(page), pageSize: String(PAGE_SIZE) });
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 15_000);
+    let res: Response;
+    try {
+      res = await fetch(`${API}?${q}`, { headers: { "x-api-key": apiKey, Accept: "application/json" }, signal: ctl.signal });
+    } catch (e) {
+      return json({ ok: false, error: `No se pudo consultar Tokenomist: ${e instanceof Error ? e.message : "error"}`, calls }, 502);
+    } finally {
+      clearTimeout(timer);
+    }
+    calls++;
+    const body = await res.json().catch(() => null);
+    // La prueba gratuita solo deja pedir cierto rango de fechas («date must be within the allowed range: A to B»): se ajusta y se reintenta una vez.
+    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(body?.errorMessage ?? ""));
+    if (res.status === 422 && allowed && !retried && allowed[2] < end) {
+      retried = true;
+      end = allowed[2];
+      page--;
+      continue;
+    }
+    if (!res.ok || !body || body.status === false) return json({ ok: false, error: `Tokenomist respondió ${res.status}`, detail: JSON.stringify(body ?? {}).slice(0, 300), calls }, 502);
+    rows.push(...parseUpcomingUnlocks(body.data));
+    credit = body.metadata?.credit ?? credit;
+    const pages = Number(body.metadata?.totalPages ?? 1);
+    if (!(page < pages)) break;
+  }
+
+  if (probe) return json({ ok: true, probe: true, source: "tokenomist", parsed: rows.length, calls });
+  const saved = await save(rows, "tokenomist", now);
+  if (saved.error) return json({ ok: false, error: saved.error, calls }, 500);
+  await appendHistory(rows, "tokenomist");
+  const learn = await learnStep(apiKey, now).catch((e) => ({ error: e instanceof Error ? e.message : "error" }));
+  const projected = await projectStep(now).catch(() => 0);
+  return json({ ok: true, source: "tokenomist", loaded: saved.loaded, calls, credit, learn, projected });
+
+});
