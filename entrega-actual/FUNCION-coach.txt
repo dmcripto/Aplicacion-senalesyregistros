@@ -1,0 +1,885 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+import Anthropic from "npm:@anthropic-ai/sdk@0";
+
+// ─── VELTRIX · Resumen diario y rachas ──────────────────────────────────────
+// Cada noche (21:00 en la zona horaria de cada persona) se manda por Telegram y como notificación un resumen del día:
+// operaciones cerradas, resultado en R (y en dinero si cargó su capital) y tres rachas.
+// Sin dependencias de Deno ni de Node, para poder probarlo en local.
+
+interface SumTrade {
+  direction: "LONG" | "SHORT";
+  entry: number;
+  tp: number;
+  sl: number;
+  date: string; // apertura
+  outcome: string; // ABIERTA | TP | SL | MANUAL
+  exit: number | null;
+  closed_at: string | null;
+}
+
+interface SumProfile {
+  timezone: string | null;
+  lang?: string | null;
+  capital?: number | null;
+  risk_pct?: number | null;
+  currency?: string | null;
+  daily_loss_limit?: number | null;
+  daily_trade_limit?: number | null;
+}
+
+interface DaySummary {
+  day: string; // YYYY-MM-DD en la zona de la persona
+  opened: number; // operaciones abiertas hoy
+  closed: number;
+  wins: number;
+  losses: number;
+  netR: number;
+  stillOpen: number;
+  activeStreak: number; // días seguidos con actividad
+  greenStreak: number; // días seguidos cerrando en verde
+  disciplineStreak: number | null; // días con actividad dentro de los límites (null si no hay límites)
+}
+
+const SUMMARY_HOUR = 21; // hora local del aviso
+const LOOKBACK_DAYS = 60;
+
+/** R obtenido: TP = +R:R planificado · SL = −1 · MANUAL = (salida−entrada)/riesgo. */
+function rOf(t: SumTrade): number {
+  const risk = Math.abs(t.entry - t.sl);
+  if (t.outcome === "ABIERTA" || risk <= 0) return 0;
+  const dir = t.direction === "LONG" ? 1 : -1;
+  if (t.outcome === "TP") return (dir * (t.tp - t.entry)) / risk;
+  if (t.outcome === "SL") return -1;
+  return (dir * ((t.exit ?? t.entry) - t.entry)) / risk;
+}
+
+const validTz = (tz: string | null | undefined): string | null => {
+  if (!tz) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    return null;
+  }
+};
+
+/** Día calendario (YYYY-MM-DD) de un instante en una zona horaria. */
+function localDay(ts: number | string | Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts));
+}
+
+function localHour(ts: number | Date, tz: string): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hour12: false }).format(new Date(ts));
+  return Number(h) % 24;
+}
+
+const shiftDay = (day: string, delta: number): string => {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + delta)).toISOString().slice(0, 10);
+};
+
+/** ¿Ya es la hora del resumen para esta persona? (entre las 21:00 y la medianoche). */
+function isSummaryTime(now: number, tz: string | null | undefined): boolean {
+  const z = validTz(tz);
+  return !!z && localHour(now, z) >= SUMMARY_HOUR;
+}
+
+function summarize(trades: SumTrade[], p: SumProfile, now: number): DaySummary | null {
+  const tz = validTz(p.timezone);
+  if (!tz) return null;
+  const today = localDay(now, tz);
+
+  const opened = new Map<string, number>(); // día → operaciones abiertas
+  const closedR = new Map<string, number>(); // día → R neto de lo cerrado
+  const closedN = new Map<string, number>();
+  let stillOpen = 0;
+  let wins = 0;
+  let losses = 0;
+  for (const t of trades) {
+    const od = localDay(t.date, tz);
+    opened.set(od, (opened.get(od) ?? 0) + 1);
+    if (t.outcome === "ABIERTA") {
+      stillOpen++;
+      continue;
+    }
+    const cd = localDay(t.closed_at ?? t.date, tz);
+    const r = rOf(t);
+    closedR.set(cd, (closedR.get(cd) ?? 0) + r);
+    closedN.set(cd, (closedN.get(cd) ?? 0) + 1);
+    if (cd === today) {
+      if (r > 0) wins++;
+      else if (r < 0) losses++;
+    }
+  }
+
+  const active = (d: string) => (opened.get(d) ?? 0) > 0 || (closedN.get(d) ?? 0) > 0;
+  const netOf = (d: string) => closedR.get(d) ?? 0;
+
+  let activeStreak = 0;
+  for (let i = 0; i < LOOKBACK_DAYS; i++) {
+    if (!active(shiftDay(today, -i))) break;
+    activeStreak++;
+  }
+
+  let greenStreak = 0;
+  for (let i = 0; i < LOOKBACK_DAYS; i++) {
+    const d = shiftDay(today, -i);
+    if (!((closedN.get(d) ?? 0) > 0 && netOf(d) > 0)) break;
+    greenStreak++;
+  }
+
+  // Disciplina: los días sin operar no cortan la racha; cuenta los días con actividad hasta el primero que rompió un límite.
+  const lossLimit = p.daily_loss_limit && p.daily_loss_limit > 0 ? p.daily_loss_limit : null;
+  const tradeLimit = p.daily_trade_limit && p.daily_trade_limit > 0 ? p.daily_trade_limit : null;
+  let disciplineStreak: number | null = null;
+  if (lossLimit != null || tradeLimit != null) {
+    disciplineStreak = 0;
+    for (let i = 0; i < LOOKBACK_DAYS; i++) {
+      const d = shiftDay(today, -i);
+      if (!active(d)) continue;
+      const brokeTrades = tradeLimit != null && (opened.get(d) ?? 0) > tradeLimit;
+      const brokeLoss = lossLimit != null && netOf(d) <= -lossLimit;
+      if (brokeTrades || brokeLoss) break;
+      disciplineStreak++;
+    }
+  }
+
+  return {
+    day: today,
+    opened: opened.get(today) ?? 0,
+    closed: closedN.get(today) ?? 0,
+    wins,
+    losses,
+    netR: netOf(today),
+    stillOpen,
+    activeStreak,
+    greenStreak,
+    disciplineStreak,
+  };
+}
+
+/** Hoy no pasó nada: no se manda nada, para no molestar. */
+const hasActivity = (s: DaySummary) => s.opened > 0 || s.closed > 0;
+
+const fmtR = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
+const SYMBOLS: Record<string, string> = { USD: "$", USDT: "$", USDC: "$", EUR: "€", GBP: "£" };
+const fmtMoney = (n: number, cur: string) => {
+  const sym = SYMBOLS[cur.toUpperCase()] ?? cur.toUpperCase() + " ";
+  const body = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${n < 0 ? "−" : n > 0 ? "+" : ""}${sym}${body}`;
+};
+
+const days = (n: number, en: boolean) => (en ? `${n} day${n === 1 ? "" : "s"}` : `${n} día${n === 1 ? "" : "s"}`);
+
+/** Mensaje en HTML de Telegram. */
+function buildSummaryMessage(s: DaySummary, p: SumProfile, lang: "es" | "en"): string {
+  const en = lang === "en";
+  const lines: string[] = [];
+  lines.push(`📊 <b>${en ? "Today's summary" : "Resumen de hoy"}</b> · VELTRIX`);
+  lines.push("");
+
+  if (s.closed > 0) {
+    lines.push(
+      `${en ? "Closed" : "Cerradas"}: <b>${s.closed}</b> (${s.wins} ✅ · ${s.losses} ❌)`,
+    );
+    const unit = p.capital && p.risk_pct && p.capital > 0 && p.risk_pct > 0 ? (p.capital * p.risk_pct) / 100 : null;
+    const money = unit != null ? ` · ${fmtMoney(s.netR * unit, p.currency ?? "USD")}` : "";
+    lines.push(`${en ? "Result" : "Resultado"}: <b>${fmtR(s.netR)}</b>${money}`);
+  } else {
+    lines.push(en ? "No trades closed today." : "Hoy no cerraste operaciones.");
+  }
+  if (s.opened > 0) lines.push(`${en ? "Opened today" : "Abiertas hoy"}: ${s.opened}`);
+  if (s.stillOpen > 0) lines.push(`${en ? "Still open" : "Siguen abiertas"}: ${s.stillOpen}`);
+
+  const streaks: string[] = [];
+  if (s.activeStreak >= 2) streaks.push(en ? `🔥 Logging for <b>${days(s.activeStreak, en)}</b> in a row` : `🔥 Registrás hace <b>${days(s.activeStreak, en)}</b> seguidos`);
+  if (s.greenStreak >= 2) streaks.push(en ? `🟢 <b>${days(s.greenStreak, en)}</b> in the green in a row` : `🟢 <b>${days(s.greenStreak, en)}</b> en verde seguidos`);
+  if (s.disciplineStreak != null && s.disciplineStreak >= 2)
+    streaks.push(en ? `🛡️ <b>${days(s.disciplineStreak, en)}</b> within your limits` : `🛡️ <b>${days(s.disciplineStreak, en)}</b> dentro de tus límites`);
+  if (streaks.length) {
+    lines.push("");
+    lines.push(...streaks);
+  }
+
+  lines.push("");
+  if (s.closed === 0) lines.push(en ? "Resting is part of the plan too." : "Descansar también es parte del plan.");
+  else if (s.netR > 0) lines.push(en ? "Good day. Same plan tomorrow." : "Buen día. Mañana, el mismo plan.");
+  else if (s.netR < 0) lines.push(en ? "Tough day. Check if you followed your plan: a loss within the plan is not a mistake." : "Día difícil. Revisá si seguiste tu plan: una pérdida dentro del plan no es un error.");
+  else lines.push(en ? "Flat day. Consistency is what matters." : "Día parejo. Lo que importa es la constancia.");
+  return lines.join("\n");
+}
+
+/** Texto corto para la notificación del celular. */
+function buildSummaryPush(s: DaySummary, lang: "es" | "en"): { title: string; body: string } {
+  const en = lang === "en";
+  const parts: string[] = [];
+  if (s.closed > 0) parts.push(fmtR(s.netR));
+  else parts.push(en ? "no closed trades" : "sin cerradas");
+  if (s.activeStreak >= 2) parts.push(`🔥 ${days(s.activeStreak, en)}`);
+  return { title: `📊 ${en ? "Today's summary" : "Resumen de hoy"}`, body: parts.join(" · ") };
+}
+
+// ─── Envío ──────────────────────────────────────────────────────────────────
+
+interface Deps {
+  supabase: any;
+  /** Manda un mensaje de Telegram; devuelve el resultado de la API. */
+  telegram: (chatId: number, html: string) => Promise<{ ok?: boolean; error_code?: number } | void>;
+  push: (messages: Array<{ to: string; title: string; body: string; data?: Record<string, unknown> }>) => Promise<void>;
+}
+
+/**
+ * Revisa a quién le toca el resumen (a partir de las 21:00 de su zona horaria, una vez por día) y se lo manda.
+ * Devuelve cuántos resúmenes se enviaron.
+ */
+async function sendDailySummaries(deps: Deps, now = Date.now()): Promise<number> {
+  const { supabase } = deps;
+  const { data: links } = await supabase.from("telegram_links").select("user_id,chat_id");
+  const { data: tokens } = await supabase.from("device_tokens").select("user_id,expo_push_token");
+  const chatOf = new Map<string, number>((links ?? []).map((l: any) => [l.user_id as string, Number(l.chat_id)]));
+  const tokensOf = new Map<string, string[]>();
+  for (const t of tokens ?? []) tokensOf.set(t.user_id, [...(tokensOf.get(t.user_id) ?? []), t.expo_push_token]);
+  const ids = [...new Set([...chatOf.keys(), ...tokensOf.keys()])];
+  if (!ids.length) return 0;
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id,timezone,lang,capital,risk_pct,currency,daily_loss_limit,daily_trade_limit,daily_summary,last_summary_date")
+    .in("id", ids);
+
+  let sent = 0;
+  for (const p of profiles ?? []) {
+    if (p.daily_summary === false) continue;
+    const tz = validTz(p.timezone);
+    if (!tz || !isSummaryTime(now, tz)) continue;
+    const today = localDay(now, tz);
+    if (p.last_summary_date === today) continue;
+
+    // Se marca antes de armar el mensaje: si algo falla, no se reintenta cada 10 minutos toda la noche.
+    await supabase.from("profiles").update({ last_summary_date: today }).eq("id", p.id);
+
+    const since = new Date(now - (LOOKBACK_DAYS + 10) * 86_400_000).toISOString();
+    const { data: trades } = await supabase
+      .from("trades")
+      .select("direction,entry,tp,sl,date,outcome,exit,closed_at")
+      .eq("user_id", p.id)
+      .gte("date", since)
+      .limit(2000);
+    const s = summarize((trades ?? []) as SumTrade[], p, now);
+    if (!s || !hasActivity(s)) continue;
+
+    const lang: "es" | "en" = p.lang === "en" ? "en" : "es";
+    const chat = chatOf.get(p.id);
+    if (chat != null) {
+      const r = await deps.telegram(chat, buildSummaryMessage(s, p, lang));
+      if (r && r.ok === false && r.error_code === 403) await supabase.from("telegram_links").delete().eq("user_id", p.id);
+    }
+    const mine = tokensOf.get(p.id);
+    if (mine?.length) {
+      const msg = buildSummaryPush(s, lang);
+      await deps.push(mine.map((to) => ({ to, ...msg })));
+    }
+    sent++;
+  }
+  return sent;
+}
+
+// ─── VELTRIX · Coach de disciplina con IA ───────────────────────────────────
+// Los números se calculan acá, con código (exactos y comprobables). La IA solo recibe esos datos ya calculados
+// y los explica en lenguaje simple: no calcula nada y no inventa cifras. No da señales ni consejos de inversión.
+// Sin dependencias de Deno ni de Node, para poder probarlo en local.
+
+
+interface CoachTrade extends SumTrade {
+  symbol: string;
+  notes?: string | null;
+  tags?: string[] | null;
+}
+
+interface CoachProfile {
+  timezone?: string | null;
+  lang?: string | null;
+  daily_loss_limit?: number | null;
+  daily_trade_limit?: number | null;
+}
+
+const MIN_CLOSED = 10; // con menos operaciones cerradas no hay patrones confiables
+const PERIOD_DAYS = 45;
+const MIN_GROUP = 3; // un grupo con menos operaciones no se usa para sacar conclusiones
+
+interface Group {
+  name: string;
+  n: number;
+  netR: number;
+  avgR: number;
+  winRate: number; // %
+}
+
+interface CoachFacts {
+  periodDays: number;
+  closed: number;
+  winRate: number; // %
+  netR: number;
+  avgR: number;
+  profitFactor: number | null;
+  avgWinR: number | null;
+  avgLossR: number | null;
+  plannedRR: number | null; // R:R medio planeado
+  bySymbol: { best: Group | null; worst: Group | null };
+  byWeekday: { best: Group | null; worst: Group | null };
+  byDayPart: { best: Group | null; worst: Group | null };
+  byDirection: Group[];
+  afterLoss: { n: number; avgR: number | null; vsOverall: number | null }; // operaciones abiertas hasta 60 min después de un SL
+  heavyDays: { days: number; avgR: number | null; limit: number | null }; // días con más operaciones que lo normal / el límite propio
+  holdMinutes: { wins: number | null; losses: number | null }; // mediana
+  withNotes: { pct: number; avgRWith: number | null; avgRWithout: number | null };
+}
+
+const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+const median = (a: number[]) => {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+const WEEKDAYS_ES = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const WEEKDAYS_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function group(name: string, rs: number[]): Group {
+  const wins = rs.filter((r) => r > 0).length;
+  return { name, n: rs.length, netR: round(rs.reduce((a, b) => a + b, 0)), avgR: round(rs.reduce((a, b) => a + b, 0) / rs.length), winRate: Math.round((wins / rs.length) * 100) };
+}
+
+function bestWorst(map: Map<string, number[]>): { best: Group | null; worst: Group | null } {
+  const groups = [...map.entries()].filter(([, rs]) => rs.length >= MIN_GROUP).map(([k, rs]) => group(k, rs));
+  if (groups.length < 2) return { best: null, worst: null };
+  const sorted = [...groups].sort((a, b) => b.avgR - a.avgR);
+  const best = sorted[0];
+  const worst = sorted[sorted.length - 1];
+  return { best: best.avgR > 0 ? best : null, worst: worst.avgR < 0 ? worst : null };
+}
+
+const push = (m: Map<string, number[]>, k: string, v: number) => m.set(k, [...(m.get(k) ?? []), v]);
+
+/** Franja del día según la hora local de apertura. */
+function dayPart(hour: number, en: boolean): string {
+  if (hour >= 6 && hour < 12) return en ? "morning (6-12)" : "mañana (6-12)";
+  if (hour >= 12 && hour < 18) return en ? "afternoon (12-18)" : "tarde (12-18)";
+  if (hour >= 18) return en ? "evening (18-24)" : "noche (18-24)";
+  return en ? "night (0-6)" : "madrugada (0-6)";
+}
+
+const localParts = (ts: string | number, tz: string) => {
+  const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", hour: "2-digit", hour12: false });
+  const parts = f.formatToParts(new Date(ts));
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const wd = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+  return { hour, weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd) };
+};
+
+function computeFacts(trades: CoachTrade[], p: CoachProfile, now: number): CoachFacts | null {
+  const en = p.lang === "en";
+  const tz = p.timezone && isValidTz(p.timezone) ? p.timezone : "UTC";
+  const since = now - PERIOD_DAYS * 86_400_000;
+  const closed = trades
+    .filter((t) => t.outcome !== "ABIERTA" && new Date(t.closed_at ?? t.date).getTime() >= since)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  if (closed.length < MIN_CLOSED) return null;
+
+  const rs = closed.map(rOf);
+  const wins = rs.filter((r) => r > 0);
+  const losses = rs.filter((r) => r < 0);
+  const sumWins = wins.reduce((a, b) => a + b, 0);
+  const sumLoss = Math.abs(losses.reduce((a, b) => a + b, 0));
+  const overall = rs.reduce((a, b) => a + b, 0) / rs.length;
+
+  const bySymbol = new Map<string, number[]>();
+  const byWeekday = new Map<string, number[]>();
+  const byPart = new Map<string, number[]>();
+  const byDir = new Map<string, number[]>();
+  const perDay = new Map<string, number[]>();
+  closed.forEach((t, i) => {
+    const r = rs[i];
+    push(bySymbol, t.symbol, r);
+    const { hour, weekday } = localParts(t.date, tz);
+    push(byWeekday, (en ? WEEKDAYS_EN : WEEKDAYS_ES)[weekday], r);
+    push(byPart, dayPart(hour, en), r);
+    push(byDir, t.direction === "LONG" ? (en ? "buys (LONG)" : "compras (LONG)") : en ? "sells (SHORT)" : "ventas (SHORT)", r);
+    push(perDay, localDay(t.date, tz), r);
+  });
+
+  // Después de una pérdida: operaciones abiertas hasta 60 min después de que se cerró un SL.
+  const slCloses = closed.filter((t) => t.outcome === "SL" || rOf(t) < 0).map((t) => new Date(t.closed_at ?? t.date).getTime());
+  const afterLossR: number[] = [];
+  closed.forEach((t, i) => {
+    const opened = new Date(t.date).getTime();
+    if (slCloses.some((c) => opened > c && opened - c <= 3_600_000)) afterLossR.push(rs[i]);
+  });
+  const afterAvg = avg(afterLossR);
+
+  // Días "cargados": más operaciones que el límite propio, o el doble de lo habitual si no hay límite.
+  const counts = [...perDay.values()].map((a) => a.length);
+  const limit = p.daily_trade_limit && p.daily_trade_limit > 0 ? p.daily_trade_limit : null;
+  const threshold = limit ?? Math.max(3, Math.ceil((median(counts) ?? 1) * 2));
+  const heavy = [...perDay.values()].filter((a) => a.length > threshold);
+  const heavyR = heavy.flat();
+
+  const holdW: number[] = [];
+  const holdL: number[] = [];
+  closed.forEach((t, i) => {
+    if (!t.closed_at) return;
+    const mins = (new Date(t.closed_at).getTime() - new Date(t.date).getTime()) / 60_000;
+    if (mins < 0 || mins > 60 * 24 * 14) return;
+    (rs[i] > 0 ? holdW : holdL).push(mins);
+  });
+
+  const withNotes = closed.map((t) => !!(t.notes && t.notes.trim()) || !!t.tags?.length);
+  const rWith = rs.filter((_, i) => withNotes[i]);
+  const rWithout = rs.filter((_, i) => !withNotes[i]);
+
+  const planned = closed.map((t) => {
+    const risk = Math.abs(t.entry - t.sl);
+    return risk > 0 ? Math.abs(t.tp - t.entry) / risk : null;
+  }).filter((x): x is number => x != null);
+
+  const rnd = (x: number | null, d = 2) => (x == null ? null : round(x, d));
+  return {
+    periodDays: PERIOD_DAYS,
+    closed: closed.length,
+    winRate: Math.round((wins.length / closed.length) * 100),
+    netR: round(rs.reduce((a, b) => a + b, 0)),
+    avgR: round(overall),
+    profitFactor: sumLoss > 0 ? round(sumWins / sumLoss) : null,
+    avgWinR: rnd(avg(wins)),
+    avgLossR: rnd(avg(losses)),
+    plannedRR: rnd(avg(planned)),
+    bySymbol: bestWorst(bySymbol),
+    byWeekday: bestWorst(byWeekday),
+    byDayPart: bestWorst(byPart),
+    byDirection: [...byDir.entries()].filter(([, a]) => a.length >= MIN_GROUP).map(([k, a]) => group(k, a)),
+    afterLoss: { n: afterLossR.length, avgR: rnd(afterAvg), vsOverall: afterAvg == null ? null : round(afterAvg - overall) },
+    heavyDays: { days: heavy.length, avgR: rnd(avg(heavyR)), limit },
+    holdMinutes: { wins: rnd(median(holdW), 0), losses: rnd(median(holdL), 0) },
+    withNotes: { pct: Math.round((rWith.length / closed.length) * 100), avgRWith: rnd(avg(rWith)), avgRWithout: rnd(avg(rWithout)) },
+  };
+}
+
+function isValidTz(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ─── Mensaje para la IA ─────────────────────────────────────────────────────
+
+function buildPrompt(facts: CoachFacts, lang: "es" | "en"): { system: string; user: string } {
+  const en = lang === "en";
+  const system = en
+    ? `You are the discipline coach inside VELTRIX, a trading journal. You receive FACTS already calculated from the trader's own journal (R = result measured in units of risk: +2R means the trade earned twice what was risked).
+
+Rules:
+- Use ONLY the numbers in the facts. Never invent, estimate or recalculate figures. If a field is null or missing, say nothing about it.
+- Talk about behavior and habits (when, how often, what happens after a loss, notes), not about what to buy or sell. Never give trade signals, price predictions or investment advice.
+- Be warm, direct and specific, like a good coach. No lectures, no jargon, no emojis except at most one at the start.
+- Past results do not predict the future: do not promise gains.
+- Format, in English, 150 words maximum:
+  1) One sentence with the overall picture.
+  2) Up to 3 short bullets with the most useful patterns (what is working, what is costing the trader).
+  3) One single concrete action for the next week, measurable.
+- Sample sizes are small: mention the number of trades when a pattern rests on few (under 8).`
+    : `Sos el coach de disciplina dentro de VELTRIX, un diario de trading. Recibís HECHOS ya calculados a partir del propio diario de la persona (R = resultado medido en unidades de riesgo: +2R significa que ganó el doble de lo que arriesgó).
+
+Reglas:
+- Usá SOLO los números de los hechos. No inventes, estimes ni recalcules cifras. Si un campo es null o falta, no digas nada sobre eso.
+- Hablá de conducta y hábitos (cuándo, con qué frecuencia, qué pasa después de una pérdida, notas), no de qué comprar o vender. Nunca des señales, predicciones de precio ni consejos de inversión.
+- Sé cálido, directo y concreto, como un buen entrenador. Sin sermones, sin jerga, sin emojis salvo uno al comienzo como máximo.
+- Los resultados pasados no predicen el futuro: no prometas ganancias.
+- Formato, en español rioplatense (vos), máximo 150 palabras:
+  1) Una frase con el panorama general.
+  2) Hasta 3 viñetas cortas con los patrones más útiles (qué funciona, qué le está costando).
+  3) Una sola acción concreta y medible para la próxima semana.
+- Las muestras son chicas: nombrá la cantidad de operaciones cuando un patrón se apoye en pocas (menos de 8).`;
+  const user = `${en ? "FACTS (JSON):" : "HECHOS (JSON):"}\n${JSON.stringify(facts)}`;
+  return { system, user };
+}
+
+// ─── Informe con caché y límites ────────────────────────────────────────────
+
+const MIN_GAP_MS = 6 * 3_600_000; // si no cambió nada, se reutiliza el último informe durante 6 horas
+const MAX_PER_DAY = 3;
+
+type CoachResult =
+  | { ok: true; text: string; closed: number; cached: boolean; createdAt: string }
+  | { ok: false; reason: "not_enough_data"; needed: number; have: number }
+  | { ok: false; reason: "limit"; createdAt: string | null; text: string | null }
+  | { ok: false; reason: "refused" | "unavailable" | "no_key" };
+
+interface CoachDeps {
+  supabase: any;
+  /** Llama a la IA con el mensaje y devuelve el texto (o null si se negó). Lanza un error si el servicio falla. */
+  ask: (system: string, user: string) => Promise<string | null>;
+  hasKey: boolean;
+}
+
+async function coachReport(deps: CoachDeps, userId: string, now = Date.now()): Promise<CoachResult> {
+  const { supabase } = deps;
+  const { data: profile } = await supabase.from("profiles").select("timezone,lang,daily_loss_limit,daily_trade_limit").eq("id", userId).maybeSingle();
+  const prof: CoachProfile = profile ?? {};
+  const since = new Date(now - (PERIOD_DAYS + 7) * 86_400_000).toISOString();
+  const { data: trades } = await supabase
+    .from("trades")
+    .select("symbol,direction,entry,tp,sl,date,outcome,exit,closed_at,notes,tags")
+    .eq("user_id", userId)
+    .gte("date", since)
+    .limit(2000);
+  const facts = computeFacts((trades ?? []) as CoachTrade[], prof, now);
+  const closedCount = facts?.closed ?? 0;
+  if (!facts) {
+    const have = ((trades ?? []) as CoachTrade[]).filter((t) => t.outcome !== "ABIERTA").length;
+    return { ok: false, reason: "not_enough_data", needed: MIN_CLOSED, have };
+  }
+
+  const { data: recent } = await supabase
+    .from("coach_reports")
+    .select("text,closed_count,created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(MAX_PER_DAY);
+  const last = (recent ?? [])[0] as { text: string; closed_count: number; created_at: string } | undefined;
+
+  // Mismo diario y poco tiempo: se devuelve el informe anterior sin gastar una consulta nueva.
+  if (last && last.closed_count === closedCount && now - new Date(last.created_at).getTime() < MIN_GAP_MS) {
+    return { ok: true, text: last.text, closed: closedCount, cached: true, createdAt: last.created_at };
+  }
+  const todayCount = (recent ?? []).filter((r: any) => now - new Date(r.created_at).getTime() < 86_400_000).length;
+  if (todayCount >= MAX_PER_DAY) {
+    return { ok: false, reason: "limit", createdAt: last?.created_at ?? null, text: last?.text ?? null };
+  }
+
+  if (!deps.hasKey) return { ok: false, reason: "no_key" };
+  const lang: "es" | "en" = prof.lang === "en" ? "en" : "es";
+  const { system, user } = buildPrompt(facts, lang);
+  let text: string | null;
+  try {
+    text = await deps.ask(system, user);
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (!text || !text.trim()) return { ok: false, reason: "refused" };
+
+  const createdAt = new Date(now).toISOString();
+  await supabase.from("coach_reports").insert({ user_id: userId, text: text.trim(), closed_count: closedCount, created_at: createdAt });
+  // Se guardan solo los últimos informes de cada persona.
+  const { data: all } = await supabase.from("coach_reports").select("id,created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
+  const old = (all ?? []).slice(10).map((r: any) => r.id);
+  if (old.length) await supabase.from("coach_reports").delete().in("id", old);
+  return { ok: true, text: text.trim(), closed: closedCount, cached: false, createdAt };
+}
+
+// ─── VELTRIX · Resumen semanal del bot con IA ───────────────────────────────
+// Los números se calculan acá, con código (exactos y comprobables). La IA solo recibe esos datos ya calculados y los explica en lenguaje simple:
+// no calcula nada y no inventa cifras. No da señales ni consejos de inversión. Sin dependencias de Deno ni de Node, para poder probarlo en local.
+
+
+interface BotTrade extends SumTrade {
+  symbol: string;
+  source?: string | null;
+  notes?: string | null;
+  tags?: string[] | null;
+}
+
+const BOT_PERIOD_DAYS = 7;
+const BOT_MIN_CLOSED = 5; // con menos operaciones cerradas del bot no hay nada que resumir
+const BC_MIN_GROUP = 3;
+
+interface BotGroup {
+  n: number;
+  wins: number;
+  winRate: number; // %
+  netR: number;
+  avgR: number;
+}
+
+interface BotFacts {
+  periodDays: number;
+  /** El perfil elegido (simulado). */
+  chosen: BotGroup | null;
+  /** Prueba paralela «entradas filtradas» (simulada). */
+  filtered: BotGroup | null;
+  /** Prueba «corredor» (simulada, la que quedó de antes). */
+  runner: BotGroup | null;
+  /** Operaciones del bot con dinero real: resultado neto en USDT leído de lo que informó el exchange. */
+  real: { n: number; wins: number; netUsdt: number | null; open: number } | null;
+  /** Operaciones reales que tienen su copia simulada: cuántas terminaron igual (las dos ganaron o las dos perdieron). */
+  realVsSim: { pairs: number; same: number; different: Array<{ symbol: string; real: string; sim: string }> } | null;
+  openBot: number; // operaciones simuladas del bot que siguen abiertas
+  bySymbol: { best: { symbol: string; n: number; avgR: number } | null; worst: { symbol: string; n: number; avgR: number } | null };
+  profileName: string | null; // perfil que usó la mayoría de las operaciones simuladas del perfil elegido
+}
+
+const bcRound = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+const TAG_PARALLEL = "Filtro 4h";
+const TAG_RUNNER = "Corredor";
+const TAG_REAL = "Bot real";
+
+function groupOf(rs: number[]): BotGroup | null {
+  if (!rs.length) return null;
+  const wins = rs.filter((r) => r > 0).length;
+  const net = rs.reduce((a, b) => a + b, 0);
+  return { n: rs.length, wins, winRate: Math.round((wins / rs.length) * 100), netR: bcRound(net), avgR: bcRound(net / rs.length) };
+}
+
+/** El perfil que dice la nota de una operación simulada del bot («🤖 Bot simulado (perfil lento con objetivo amplio, …)»). */
+function profileOf(notes: string | null | undefined): string | null {
+  const m = /perfil ([^,)]+)/i.exec(String(notes ?? ""));
+  return m ? m[1].trim() : null;
+}
+
+/** Resultado neto en USDT que el exchange informó (la nota de las importadas dice «resultado neto −0.11 USDT»). */
+function netUsdtOf(notes: string | null | undefined): number | null {
+  const m = /resultado neto\s*([+\-−])\s*([0-9]+(?:\.[0-9]+)?)\s*USDT/i.exec(String(notes ?? ""));
+  if (!m) return null;
+  const v = Number(m[2]);
+  return Number.isFinite(v) ? (m[1] === "+" ? v : -v) : null;
+}
+
+const has = (t: BotTrade, tag: string) => !!t.tags?.includes(tag);
+const closedAt = (t: BotTrade) => new Date(t.closed_at ?? t.date).getTime();
+
+function computeBotFacts(trades: BotTrade[], now: number): BotFacts | null {
+  const since = now - BOT_PERIOD_DAYS * 86_400_000;
+  const botSim = trades.filter((t) => t.source === "bot");
+  const real = trades.filter((t) => has(t, TAG_REAL));
+  const simClosed = botSim.filter((t) => t.outcome !== "ABIERTA" && closedAt(t) >= since);
+  const realClosed = real.filter((t) => t.outcome !== "ABIERTA" && closedAt(t) >= since);
+  if (simClosed.length + realClosed.length < BOT_MIN_CLOSED) return null;
+
+  const chosenT = simClosed.filter((t) => !has(t, TAG_PARALLEL) && !has(t, TAG_RUNNER));
+  const filteredT = simClosed.filter((t) => has(t, TAG_PARALLEL));
+  const runnerT = simClosed.filter((t) => has(t, TAG_RUNNER));
+
+  // Perfil más usado entre las operaciones del perfil elegido.
+  const counts = new Map<string, number>();
+  for (const t of chosenT) {
+    const p = profileOf(t.notes);
+    if (p) counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  const profileName = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+
+  // Por activo (solo operaciones simuladas del perfil elegido, con muestra mínima).
+  const bySym = new Map<string, number[]>();
+  for (const t of chosenT) bySym.set(t.symbol, [...(bySym.get(t.symbol) ?? []), rOf(t)]);
+  const syms = [...bySym.entries()].filter(([, rs]) => rs.length >= BC_MIN_GROUP).map(([symbol, rs]) => ({ symbol, n: rs.length, avgR: bcRound(rs.reduce((a, b) => a + b, 0) / rs.length) }));
+  const sorted = [...syms].sort((a, b) => b.avgR - a.avgR);
+  const best = sorted[0] && sorted[0].avgR > 0 ? sorted[0] : null;
+  const worst = sorted.length > 1 && sorted[sorted.length - 1].avgR < 0 ? sorted[sorted.length - 1] : null;
+
+  // Reales contra su copia simulada: mismo activo y lado, abiertas con menos de 15 minutos de diferencia.
+  const pairs: BotFacts["realVsSim"] = { pairs: 0, same: 0, different: [] };
+  for (const r of realClosed) {
+    const copy = chosenT.find((s) => s.symbol === r.symbol && s.direction === r.direction && Math.abs(new Date(s.date).getTime() - new Date(r.date).getTime()) <= 15 * 60_000);
+    if (!copy) continue;
+    const rr = netUsdtOf(r.notes) ?? rOf(r);
+    const real_ = rr > 0 ? "ganó" : "perdió";
+    const sim_ = rOf(copy) > 0 ? "ganó" : "perdió";
+    pairs.pairs++;
+    if (real_ === sim_) pairs.same++;
+    else pairs.different.push({ symbol: r.symbol, real: real_, sim: sim_ });
+  }
+
+  const usdt = realClosed.map((t) => netUsdtOf(t.notes));
+  const known = usdt.filter((x): x is number => x != null);
+  const realFacts: BotFacts["real"] = real.length
+    ? {
+        n: realClosed.length,
+        wins: realClosed.filter((t, i) => (usdt[i] ?? rOf(t)) > 0).length,
+        netUsdt: known.length && known.length === usdt.length ? bcRound(known.reduce((a, b) => a + b, 0), 3) : null,
+        open: real.filter((t) => t.outcome === "ABIERTA").length,
+      }
+    : null;
+
+  return {
+    periodDays: BOT_PERIOD_DAYS,
+    chosen: groupOf(chosenT.map(rOf)),
+    filtered: groupOf(filteredT.map(rOf)),
+    runner: groupOf(runnerT.map(rOf)),
+    real: realFacts,
+    realVsSim: pairs.pairs ? pairs : null,
+    openBot: botSim.filter((t) => t.outcome === "ABIERTA").length,
+    bySymbol: { best, worst },
+    profileName,
+  };
+}
+
+// ─── Mensaje para la IA ─────────────────────────────────────────────────────
+
+function buildBotPrompt(facts: BotFacts, lang: "es" | "en"): { system: string; user: string } {
+  const en = lang === "en";
+  const system = en
+    ? `You are the assistant inside VELTRIX, a trading journal with an automatic bot. You receive FACTS already calculated from the bot's trades of the last 7 days (R = result measured in units of risk: +1.2R means a win of 1.2 times the amount risked; "simulated" trades are not sent to any exchange; "real" trades were placed by the bot with real money on the person's exchange, with the net USDT result reported by the exchange).
+
+Rules:
+- Use ONLY the numbers in the facts. Never invent, estimate or recalculate figures. If a field is null or missing, say nothing about it.
+- Explain how the bot did and what stands out: the chosen profile, the parallel tests ("filtered entries" and "runner"), and, if present, real trades versus their simulated copies (differences usually come from small price differences between exchanges).
+- Never give trade signals, price predictions or investment advice, and never tell the person to buy, sell or change their risk. This is a description of what happened, not a recommendation.
+- Be warm, direct and plain. No jargon, no emojis except at most one at the start.
+- A week is a very small sample: say so when numbers rest on few trades (under 20), and never promise gains.
+- Format, in English, 170 words maximum:
+  1) One sentence with the overall picture.
+  2) Up to 4 short bullets with what stands out (profile result, tests, real vs simulated, best or worst asset if present).
+  3) One single measurable thing to keep an eye on next week (for example: "check the skipped orders list" or "compare again after N more real trades").`
+    : `Sos el asistente dentro de VELTRIX, un diario de trading con un bot automático. Recibís HECHOS ya calculados a partir de las operaciones del bot de los últimos 7 días (R = resultado medido en unidades de riesgo: +1,2R significa ganar 1,2 veces lo arriesgado; las operaciones «simuladas» no se envían a ningún exchange; las «reales» las puso el bot con dinero real en el exchange de la persona, con el resultado neto en USDT que informa el exchange).
+
+Reglas:
+- Usá SOLO los números de los hechos. No inventes, estimes ni recalcules cifras. Si un campo es null o falta, no digas nada sobre eso.
+- Explicá cómo le fue al bot y qué se destaca: el perfil elegido, las pruebas paralelas («entradas filtradas» y «corredor») y, si hay, las operaciones reales contra su copia simulada (las diferencias suelen venir de pequeñas diferencias de precio entre exchanges).
+- Nunca des señales, predicciones de precio ni consejos de inversión, y nunca le digas a la persona que compre, venda o cambie su riesgo. Es una descripción de lo que pasó, no una recomendación.
+- Sé cálido, directo y simple. Sin jerga, sin emojis salvo uno al comienzo como máximo.
+- Una semana es una muestra muy chica: decilo cuando los números se apoyen en pocas operaciones (menos de 20) y nunca prometas ganancias.
+- Formato, en español rioplatense (vos), máximo 170 palabras:
+  1) Una frase con el panorama general.
+  2) Hasta 4 viñetas cortas con lo que se destaca (resultado del perfil, pruebas, reales contra simuladas, mejor o peor activo si hay).
+  3) Una sola cosa medible para mirar la próxima semana (por ejemplo: «revisar la lista de órdenes omitidas» o «volver a comparar con N operaciones reales más»).`;
+  const user = `${en ? "FACTS (JSON):" : "HECHOS (JSON):"}\n${JSON.stringify(facts)}`;
+  return { system, user };
+}
+
+// ─── Resumen con caché y límites ────────────────────────────────────────────
+
+const BOT_MIN_GAP_MS = 12 * 3_600_000; // si los datos no cambiaron, se reutiliza el último resumen durante 12 horas
+const BOT_MAX_PER_DAY = 2;
+
+type BotCoachResult =
+  | { ok: true; text: string; closed: number; cached: boolean; createdAt: string }
+  | { ok: false; reason: "not_enough_data"; needed: number; have: number }
+  | { ok: false; reason: "limit"; createdAt: string | null; text: string | null }
+  | { ok: false; reason: "refused" | "unavailable" | "no_key" };
+
+interface BotCoachDeps {
+  supabase: any;
+  ask: (system: string, user: string) => Promise<string | null>;
+  hasKey: boolean;
+}
+
+async function botCoachReport(deps: BotCoachDeps, userId: string, now = Date.now()): Promise<BotCoachResult> {
+  const { supabase } = deps;
+  const { data: profile } = await supabase.from("profiles").select("lang").eq("id", userId).maybeSingle();
+  const lang: "es" | "en" = (profile as { lang?: string } | null)?.lang === "en" ? "en" : "es";
+  const since = new Date(now - (BOT_PERIOD_DAYS + 7) * 86_400_000).toISOString();
+  const { data: trades } = await supabase
+    .from("trades")
+    .select("symbol,direction,entry,tp,sl,date,outcome,exit,closed_at,notes,tags,source")
+    .eq("user_id", userId)
+    .gte("date", since)
+    .limit(2000);
+  const list = (trades ?? []) as BotTrade[];
+  const facts = computeBotFacts(list, now);
+  if (!facts) {
+    const have = list.filter((t) => (t.source === "bot" || t.tags?.includes(TAG_REAL)) && t.outcome !== "ABIERTA").length;
+    return { ok: false, reason: "not_enough_data", needed: BOT_MIN_CLOSED, have };
+  }
+  const closedCount = (facts.chosen?.n ?? 0) + (facts.filtered?.n ?? 0) + (facts.runner?.n ?? 0) + (facts.real?.n ?? 0);
+
+  const { data: recent } = await supabase.from("bot_coach_reports").select("text,closed_count,created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(BOT_MAX_PER_DAY);
+  const last = (recent ?? [])[0] as { text: string; closed_count: number; created_at: string } | undefined;
+  if (last && last.closed_count === closedCount && now - new Date(last.created_at).getTime() < BOT_MIN_GAP_MS) {
+    return { ok: true, text: last.text, closed: closedCount, cached: true, createdAt: last.created_at };
+  }
+  const todayCount = (recent ?? []).filter((r: { created_at: string }) => now - new Date(r.created_at).getTime() < 86_400_000).length;
+  if (todayCount >= BOT_MAX_PER_DAY) return { ok: false, reason: "limit", createdAt: last?.created_at ?? null, text: last?.text ?? null };
+
+  if (!deps.hasKey) return { ok: false, reason: "no_key" };
+  const { system, user } = buildBotPrompt(facts, lang);
+  let text: string | null;
+  try {
+    text = await deps.ask(system, user);
+  } catch {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (!text || !text.trim()) return { ok: false, reason: "refused" };
+
+  const createdAt = new Date(now).toISOString();
+  await supabase.from("bot_coach_reports").insert({ user_id: userId, text: text.trim(), closed_count: closedCount, created_at: createdAt });
+  const { data: all } = await supabase.from("bot_coach_reports").select("id,created_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
+  const old = (all ?? []).slice(10).map((r: { id: string }) => r.id);
+  if (old.length) await supabase.from("bot_coach_reports").delete().in("id", old);
+  return { ok: true, text: text.trim(), closed: closedCount, cached: false, createdAt };
+}
+
+// Coach de disciplina con IA: lee tu diario, calcula tus patrones con código y le pide a Claude que los explique.
+//
+//   POST /functions/v1/coach   (con la sesión del usuario en Authorization)
+//
+// Secretos de la función: ANTHROPIC_API_KEY (de console.anthropic.com) y, si querés cambiar de modelo, COACH_MODEL.
+// Límites: un informe nuevo como máximo cada 6 horas si el diario no cambió, y 3 por día por persona.
+
+
+const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+
+const MODEL = Deno.env.get("COACH_MODEL") || "claude-opus-5-5";
+// El resumen del bot es un texto corto de datos ya calculados: por defecto usa un modelo más económico (se cambia con BOT_COACH_MODEL).
+const BOT_MODEL = Deno.env.get("BOT_COACH_MODEL") || "claude-sonnet-5-5";
+
+async function ask(system: string, user: string, model: string = MODEL): Promise<string | null> {
+  // Modelos que aceptan el nivel de esfuerzo y la red de seguridad automática ante rechazos.
+  const BIG = /^claude-(opus|sonnet|fable)/.test(model);
+  const FALLBACK = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(model);
+  const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY")! });
+  const base: Record<string, unknown> = {
+    model,
+    max_tokens: 4000,
+    system,
+    messages: [{ role: "user", content: user }],
+  };
+  if (BIG) base.output_config = { effort: "low" }; // es un texto corto: no hace falta pensar mucho
+  const run = (params: Record<string, unknown>) => (client as any).beta.messages.create(params);
+  let res: any;
+  try {
+    res = await run(FALLBACK ? { ...base, betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : base);
+  } catch (e) {
+    // Si la red de seguridad automática no está disponible, se repite sin ella.
+    if (FALLBACK && (e as { status?: number }).status === 400) res = await run(base);
+    else throw e;
+  }
+  if (res.stop_reason === "refusal") return null;
+  const text = (res.content as Array<{ type: string; text?: string }>).filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim();
+  return text || null;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
+
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const { data: auth } = await admin.auth.getUser(token);
+  const user = auth?.user;
+  if (!user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
+
+  const body = (await req.json().catch(() => ({}))) as { action?: unknown } | null;
+  try {
+    // {"action": "bot"} = resumen semanal del bot; sin acción, el coach de disciplina de siempre.
+    if (body?.action === "bot") {
+      const r = await botCoachReport({ supabase: admin, ask: (sys, usr) => ask(sys, usr, BOT_MODEL), hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
+      return json(r);
+    }
+    const r = await coachReport({ supabase: admin, ask, hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
+    return json(r);
+  } catch (e) {
+    console.error("coach:", e instanceof Error ? e.message : e);
+    return json({ ok: false, reason: "unavailable" });
+  }
+});
