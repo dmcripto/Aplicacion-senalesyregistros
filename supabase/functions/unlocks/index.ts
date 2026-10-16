@@ -9,7 +9,7 @@
 //   (= EXCHANGE_CRON_SECRET) se puede forzar una carga, y con {"probe": true} en el cuerpo se ve cómo responde la fuente sin guardar nada.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { isoDay, parseUpcomingUnlocks } from "../_shared/tokenomist.ts";
+import { isoDay, parseAllowedRange, parseUpcomingUnlocks } from "../_shared/tokenomist.ts";
 import type { UnlockRow } from "../_shared/tokenomist.ts";
 import { describeLlama, parseLlamaEmissions } from "../_shared/llamaUnlocks.ts";
 import { extractEvents, extractTokens, projectRecurring } from "../_shared/unlockLearn.ts";
@@ -86,10 +86,10 @@ async function learnStep(apiKey: string, now: number) {
     await sleep(LEARN_GAP_MS);
     const q: Record<string, string> = { start: isoDay(now, -365), end: isoDay(now, 30) };
     let r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, q);
-    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(r.body?.errorMessage ?? ""));
+    const allowed = parseAllowedRange(r.body?.errorMessage);
     if (r.status === 422 && allowed) {
       await sleep(LEARN_GAP_MS);
-      r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, { start: allowed[1], end: allowed[2] });
+      r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, { start: allowed.from, end: allowed.to });
     }
     const raw = JSON.stringify({ status: r.status, body: r.body });
     if (r.status !== 200 || !r.body) {
@@ -210,10 +210,10 @@ Deno.serve(async (req) => {
     calls++;
     const body = await res.json().catch(() => null);
     // La prueba gratuita solo deja pedir cierto rango de fechas («date must be within the allowed range: A to B»): se ajusta y se reintenta una vez.
-    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(body?.errorMessage ?? ""));
-    if (res.status === 422 && allowed && !retried && allowed[2] < end) {
+    const allowed = parseAllowedRange(body?.errorMessage);
+    if (res.status === 422 && allowed && !retried && allowed.to < end) {
       retried = true;
-      end = allowed[2];
+      end = allowed.to;
       page--;
       continue;
     }

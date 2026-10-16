@@ -44,6 +44,16 @@ function parseUpcomingUnlocks(data: unknown): UnlockRow[] {
 /** Fecha YYYY-MM-DD (UTC) sumando días. */
 const isoDay = (ms: number, addDays = 0) => new Date(ms + addDays * 86_400_000).toISOString().slice(0, 10);
 
+/**
+ * La prueba gratuita solo deja pedir cierto rango de fechas, y el mensaje de error lo dice. Se leen las dos formas que mandó Tokenomist:
+ *   «date must be within the allowed range: 2025-01-01 to 2026-01-01»
+ *   «Invalid Date Range : The available range for unlock events data are 2025-10-16 - 2026-10-16»
+ */
+function parseAllowedRange(message: unknown): { from: string; to: string } | null {
+  const m = /(?:allowed|available) range[^0-9]*(\d{4}-\d{2}-\d{2})\s*(?:to|-|–|—)\s*(\d{4}-\d{2}-\d{2})/i.exec(String(message ?? ""));
+  return m ? { from: m[1], to: m[2] } : null;
+}
+
 // Lectura de los desbloqueos de DefiLlama (calendario de emisiones abierto) y paso al formato de la tabla token_unlocks.
 // Alternativa gratuita a Tokenomist. El formato de la respuesta se lee con mucho cuidado (varios nombres posibles por dato) y lo que no se
 // entiende se descarta: nunca se inventa un dato. Sin dependencias de Deno ni de la red, para probarlo en local.
@@ -353,10 +363,10 @@ async function learnStep(apiKey: string, now: number) {
     await sleep(LEARN_GAP_MS);
     const q: Record<string, string> = { start: isoDay(now, -365), end: isoDay(now, 30) };
     let r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, q);
-    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(r.body?.errorMessage ?? ""));
+    const allowed = parseAllowedRange(r.body?.errorMessage);
     if (r.status === 422 && allowed) {
       await sleep(LEARN_GAP_MS);
-      r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, { start: allowed[1], end: allowed[2] });
+      r = await tokGet(apiKey, `/v5/unlock/events/${encodeURIComponent(tk.id)}`, { start: allowed.from, end: allowed.to });
     }
     const raw = JSON.stringify({ status: r.status, body: r.body });
     if (r.status !== 200 || !r.body) {
@@ -477,10 +487,10 @@ Deno.serve(async (req) => {
     calls++;
     const body = await res.json().catch(() => null);
     // La prueba gratuita solo deja pedir cierto rango de fechas («date must be within the allowed range: A to B»): se ajusta y se reintenta una vez.
-    const allowed = /allowed range:\s*(\d{4}-\d{2}-\d{2})\s*to\s*(\d{4}-\d{2}-\d{2})/i.exec(String(body?.errorMessage ?? ""));
-    if (res.status === 422 && allowed && !retried && allowed[2] < end) {
+    const allowed = parseAllowedRange(body?.errorMessage);
+    if (res.status === 422 && allowed && !retried && allowed.to < end) {
       retried = true;
-      end = allowed[2];
+      end = allowed.to;
       page--;
       continue;
     }
