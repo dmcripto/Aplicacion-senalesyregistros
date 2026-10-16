@@ -1,0 +1,11 @@
+-- VELTRIX · comprobación (Supabase > SQL Editor > pegar > Run). Muestra si todo quedó en su lugar.
+select
+  (select count(*) from information_schema.tables where table_schema='public' and table_name in ('assistant_log','bot_coach_reports','unlock_raw','unlock_history')) as tablas_nuevas_de_4,
+  (select count(*) from information_schema.columns where table_schema='public' and table_name='trades' and column_name in ('last_price','last_price_at')) as columnas_precio_de_2,
+  (select count(*) from information_schema.columns where table_schema='public' and table_name='bot_settings' and column_name in ('runner_test','share_community')) as columnas_bot_de_2,
+  (select count(*) from cron.job where jobname='veltrix-unlocks-learn') as tarea_aprender_de_1,
+  (select count(*) from unlock_raw) as tokenomist_respuestas_guardadas,
+  (select count(*) from unlock_history) as tokenomist_eventos_en_historial,
+  (select max(fetched_at) from unlock_raw) as tokenomist_ultima_consulta;
+-- Lo correcto: 4, 2, 2, 1. Los tres últimos empiezan en 0 y crecen cuando la función «unlocks» está desplegada
+-- (la «última consulta» tiene que ser de hace menos de una hora). Vence la prueba de Tokenomist hacia el 28/10.

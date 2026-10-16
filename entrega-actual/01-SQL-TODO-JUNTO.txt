@@ -1,0 +1,97 @@
+-- VELTRIX · TODOS LOS SQL PENDIENTES EN UN SOLO ARCHIVO.
+-- Se puede correr completo y más de una vez: cada parte comprueba si ya existe. Supabase > SQL Editor > pegar todo > Run.
+
+-- ════════════ compartir-comunidad ════════════
+-- VELTRIX · el bot puede publicar sus señales y resultados en la comunidad de Telegram de la persona (opcional, apagado por defecto).
+alter table public.bot_settings add column if not exists share_community boolean not null default false;
+
+-- ════════════ max-3-posiciones ════════════
+-- VELTRIX · el bot con dinero real puede tener hasta 3 posiciones abiertas a la vez (antes, 2). Cada persona elige 1, 2 o 3; por defecto sigue en 1.
+alter table public.bot_live drop constraint if exists bot_live_max_open_check;
+alter table public.bot_live add constraint bot_live_max_open_check check (max_open between 1 and 3);
+
+-- ════════════ corredor ════════════
+-- VELTRIX · prueba paralela «corredor» del bot simulado: cobra la mitad en el primer objetivo (2R), sube el stop a la entrada y deja correr
+-- el resto hasta 4R. Va por separado del perfil elegido (que sigue siendo el del bot con dinero real): solo simulada, sin enviar nada a ningún exchange.
+
+alter table public.bot_settings add column if not exists runner_test boolean not null default false;
+
+-- ════════════ precio-actual ════════════
+-- VELTRIX · último precio de las operaciones abiertas del bot, tomado de las velas del exchange de cada persona (la misma fuente con la que el bot
+-- decide y cierra). La pantalla lo usa para mostrar «qué tan cerca está del TP o del SL» sin depender de otro exchange donde el mismo nombre puede
+-- ser otra moneda (como pasó con LIT y AKE).
+
+alter table public.trades add column if not exists last_price numeric;
+alter table public.trades add column if not exists last_price_at timestamptz;
+
+-- ════════════ aprender-tokenomist ════════════
+-- VELTRIX · «aprender» del período de prueba de Tokenomist.
+--   unlock_raw      = respuestas completas de la fuente (lista de tokens y eventos de cada uno), tal como llegaron.
+--   unlock_history  = cada desbloqueo ya leído (fecha y tamaño), que se va acumulando y no se borra: de ahí se aprende el ritmo de cada activo.
+-- Solo las usa el servidor (service role): sin políticas de lectura, la app y los usuarios no ven estos datos.
+
+create table if not exists public.unlock_raw (
+  id bigint generated always as identity primary key,
+  kind text not null,
+  token text,
+  request text,
+  response jsonb,
+  fetched_at timestamptz not null default now()
+);
+create index if not exists unlock_raw_kind_idx on public.unlock_raw (kind, token);
+alter table public.unlock_raw enable row level security;
+
+create table if not exists public.unlock_history (
+  symbol text not null check (symbol ~ '^[A-Z0-9]{2,15}USDT$'),
+  at timestamptz not null,
+  pct numeric not null check (pct >= 0),
+  source text not null default 'tokenomist',
+  seen_at timestamptz not null default now(),
+  primary key (symbol, at, source)
+);
+alter table public.unlock_history enable row level security;
+
+-- Mientras se aprende (unos días), la función revisa cada 15 minutos si quedan tokens por bajar. Sin nada pendiente no gasta ninguna llamada.
+-- Cuando termine, se puede apagar con:  select cron.unschedule('veltrix-unlocks-learn');
+create extension if not exists pg_cron;
+create extension if not exists pg_net with schema extensions;
+
+select cron.unschedule('veltrix-unlocks-learn')
+  where exists (select 1 from cron.job where jobname = 'veltrix-unlocks-learn');
+
+select cron.schedule(
+  'veltrix-unlocks-learn',
+  '*/15 * * * *',
+  $$ select net.http_post(
+       url := 'https://hbkveqilauhqahwuuasc.supabase.co/functions/v1/unlocks',
+       headers := '{"Content-Type": "application/json"}'::jsonb,
+       body := '{"learn": true}'::jsonb
+     ) $$
+);
+
+-- ════════════ resumen-bot-ia ════════════
+-- Resúmenes semanales del bot con IA: se guardan para no volver a consultar si los datos no cambiaron y para limitar el uso diario (2 por día por persona).
+create table if not exists public.bot_coach_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  text text not null,
+  closed_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists bot_coach_reports_user_idx on public.bot_coach_reports (user_id, created_at desc);
+
+alter table public.bot_coach_reports enable row level security;
+-- Sin políticas para el usuario: solo la función (con la clave de servicio) lee y escribe.
+
+-- ════════════ asistente-ia ════════════
+-- Asistente con IA: una fila por pregunta contestada, solo para limitar el uso diario por persona (no se guarda el texto de la conversación).
+create table if not exists public.assistant_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index if not exists assistant_log_user_idx on public.assistant_log (user_id, created_at desc);
+
+alter table public.assistant_log enable row level security;
+-- Sin políticas para el usuario: solo la función (con la clave de servicio) lee y escribe.
+
