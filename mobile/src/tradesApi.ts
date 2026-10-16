@@ -370,7 +370,19 @@ export async function saveBotSettings(userId: string, s: BotSettings, caps: { ru
 export const runBotBacktest = (symbols: string[], days = 120) => callFunction<BotBacktest & { ok: boolean; error?: string }>("bot", { action: "backtest", symbols, days });
 
 /** Laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades. */
-export const runBotLab = (symbols: string[]) => callFunction<BotLab & { ok: boolean; error?: string }>("bot", { action: "lab", symbols });
+const LAB_PARTS = 4;
+/** El laboratorio se pide en tandas (cada una calcula unas pocas variantes) y se junta acá, así ninguna llamada pasa el límite de CPU del servidor. */
+export async function runBotLab(symbols: string[]): Promise<BotLab & { ok: boolean; error?: string }> {
+  const rows: Extract<BotLab, { ok: true }>["variants"] = [];
+  let last: Extract<BotLab, { ok: true }> | null = null;
+  for (let part = 0; part < LAB_PARTS; part++) {
+    const r = await callFunction<BotLab & { ok: boolean; error?: string }>("bot", { action: "lab", symbols, part, parts: LAB_PARTS });
+    if (!r.ok) return r;
+    rows.push(...r.variants);
+    if (r.variants.length) last = r;
+  }
+  return last ? { ...last, variants: rows } : { ok: false, error: t("No se pudo hacer la prueba.") };
+}
 
 /** Crea una señal abierta de prueba en tu cuenta (solo cuentas habilitadas) y manda el aviso. No se publica en comunidades. */
 export const sendTestSignal = () => callFunction<{ ok: boolean; error?: string; tradeId?: string; entry?: number }>("bot", { action: "test_signal" });

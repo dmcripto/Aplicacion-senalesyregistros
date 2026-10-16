@@ -341,7 +341,7 @@ async function runBacktest(userId: string, chosen: string[], days: number) {
  * Laboratorio: varias versiones de la estrategia (velas de 1 y de 4 horas) sobre un año de precios reales, sin reglas,
  * con los mismos topes de la persona. Cada una se mide entera y por mitades (la primera y la segunda parte del año).
  */
-async function runLabTest(userId: string, chosen: string[]) {
+async function runLabTest(userId: string, chosen: string[], part = 0, parts = 1) {
   const { data: cfg } = await admin.from("bot_settings").select("*").eq("user_id", userId).maybeSingle();
   const { data: prof } = await admin.from("profiles").select("timezone").eq("id", userId).maybeSingle();
   const base = { maxOpen: Number(cfg?.max_open ?? 3), dailyLossR: Number(cfg?.daily_loss_r ?? 3), timeZone: (prof?.timezone as string | null) ?? null };
@@ -358,7 +358,9 @@ async function runLabTest(userId: string, chosen: string[]) {
     }
   }
   const scanning = scan > 0 && symbols.length > chosen.length;
-  const variants = scanning ? LAB_VARIANTS.filter((v) => v.params.tf === "4h") : LAB_VARIANTS;
+  // La prueba se reparte en tandas (part de parts) para no pasar el límite de CPU de la función; la pantalla las junta.
+  const variants = (scanning ? LAB_VARIANTS.filter((v) => v.params.tf === "4h") : LAB_VARIANTS).filter((_, i) => i % parts === part);
+  if (!variants.length) return { ok: true, days: LAB_DAYS, variants: [], symbols: [], scanned: 0 };
   const tfs = [...new Set(variants.map((v) => v.params.tf ?? "1h"))] as BotTimeframe[];
 
   const bars: Record<BotTimeframe, Record<string, Bar[]>> = { "15m": {}, "1h": {}, "4h": {} };
@@ -858,7 +860,7 @@ Deno.serve(async (req) => {
   const { data: auth } = await admin.auth.getUser(token);
   if (!auth?.user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
 
-  let body: { action?: unknown; symbols?: unknown; days?: unknown } = {};
+  let body: { action?: unknown; symbols?: unknown; days?: unknown; part?: unknown; parts?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -871,7 +873,11 @@ Deno.serve(async (req) => {
   if (body.action !== "backtest" && body.action !== "lab") return json({ ok: false, error: "Acción no válida" }, 400);
   const symbols = (Array.isArray(body.symbols) ? body.symbols : [...BOT_SYMBOLS.slice(0, 2)]).filter(isBotSymbol).slice(0, 10);
   if (!symbols.length) return json({ ok: false, error: "Elegí al menos un activo." }, 400);
-  if (body.action === "lab") return json(await runLabTest(auth.user.id, symbols));
+  if (body.action === "lab") {
+    const parts = Math.min(8, Math.max(1, Math.floor(Number(body.parts)) || 1));
+    const part = Math.min(parts - 1, Math.max(0, Math.floor(Number(body.part)) || 0));
+    return json(await runLabTest(auth.user.id, symbols, part, parts));
+  }
   const days = Math.min(120, Math.max(30, Number(body.days) || 120));
   return json(await runBacktest(auth.user.id, symbols, days));
 });
