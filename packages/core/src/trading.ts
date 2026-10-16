@@ -1343,6 +1343,14 @@ export function coachProblem(r: Exclude<CoachResult, { ok: true }>): string {
   }
 }
 
+/** Mensaje para mostrar cuando el resumen del bot no se pudo armar (cuando falta poca información o el servicio no responde). */
+export function botCoachProblem(r: Exclude<CoachResult, { ok: true }>): string {
+  if (!("error" in r && r.error) && r.reason === "not_enough_data") {
+    return tr("Todavía hay pocas operaciones cerradas del bot esta semana (necesito {n}, hay {have}). Volvé cuando tenga más.", { n: r.needed, have: r.have });
+  }
+  return coachProblem(r);
+}
+
 // ─── Compartir una señal ───────────────────────────────────
 
 // ─── Pantalla de bienvenida (login): qué es VELTRIX ─────────────────────────

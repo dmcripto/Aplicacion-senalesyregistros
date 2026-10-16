@@ -8,6 +8,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0";
 import { coachReport } from "../_shared/coach.ts";
+import { botCoachReport } from "../_shared/botCoach.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -20,14 +21,16 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const MODEL = Deno.env.get("COACH_MODEL") || "claude-opus-5-5";
-// Modelos que aceptan el nivel de esfuerzo y la red de seguridad automática ante rechazos.
-const BIG = /^claude-(opus|sonnet|fable)/.test(MODEL);
-const FALLBACK = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(MODEL);
+// El resumen del bot es un texto corto de datos ya calculados: por defecto usa un modelo más económico (se cambia con BOT_COACH_MODEL).
+const BOT_MODEL = Deno.env.get("BOT_COACH_MODEL") || "claude-sonnet-5-5";
 
-async function ask(system: string, user: string): Promise<string | null> {
+async function ask(system: string, user: string, model: string = MODEL): Promise<string | null> {
+  // Modelos que aceptan el nivel de esfuerzo y la red de seguridad automática ante rechazos.
+  const BIG = /^claude-(opus|sonnet|fable)/.test(model);
+  const FALLBACK = /^claude-(opus-5|fable-5|sonnet-5-5)/.test(model);
   const client = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY")! });
   const base: Record<string, unknown> = {
-    model: MODEL,
+    model,
     max_tokens: 4000,
     system,
     messages: [{ role: "user", content: user }],
@@ -56,7 +59,13 @@ Deno.serve(async (req) => {
   const user = auth?.user;
   if (!user) return json({ ok: false, error: "Sesión no válida. Volvé a ingresar." }, 401);
 
+  const body = (await req.json().catch(() => ({}))) as { action?: unknown } | null;
   try {
+    // {"action": "bot"} = resumen semanal del bot; sin acción, el coach de disciplina de siempre.
+    if (body?.action === "bot") {
+      const r = await botCoachReport({ supabase: admin, ask: (sys, usr) => ask(sys, usr, BOT_MODEL), hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
+      return json(r);
+    }
     const r = await coachReport({ supabase: admin, ask, hasKey: !!Deno.env.get("ANTHROPIC_API_KEY") }, user.id);
     return json(r);
   } catch (e) {

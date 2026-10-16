@@ -1,16 +1,53 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
-import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow } from "@dmcripto/core";
+import { botCoachProblem, BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "@dmcripto/core";
+import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow, CoachResult } from "@dmcripto/core";
 import AssetPicker from "./AssetPicker";
 import { useBot } from "./botStore";
 import NewsPauseRow from "./NewsPauseRow";
-import { runBotBacktest, runBotLab } from "./tradesApi";
+import { fetchBotCoach, runBotBacktest, runBotLab } from "./tradesApi";
 import { colors } from "./theme";
 
 const short = (s: string) => botAssetName(s);
 const rColor = (r: number) => (r > 0 ? colors.bull : r < 0 ? colors.bear : colors.fog);
+
+/** Resumen semanal del bot con IA: cuenta cómo le fue al bot (perfil elegido, pruebas paralelas y operaciones reales) a partir de números ya calculados. */
+function BotCoach() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<CoachResult | null>(null);
+  const generate = async () => {
+    setBusy(true);
+    try {
+      setResult(await fetchBotCoach());
+    } finally {
+      setBusy(false);
+    }
+  };
+  const text = result && (result.ok ? result.text : "text" in result ? result.text : null);
+  return (
+    <View style={st.coach}>
+      <Text style={st.coachTitle}>{t("Resumen semanal del bot con IA")}</Text>
+      {!result && <Text style={st.hint}>{t("Un resumen corto de cómo le fue al bot en los últimos 7 días: tu perfil, las pruebas paralelas y, si usás el bot real, cómo se compara con su copia simulada.")}</Text>}
+      {result && !result.ok && <Text style={st.coachNotice}>{botCoachProblem(result)}</Text>}
+      {text ? (
+        <View style={st.coachReport}>
+          <Text style={st.coachText}>{text}</Text>
+          {result && result.ok && (
+            <Text style={st.dim}>
+              {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}
+              {result.cached ? ` · ${t("guardado, sin cambios en tus datos")}` : ""}
+            </Text>
+          )}
+        </View>
+      ) : null}
+      <TouchableOpacity style={[st.outline, { borderColor: colors.gold + "88" }, busy && { opacity: 0.5 }]} onPress={generate} disabled={busy}>
+        {busy ? <ActivityIndicator color={colors.gold} /> : <Text style={[st.outlineText, { color: colors.gold }]}>{result?.ok ? t("Actualizar resumen") : t("Generar resumen del bot")}</Text>}
+      </TouchableOpacity>
+      <Text style={st.dim}>{t("Es una descripción automática hecha con IA de lo que pasó, no un consejo de inversión ni una señal. Para generarla se envían a un servicio de IA estadísticas calculadas de tus operaciones del bot (nunca claves ni datos personales).")}</Text>
+    </View>
+  );
+}
 
 function Line({ s, net }: { s: BotStatsRow; net?: boolean }) {
   if (!s.n) return <Text style={st.dim}>{t("sin operaciones")}</Text>;
@@ -402,6 +439,7 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
           <Text style={st.dim}>{t("Pasa la vara solo si gana en el año completo y en cada mitad, con operaciones suficientes. Probar muchas versiones y quedarse con la mejor engaña: por eso nada de esto se usa en serio sin confirmarlo antes en modo simulado.")}</Text>
         </View>
       )}
+      <BotCoach />
       <Text style={st.dim}>{t("Es una herramienta de práctica y estudio. No es asesoramiento financiero ni garantiza ganancias.")}</Text>
     </View>
     </>
@@ -409,6 +447,11 @@ export default function BotSection({ titleStyle, userId }: { titleStyle?: StyleP
 }
 
 const st = StyleSheet.create({
+  coach: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, gap: 8, backgroundColor: colors.ink + "66" },
+  coachTitle: { color: colors.gold, fontSize: 10.5, fontWeight: "800", letterSpacing: 1.4, textTransform: "uppercase" },
+  coachNotice: { color: colors.gold, fontSize: 12, lineHeight: 17, borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 10, backgroundColor: colors.golddeep + "44" },
+  coachReport: { borderWidth: 1, borderColor: colors.line, borderRadius: 8, padding: 12, gap: 6, backgroundColor: colors.ink + "88" },
+  coachText: { color: colors.snow, fontSize: 12.5, lineHeight: 18 },
   card: { backgroundColor: colors.panel, borderWidth: 1, borderColor: colors.line, borderRadius: 10, padding: 16, marginBottom: 20, gap: 10 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   name: { color: colors.snow, fontSize: 13.5, fontWeight: "800" },

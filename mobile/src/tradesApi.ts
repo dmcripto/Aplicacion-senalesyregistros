@@ -458,6 +458,8 @@ export async function setPartialAlerts(userId: string, enabled: boolean) {
 // ─── Coach con IA ───────────────────────────────────────────────────────────
 
 export const fetchCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", {}) as Promise<CoachResult>;
+/** Resumen semanal del bot con IA (misma función del coach, con la acción «bot»). */
+export const fetchBotCoach = () => callFunction<CoachResult & { ok: boolean }>("coach", { action: "bot" }) as Promise<CoachResult>;
 
 // ─── Comunidad de Telegram (grupo o canal donde el bot publica tus señales) ─
 

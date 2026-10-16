@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
-import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow } from "../lib";
+import { botCoachProblem, BOT_PROFILE_LIST, STARTER_PROFILE, BOT_UNLOCK_MODES, UNLOCK_LIMITS, UNLOCK_MODE_DEFAULTS, botUnlockInfo, botProfileCard, botAssetName, BOT_SCAN_LIST, botStaleMinutes, staleSince, actionId, backtestVerdict, botHowItDecides, botProfileInfo, cx, fmtDateTime, fmtR, labPasses, labVariantInfo, labVerdict, ruleSentence, t } from "../lib";
+import type { BotBacktest, BotLab, BotProfileId, BotSettings, BotStatsRow, CoachResult } from "../lib";
 import { useBot } from "../botStore";
-import { runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
+import { fetchBotCoach, runBotBacktest, runBotLab, sendTestSignal } from "../tradesApi";
 import AssetPicker from "./AssetPicker";
 import Panel from "./Panel";
 import NewsPauseRow from "./NewsPauseRow";
@@ -10,6 +10,43 @@ import NewsPauseRow from "./NewsPauseRow";
 type Notify = (msg: string, kind?: "ok" | "err" | "info") => void;
 const label = "mb-1 block text-[9.5px] font-bold uppercase tracking-[0.14em] text-fog";
 const short = (s: string) => botAssetName(s);
+
+/** Resumen semanal del bot con IA: cuenta cómo le fue al bot (perfil elegido, pruebas paralelas y operaciones reales) a partir de números ya calculados. */
+function BotCoach() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<CoachResult | null>(null);
+  const generate = async () => {
+    setBusy(true);
+    try {
+      setResult(await fetchBotCoach());
+    } finally {
+      setBusy(false);
+    }
+  };
+  const text = result && (result.ok ? result.text : "text" in result ? result.text : null);
+  return (
+    <div className="space-y-2.5 rounded-md border border-line bg-ink/40 p-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-gold">{t("Resumen semanal del bot con IA")}</p>
+      {!result && <p className="text-[12px] leading-relaxed text-fog">{t("Un resumen corto de cómo le fue al bot en los últimos 7 días: tu perfil, las pruebas paralelas y, si usás el bot real, cómo se compara con su copia simulada.")}</p>}
+      {result && !result.ok && <p className="rounded-md border border-gold/40 bg-golddeep/30 px-3 py-2.5 text-[12px] leading-relaxed text-gold">{botCoachProblem(result)}</p>}
+      {text && (
+        <div className="rounded-md border border-line bg-ink/50 p-3">
+          <p className="whitespace-pre-line text-[12.5px] leading-relaxed text-snow">{text}</p>
+          {result && result.ok && (
+            <p className="mt-2 text-[10.5px] text-dim">
+              {t("Basado en {n} operaciones cerradas", { n: result.closed })} · {fmtDateTime(result.createdAt)}
+              {result.cached ? ` · ${t("guardado, sin cambios en tus datos")}` : ""}
+            </p>
+          )}
+        </div>
+      )}
+      <button onClick={generate} disabled={busy} className="w-full rounded-md border border-gold/50 px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider text-gold transition-colors hover:bg-gold/10 disabled:opacity-50">
+        {busy ? t("Armando el resumen…") : result?.ok ? t("Actualizar resumen") : t("Generar resumen del bot")}
+      </button>
+      <p className="text-[10.5px] leading-relaxed text-dim">{t("Es una descripción automática hecha con IA de lo que pasó, no un consejo de inversión ni una señal. Para generarla se envían a un servicio de IA estadísticas calculadas de tus operaciones del bot (nunca claves ni datos personales).")}</p>
+    </div>
+  );
+}
 
 function Tile({ name, value, tone }: { name: string; value: string; tone?: "bull" | "bear" }) {
   return (
@@ -482,6 +519,7 @@ export default function BotCard({ userId, notify }: { userId: string; notify: No
             </div>
           )}
         </div>
+        <BotCoach />
         <p className="text-[10.5px] leading-relaxed text-dim">{t("Es una herramienta de práctica y estudio. No es asesoramiento financiero ni garantiza ganancias.")}</p>
       </div>
     </Panel>
