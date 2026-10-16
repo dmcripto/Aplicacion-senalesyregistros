@@ -265,7 +265,12 @@ async function callFunction<T extends { ok: boolean; error?: string }>(name: str
     const res = (error as { context?: Response }).context;
     if (res && typeof res.json === "function") {
       try {
-        return (await res.json()) as T;
+        const body = (await res.json()) as T & { message?: string; code?: string | number };
+        // Errores de la plataforma (tiempo agotado, memoria) no traen `ok`: se muestra su mensaje real.
+        if (body && typeof body === "object" && typeof body.ok !== "boolean") {
+          return { ok: false, error: String(body.error ?? body.message ?? body.code ?? "") || t("No se pudo comunicar con el servidor. Probá de nuevo en unos minutos.") } as T;
+        }
+        return body;
       } catch {
         /* sin cuerpo */
       }
