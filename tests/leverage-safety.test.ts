@@ -39,3 +39,13 @@ describe("apalancamiento seguro", () => {
     expect(signalCardHtml({ symbol: "BTCUSDT", direction: "LONG", entry: 100, tp: 103, sl: 99 } as any, "en", { disclaimer: false })).toContain("Max. suggested leverage: <b>60x</b>");
   });
 });
+
+describe("topes que no se llevan bien", () => {
+  it("avisa cuando el tope diario casi no deja margen para perder", async () => {
+    const { liveConfigWarnings } = await import("../packages/core/src/trading");
+    expect(liveConfigWarnings({ riskUsdt: 0.8, dailyLossUsdt: 0.9 })).toHaveLength(1);
+    expect(liveConfigWarnings({ riskUsdt: 0.5, dailyLossUsdt: 1 })).toHaveLength(1); // solo 2 pérdidas
+    expect(liveConfigWarnings({ riskUsdt: 0.3, dailyLossUsdt: 1 })).toEqual([]); // 3 pérdidas: ok
+    expect(liveConfigWarnings({ riskUsdt: 0.1, dailyLossUsdt: 0.5 })).toEqual([]);
+  });
+});

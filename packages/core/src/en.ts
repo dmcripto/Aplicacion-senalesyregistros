@@ -750,6 +750,7 @@ export const EN: Record<string, string> = {
   "Stop y objetivo no tan pegados": "Stop and target not too tight",
   "Si una señal trae el stop más cerca de la entrada que este porcentaje del precio, el bot real la omite (y lo anota). Así evitás operaciones con el stop y el objetivo muy pegados. 0 = sin mínimo.": "If a signal's stop is closer to the entry than this percentage of the price, the real bot skips it (and logs it). This avoids trades with the stop and target too tight. 0 = no minimum.",
   "Sin mínimo": "No minimum",
+  "Con un riesgo de {risk} por operación y un tope de {daily} por día, el bot aguanta solo {n} pérdida(s) seguida(s) y después se frena hasta mañana: te perdés las señales buenas que vienen después. Conviene que el tope diario sea al menos 3 veces el riesgo (por ejemplo, riesgo {r2} y tope {d2}).": "With a risk of {risk} per trade and a daily cap of {daily}, the bot can only take {n} loss(es) in a row and then stops until tomorrow: you miss the good signals that come later. The daily cap should be at least 3 times the risk (for example, risk {r2} and cap {d2}).",
   "El coach todavía no está activado en el servidor.": "The coach isn't enabled on the server yet.",
   "No pude armar un análisis con estos datos. Probá de nuevo más tarde.": "I couldn't build an analysis from this data. Try again later.",
   "No se pudo generar el análisis ahora. Probá de nuevo en unos minutos.": "The analysis couldn't be generated right now. Try again in a few minutes.",
