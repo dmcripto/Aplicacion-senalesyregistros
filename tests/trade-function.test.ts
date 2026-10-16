@@ -246,6 +246,15 @@ describe("función trade: órdenes del bot", () => {
     expect(placed()).toHaveLength(0);
   });
 
+  it("no opera un par donde ya hay una posición abierta (por ejemplo una tuya a mano)", async () => {
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true, max_open: 3 });
+    positionsOpen = 1; // el simulador del exchange informa una posición en BTCUSDT
+    const r = await exec();
+    expect(r.body.status).toBe("skipped");
+    expect(r.body.note).toContain("Ya hay una posición abierta en BTCUSDT");
+    expect(placed()).toHaveLength(0);
+  });
+
   it("tope diario: la pérdida máxima posible del día no pasa el límite", async () => {
     db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true, daily_loss_usdt: 0.25, risk_usdt: 0.1 });
     db.tables.live_orders = [1, 2].map((i) => ({ id: `o${i}`, user_id: "u1", kind: "bot", status: "sent", created_at: new Date().toISOString() }));

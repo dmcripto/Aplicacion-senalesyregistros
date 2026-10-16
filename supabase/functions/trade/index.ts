@@ -239,6 +239,9 @@ async function execute(userId: string, tradeId: string) {
     await recordFailure(userId, live, `No se pudieron leer las posiciones abiertas de ${ex.name}.`);
     return skip("No se pudieron leer las posiciones abiertas: por seguridad no se opera.");
   }
+  // Si ya hay una posición en ese par (tuya a mano o del bot), una orden opuesta la reduciría o la cerraría: no se opera.
+  const same = open.find((o) => String(o.symbol).toUpperCase() === sig.symbol.toUpperCase());
+  if (same) return skip(`Ya hay una posición abierta en ${sig.symbol} en ${ex.name} (tuya o del bot): no se opera para no mezclarlas.`);
   if (open.length >= Number(live.max_open)) return skip(`Ya hay ${open.length} posición(es) abierta(s) (máximo ${live.max_open}).`);
 
   const warnings = await ex.setup(fetch, creds.key, creds.secret, sig.symbol, plan.leverage);
