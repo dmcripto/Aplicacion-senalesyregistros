@@ -296,3 +296,12 @@ export async function coachReport(deps: CoachDeps, userId: string, now = Date.no
   if (old.length) await supabase.from("coach_reports").delete().in("id", old);
   return { ok: true, text: text.trim(), closed: closedCount, cached: false, createdAt };
 }
+
+/** Motivo corto de un fallo del servicio de IA para mostrarlo en pantalla («401 invalid x-api-key»). Nunca incluye claves ni datos de la persona. */
+export function aiErrorDetail(e: unknown): string {
+  const status = (e as { status?: number })?.status;
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  const m = /"message"\s*:\s*"([^"]{1,140})"/.exec(raw);
+  const text = (m ? m[1] : raw).replace(/sk-[A-Za-z0-9_-]+/g, "…").slice(0, 140);
+  return `${status ?? ""} ${text}`.trim();
+}

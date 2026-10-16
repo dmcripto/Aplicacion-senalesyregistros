@@ -581,6 +581,15 @@ async function coachReport(deps: CoachDeps, userId: string, now = Date.now()): P
   return { ok: true, text: text.trim(), closed: closedCount, cached: false, createdAt };
 }
 
+/** Motivo corto de un fallo del servicio de IA para mostrarlo en pantalla («401 invalid x-api-key»). Nunca incluye claves ni datos de la persona. */
+function aiErrorDetail(e: unknown): string {
+  const status = (e as { status?: number })?.status;
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  const m = /"message"\s*:\s*"([^"]{1,140})"/.exec(raw);
+  const text = (m ? m[1] : raw).replace(/sk-[A-Za-z0-9_-]+/g, "…").slice(0, 140);
+  return `${status ?? ""} ${text}`.trim();
+}
+
 // ─── VELTRIX · Resumen semanal del bot con IA ───────────────────────────────
 // Los números se calculan acá, con código (exactos y comprobables). La IA solo recibe esos datos ya calculados y los explica en lenguaje simple:
 // no calcula nada y no inventa cifras. No da señales ni consejos de inversión. Sin dependencias de Deno ni de Node, para poder probarlo en local.
@@ -928,7 +937,7 @@ Reglas:
 
 type AssistantResult =
   | { ok: true; text: string; remaining: number }
-  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key" };
+  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key"; detail?: string };
 
 interface AssistantDeps {
   supabase: any;
@@ -971,7 +980,7 @@ async function assistantReply(deps: AssistantDeps, userId: string, rawMessages: 
     text = await deps.ask(buildAssistantSystem(facts, lang), messages);
   } catch (e) {
     console.error("assistant:", (e as { status?: number })?.status ?? "", e instanceof Error ? e.message : e);
-    return { ok: false, reason: "unavailable" };
+    return { ok: false, reason: "unavailable", detail: aiErrorDetail(e) };
   }
   if (!text || !text.trim()) return { ok: false, reason: "refused" };
 
