@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ASSISTANT_MAX_CHARS, assistantProblem, assistantSuggestions, t } from "@dmcripto/core";
 import type { AssistantMessage } from "@dmcripto/core";
 import { askAssistant } from "./tradesApi";
@@ -36,12 +36,14 @@ export default function AssistantChat() {
   return (
     <>
       <TouchableOpacity style={s.fab} onPress={() => setOpen(true)} accessibilityLabel={t("Asistente VELTRIX")}>
-        <Text style={s.fabText}>✦ {t("Ayuda")}</Text>
+        <Image source={require("../assets/logo.png")} style={s.fabLogo} resizeMode="contain" />
+        <Text style={s.fabText}>{t("Ayuda")}</Text>
       </TouchableOpacity>
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS === "ios" ? "padding" : "height"}>
           <View style={s.sheet}>
             <View style={s.head}>
+              <Image source={require("../assets/logo.png")} style={s.headLogo} resizeMode="contain" />
               <View style={{ flex: 1 }}>
                 <Text style={s.title}>{t("Asistente VELTRIX")}</Text>
                 <Text style={s.sub}>{t("Preguntame sobre la plataforma o tus resultados")}</Text>
@@ -71,6 +73,7 @@ export default function AssistantChat() {
               )}
               {messages.map((m, i) => (
                 <View key={i} style={m.role === "user" ? s.rowUser : s.rowBot}>
+                  {m.role === "assistant" && <Image source={require("../assets/logo.png")} style={s.avatar} resizeMode="contain" />}
                   <Text style={[s.bubble, m.role === "user" ? s.bubbleUser : s.bubbleBot]}>{m.content}</Text>
                 </View>
               ))}
@@ -108,7 +111,10 @@ export default function AssistantChat() {
 }
 
 const s = StyleSheet.create({
-  fab: { position: "absolute", right: 14, bottom: 84, backgroundColor: colors.ink + "F2", borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 16, elevation: 6 },
+  fab: { position: "absolute", right: 14, bottom: 84, backgroundColor: colors.ink + "F2", borderWidth: 1, borderColor: colors.gold + "88", borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14, elevation: 6, flexDirection: "row", alignItems: "center", gap: 8 },
+  fabLogo: { width: 22, height: 22 },
+  headLogo: { width: 34, height: 34 },
+  avatar: { width: 22, height: 22, marginTop: 4 },
   fabText: { color: colors.gold, fontWeight: "800", fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" },
   backdrop: { flex: 1, backgroundColor: "#000000AA", justifyContent: "flex-end" },
   sheet: { height: "82%", backgroundColor: colors.panel, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 1, borderColor: colors.line, overflow: "hidden" },
@@ -122,8 +128,8 @@ const s = StyleSheet.create({
   chip: { borderWidth: 1, borderColor: colors.line, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 12 },
   chipText: { color: colors.snow, fontSize: 12 },
   rowUser: { alignItems: "flex-end" },
-  rowBot: { alignItems: "flex-start" },
-  bubble: { fontSize: 13, lineHeight: 19, color: colors.snow, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, maxWidth: "90%", overflow: "hidden" },
+  rowBot: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
+  bubble: { fontSize: 13, lineHeight: 19, color: colors.snow, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 12, maxWidth: "85%", overflow: "hidden" },
   bubbleUser: { backgroundColor: colors.gold + "26" },
   bubbleBot: { backgroundColor: colors.ink + "88", borderWidth: 1, borderColor: colors.line },
   notice: { borderWidth: 1, borderColor: colors.gold + "66", borderRadius: 8, padding: 10, backgroundColor: colors.golddeep + "44" },
