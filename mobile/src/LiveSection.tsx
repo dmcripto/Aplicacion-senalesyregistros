@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import ClearableInput from "./ClearableInput";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, ago, liveConfigWarnings, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
 import type { LiveOrder, LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
@@ -254,6 +254,9 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
               <Num name={t("Pérdida máxima por día (USDT)")} value={lim.daily} onChange={(v) => setLim({ ...lim, daily: v })} />
               <Num name={t("Distancia mínima del stop (%)")} value={lim.minStop} onChange={(v) => setLim({ ...lim, minStop: v })} />
             </View>
+            {liveConfigWarnings({ riskUsdt: Number(lim.risk.replace(",", ".")), dailyLossUsdt: Number(lim.daily.replace(",", ".")) }).map((w) => (
+              <Text key={w} style={[s.hint, { color: "#fbbf24" }]}>⚠️ {w}</Text>
+            ))}
             <Text style={s.hint}>{t("Si una señal trae el stop más cerca de la entrada que este porcentaje del precio, el bot real la omite (y lo anota). Así evitás operaciones con el stop y el objetivo muy pegados. 0 = sin mínimo.")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {MIN_STOP_PRESETS.map((v) => (

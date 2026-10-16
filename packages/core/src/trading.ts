@@ -1949,6 +1949,29 @@ export interface LiveSettings {
 
 export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, maxMinStopPct: 10 } as const;
 
+/**
+ * Avisos sobre topes que no se llevan bien entre sí. El caso típico: el tope de pérdida del día es casi igual al riesgo por operación,
+ * así que con una o dos pérdidas el bot se frena y se pierde las señales buenas que vienen después.
+ */
+export function liveConfigWarnings(l: Pick<LiveSettings, "riskUsdt" | "dailyLossUsdt">): string[] {
+  const out: string[] = [];
+  if (l.riskUsdt > 0 && l.dailyLossUsdt > 0) {
+    const n = Math.floor(l.dailyLossUsdt / l.riskUsdt + 1e-9);
+    if (n < 3) {
+      out.push(
+        tr("Con un riesgo de {risk} por operación y un tope de {daily} por día, el bot aguanta solo {n} pérdida(s) seguida(s) y después se frena hasta mañana: te perdés las señales buenas que vienen después. Conviene que el tope diario sea al menos 3 veces el riesgo (por ejemplo, riesgo {r2} y tope {d2}).", {
+          risk: String(l.riskUsdt).replace(".", ","),
+          daily: String(l.dailyLossUsdt).replace(".", ","),
+          n: String(n),
+          r2: String(Math.max(0.05, Math.round((l.dailyLossUsdt / 4) * 100) / 100)).replace(".", ","),
+          d2: String(l.dailyLossUsdt).replace(".", ","),
+        }),
+      );
+    }
+  }
+  return out;
+}
+
 /** Valores sugeridos para la distancia mínima del stop (% del precio). 0 = sin mínimo. */
 export const MIN_STOP_PRESETS = [0, 1, 1.5, 2, 3] as const;
 
