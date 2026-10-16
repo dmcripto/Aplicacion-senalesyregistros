@@ -1,36 +1,30 @@
 VELTRIX · PAQUETE COMPLETO (todo junto, en orden)
-Cada archivo se abre en GitHub y se copia con el icono «Copy raw file» (dos cuadrados, arriba a la derecha).
+Abrí cada archivo con el Bloc de notas (o cualquier editor), Ctrl+A, Ctrl+C, y pegalo donde dice abajo.
 
-═══ PASO 1 · BASE DE DATOS (1 minuto) ═══
-[ ] 01-SQL-TODO-JUNTO.txt  -> Supabase > SQL Editor > pegar todo > Run.
-    Reúne todos los SQL pendientes. Se puede repetir sin problema.
+═══ PASO 1 · BASE DE DATOS ═══
+[ ] 01-SQL-TODO-JUNTO.txt -> Supabase > SQL Editor > pegar todo > Run.
+    Reúne todos los SQL pendientes (asistente con IA, resumen del bot, Tokenomist, distancia mínima del stop...). Se puede repetir sin problema.
 
 ═══ PASO 2 · FUNCIONES (Edge Functions > nombre > Code > Ctrl+A > pegar > Deploy) ═══
-Hacelas en este orden (las primeras son las que más importan):
-[ ] 02-FUNCION-coach.txt                -> coach       (asistente con IA + resumen del bot)
-[ ] 05-FUNCION-unlocks.txt              -> unlocks     (aprender de Tokenomist: URGENTE, la prueba vence ~28/10)
-[ ] 04-FUNCION-trade.txt (nuevo: distancia mínima del stop) -> trade
-[ ] 03-FUNCION-bot.txt                  -> bot
-[ ] 04-FUNCION-trade.txt                -> trade
-[ ] 06-FUNCION-exchanges.txt            -> exchanges
-[ ] 07-FUNCION-telegram-bot.txt         -> telegram-bot
-[ ] 08-FUNCION-auto-close.txt           -> auto-close
-[ ] 09-FUNCION-tradingview-webhook.txt  -> tradingview-webhook
-Comprobación rápida con Ctrl+F dentro del editor, antes de tocar Deploy:
-  coach -> «assistantReply» · bot, telegram-bot, auto-close, tradingview-webhook -> «Apalancamiento máx. sugerido»
+Antes de tocar Deploy, buscá con Ctrl+F la palabra de la columna «comprobar»: tiene que aparecer.
+  Archivo                              -> función              comprobar
+[ ] 02-FUNCION-coach.txt               -> coach                aiErrorDetail
+[ ] 03-FUNCION-bot.txt                 -> bot                  h4-wide-active
+[ ] 04-FUNCION-trade.txt               -> trade                min_stop_pct
+[ ] 05-FUNCION-unlocks.txt             -> unlocks              parseAllowedRange
+[ ] 06-FUNCION-exchanges.txt           -> exchanges            (sin cambios nuevos)
+[ ] 07-FUNCION-telegram-bot.txt        -> telegram-bot         Apalancamiento máx. sugerido
+[ ] 08-FUNCION-auto-close.txt          -> auto-close           Apalancamiento máx. sugerido
+[ ] 09-FUNCION-tradingview-webhook.txt -> tradingview-webhook  Apalancamiento máx. sugerido
 
 ═══ PASO 3 · CLAVES (Edge Functions > Secrets) ═══
-[ ] ANTHROPIC_API_KEY: se crea en console.anthropic.com (con crédito cargado). Se copia con el botón «Copy» y se pega con Ctrl+V.
-    Tiene que empezar con «sk-ant-». Nunca la pegues en el chat.
-[ ] TOKENOMIST_API_KEY: ya está cargada.
+[ ] ANTHROPIC_API_KEY: de console.anthropic.com (con crédito). Empieza con «sk-ant-api03-». Nunca en el chat.
+[ ] TOKENOMIST_API_KEY: ya está.
 
 ═══ PASO 4 · COMPROBAR ═══
-[ ] 10-CHEQUEO-despues-de-todo.txt -> SQL Editor > Run. Tiene que dar 4, 2, 2, 1 en las primeras columnas.
-[ ] Web: Ctrl+F5 > botón «✦ Ayuda» > hacer una pregunta.
-[ ] Web: Bot > «Generar resumen del bot» (necesita 5 operaciones cerradas del bot en la semana).
+[ ] 10-CHEQUEO-despues-de-todo.txt -> SQL Editor > Run (4, 2, 2, 1 y los datos de Tokenomist creciendo).
+[ ] Web (Ctrl+F5): botón «Ayuda» > una pregunta. Bot > «Generar resumen del bot».
+[ ] Bot > «Probar variantes de 4 horas (1 año)» y mandar la captura.
 
 ═══ OPCIONAL ═══
 12-OPCIONAL-SQL-desbloqueos-manual.txt -> cargar a mano un desbloqueo grande cuando termine la prueba de Tokenomist.
-
-═══ APP ANDROID ═══
-La app necesita un APK nuevo para tener el botón «Ayuda» y los avisos de apalancamiento. Se compila al final, cuando la web ande bien.
