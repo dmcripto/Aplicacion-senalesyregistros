@@ -1411,8 +1411,8 @@ export interface AssistantMessage {
 }
 export type AssistantResult =
   | { ok: true; text: string; remaining: number }
-  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key" | "bad_key" }
-  | { ok: false; error: string; reason?: undefined };
+  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key" | "bad_key"; detail?: string }
+  | { ok: false; error: string; reason?: undefined; detail?: undefined };
 
 export const ASSISTANT_MAX_CHARS = 1000;
 
@@ -1441,7 +1441,8 @@ export function assistantProblem(r: Exclude<AssistantResult, { ok: true }>): str
     case "refused":
       return tr("No pude contestar eso. Probá de otra forma.");
     default:
-      return tr("No se pudo contestar ahora. Probá de nuevo en unos minutos.");
+      // Con el motivo técnico entre paréntesis (por ejemplo «401 invalid x-api-key») para saber qué arreglar sin buscar en los registros.
+      return tr("No se pudo contestar ahora. Probá de nuevo en unos minutos.") + (r.detail ? ` (${r.detail})` : "");
   }
 }
 

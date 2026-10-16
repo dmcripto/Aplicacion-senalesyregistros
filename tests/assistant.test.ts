@@ -57,7 +57,7 @@ describe("asistente: respuesta", () => {
     const ok = async () => "x";
     expect(await assistantReply({ supabase, hasKey: false, ask: ok }, "u1", [u("hola")], NOW)).toEqual({ ok: false, reason: "no_key" });
     expect(await assistantReply({ supabase, hasKey: true, ask: ok }, "u1", [], NOW)).toEqual({ ok: false, reason: "bad_input" });
-    expect(await assistantReply({ supabase, hasKey: true, ask: async () => { throw new Error("caído"); } }, "u1", [u("hola")], NOW)).toEqual({ ok: false, reason: "unavailable" });
+    expect(await assistantReply({ supabase, hasKey: true, ask: async () => { throw new Error("caído"); } }, "u1", [u("hola")], NOW)).toEqual({ ok: false, reason: "unavailable", detail: "caído" });
     expect(await assistantReply({ supabase, hasKey: true, ask: async () => null }, "u1", [u("hola")], NOW)).toEqual({ ok: false, reason: "refused" });
     expect(db.tables.assistant_log).toHaveLength(0); // lo que falló no gasta cupo
     db.tables.assistant_log = Array.from({ length: ASSISTANT_MAX_PER_DAY }, (_, i) => ({ user_id: "u1", created_at: new Date(NOW - (i + 1) * 60_000).toISOString() }));
@@ -78,5 +78,15 @@ describe("asistente: instrucciones", () => {
   });
   it("el tope diario es razonable", () => {
     expect(ASSISTANT_MAX_PER_DAY).toBeGreaterThan(10);
+  });
+});
+
+describe("asistente: motivo del fallo", () => {
+  it("resume el error del servicio de IA sin claves", async () => {
+    const { aiErrorDetail } = await import("../supabase/functions/_shared/coach");
+    const e = Object.assign(new Error('401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"},"request_id":"req_1"}'), { status: 401 });
+    expect(aiErrorDetail(e)).toBe("401 invalid x-api-key");
+    expect(aiErrorDetail(new Error("clave sk-ant-api03-ABCDEF mala"))).toBe("clave … mala");
+    expect(aiErrorDetail(undefined)).toBe("");
   });
 });

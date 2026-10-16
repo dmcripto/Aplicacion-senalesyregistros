@@ -3,7 +3,7 @@
 // Los números los calcula el código (los mismos que usan el coach y el resumen del bot); la IA solo los explica.
 // Solo lee: no puede operar, cambiar ajustes ni tocar nada. No da señales ni consejos de inversión.
 // Sin dependencias de Deno ni de Node, para poder probarlo en local.
-import { computeFacts } from "./coach.ts";
+import { aiErrorDetail, computeFacts } from "./coach.ts";
 import type { CoachTrade } from "./coach.ts";
 import { computeBotFacts } from "./botCoach.ts";
 import type { BotTrade } from "./botCoach.ts";
@@ -117,7 +117,7 @@ Reglas:
 
 export type AssistantResult =
   | { ok: true; text: string; remaining: number }
-  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key" };
+  | { ok: false; reason: "bad_input" | "limit" | "refused" | "unavailable" | "no_key"; detail?: string };
 
 export interface AssistantDeps {
   supabase: any;
@@ -160,7 +160,7 @@ export async function assistantReply(deps: AssistantDeps, userId: string, rawMes
     text = await deps.ask(buildAssistantSystem(facts, lang), messages);
   } catch (e) {
     console.error("assistant:", (e as { status?: number })?.status ?? "", e instanceof Error ? e.message : e);
-    return { ok: false, reason: "unavailable" };
+    return { ok: false, reason: "unavailable", detail: aiErrorDetail(e) };
   }
   if (!text || !text.trim()) return { ok: false, reason: "refused" };
 
