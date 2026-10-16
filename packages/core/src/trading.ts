@@ -2038,6 +2038,8 @@ export function liveKeyGuide(id: string | null | undefined): string {
   }
 }
 
+/** Topes que recomendamos para empezar con poco capital: pérdida diaria de 5 operaciones, stops no pegados y apalancamiento moderado. */
+export const RECOMMENDED_LIVE = { maxMarginUsdt: 10, riskUsdt: 0.4, minLeverage: 2, maxLeverage: 15, minStopPct: 1, dailyLossUsdt: 2, maxOpen: 3 } as const;
 export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
 
 export interface LiveOrder {

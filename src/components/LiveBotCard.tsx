@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import ClearableInput from "./ClearableInput";
-import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, ago, liveConfigWarnings, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, RECOMMENDED_LIVE, ago, liveConfigWarnings, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
 import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "../tradesApi";
@@ -317,6 +317,9 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
                 <NumField name={t("Pérdida máxima por día (USDT)")} value={limits.dailyLossUsdt} min={0.05} max={LIVE_LIMITS.dailyLossUsdt} step={0.05} onChange={(v) => setLimits({ ...limits, dailyLossUsdt: v })} />
                 <NumField name={t("Distancia mínima del stop (%)")} value={limits.minStopPct} min={0} max={LIVE_LIMITS.maxMinStopPct} step={0.1} onChange={(v) => setLimits({ ...limits, minStopPct: v })} />
               </div>
+              <button type="button" onClick={() => { setLimits({ ...limits, ...RECOMMENDED_LIVE }); notify(t("Valores recomendados cargados: tocá «Guardar topes» para aplicarlos.")); }} className="w-full rounded-md border border-gold/50 px-3 py-2 text-[11.5px] font-bold uppercase tracking-wider text-gold hover:bg-gold/10">
+                {t("Poner los valores recomendados")}
+              </button>
               {liveConfigWarnings(limits).map((w) => (
                 <p key={w} className="rounded-md border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-[11.5px] leading-relaxed text-amber-300">
                   ⚠️ {w}
