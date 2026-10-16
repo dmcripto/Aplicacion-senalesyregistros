@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import ClearableInput from "./ClearableInput";
 import { ActivityIndicator, Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import type { StyleProp, TextStyle } from "react-native";
-import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, ago, clampLive, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "@dmcripto/core";
 import type { LiveOrder, LiveSettings } from "@dmcripto/core";
 import { useBot } from "./botStore";
 import { supabase } from "./supabaseClient";
@@ -32,7 +32,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiSecret, setApiSecret] = useState("");
   const [apiPass, setApiPass] = useState("");
   const [openList, setOpenList] = useState(false);
-  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", daily: "0.5", open: "1" });
+  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", minStop: "0", daily: "0.5", open: "1" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
 
@@ -45,7 +45,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     try {
       const v = await fetchLive(userId);
       setView(v);
-      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), daily: String(v.live.dailyLossUsdt), open: String(v.live.maxOpen) });
+      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), minStop: String(v.live.minStopPct), daily: String(v.live.dailyLossUsdt), open: String(v.live.maxOpen) });
       setUnavailable(false);
     } catch {
       setUnavailable(true);
@@ -153,6 +153,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         riskUsdt: clampLive(Number(lim.risk.replace(",", ".")), 0.01, LIVE_LIMITS.riskUsdt, DEFAULT_LIVE.riskUsdt),
         maxLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).max,
         minLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).min,
+        minStopPct: clampLive(Number(lim.minStop.replace(",", ".")), 0, LIVE_LIMITS.maxMinStopPct, 0),
         dailyLossUsdt: clampLive(Number(lim.daily.replace(",", ".")), 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
         maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(Number(lim.open) || 1))),
       },
@@ -251,6 +252,15 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
               <Num name={t("Apalancamiento mínimo")} value={lim.minLev} onChange={(v) => setLim({ ...lim, minLev: v })} />
               <Num name={t("Apalancamiento máximo")} value={lim.lev} onChange={(v) => setLim({ ...lim, lev: v })} />
               <Num name={t("Pérdida máxima por día (USDT)")} value={lim.daily} onChange={(v) => setLim({ ...lim, daily: v })} />
+              <Num name={t("Distancia mínima del stop (%)")} value={lim.minStop} onChange={(v) => setLim({ ...lim, minStop: v })} />
+            </View>
+            <Text style={s.hint}>{t("Si una señal trae el stop más cerca de la entrada que este porcentaje del precio, el bot real la omite (y lo anota). Así evitás operaciones con el stop y el objetivo muy pegados. 0 = sin mínimo.")}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {MIN_STOP_PRESETS.map((v) => (
+                <TouchableOpacity key={v} style={[s.chip, Number(lim.minStop) === v && s.chipOn]} onPress={() => setLim({ ...lim, minStop: String(v) })}>
+                  <Text style={s.chipText}>{v === 0 ? t("Sin mínimo") : `${String(v).replace(".", ",")} %`}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
             <Text style={s.label}>{t("Rango de apalancamiento")}</Text>
             <Text style={s.hint}>{t("Rangos sugeridos por perfil (tocá uno y se rellena; después lo podés ajustar a mano):")}</Text>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import ClearableInput from "./ClearableInput";
-import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, ago, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
+import { DEFAULT_LIVE, HIGH_LEVERAGE, LEVERAGE_PRESETS, LIVE_EXCHANGES, LIVE_LIMITS, MIN_STOP_PRESETS, ago, clampLive, cx, leveragePresetName, leverageRangeText, liveExchangeName, liveKeyGuide, liveNeedsPass, liveStatusLabel, normalizeLeverage, t } from "../lib";
 import type { LiveOrder, LiveSettings } from "../lib";
 import { useBot } from "../botStore";
 import { connectTradeKey, disconnectTradeKey, fetchLive, liveStop, saveLive, switchLiveExchange, testLiveOrder } from "../tradesApi";
@@ -208,6 +208,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
         riskUsdt: clampLive(limits.riskUsdt, 0.01, LIVE_LIMITS.riskUsdt, DEFAULT_LIVE.riskUsdt),
         maxLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).max,
         minLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).min,
+        minStopPct: clampLive(limits.minStopPct, 0, LIVE_LIMITS.maxMinStopPct, 0),
         dailyLossUsdt: clampLive(limits.dailyLossUsdt, 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
         maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(limits.maxOpen || 1))),
       },
@@ -314,6 +315,18 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
                 <NumField name={t("Apalancamiento mínimo")} value={limits.minLeverage} min={1} max={LIVE_LIMITS.maxLeverage} step={1} onChange={(v) => setLimits({ ...limits, minLeverage: v })} />
                 <NumField name={t("Apalancamiento máximo")} value={limits.maxLeverage} min={1} max={LIVE_LIMITS.maxLeverage} step={1} onChange={(v) => setLimits({ ...limits, maxLeverage: v })} />
                 <NumField name={t("Pérdida máxima por día (USDT)")} value={limits.dailyLossUsdt} min={0.05} max={LIVE_LIMITS.dailyLossUsdt} step={0.05} onChange={(v) => setLimits({ ...limits, dailyLossUsdt: v })} />
+                <NumField name={t("Distancia mínima del stop (%)")} value={limits.minStopPct} min={0} max={LIVE_LIMITS.maxMinStopPct} step={0.1} onChange={(v) => setLimits({ ...limits, minStopPct: v })} />
+              </div>
+              <div className="space-y-2 rounded-md border border-line/70 p-2.5">
+                <p className={label}>{t("Stop y objetivo no tan pegados")}</p>
+                <p className="text-[11px] leading-relaxed text-dim">{t("Si una señal trae el stop más cerca de la entrada que este porcentaje del precio, el bot real la omite (y lo anota). Así evitás operaciones con el stop y el objetivo muy pegados. 0 = sin mínimo.")}</p>
+                <div className="flex flex-wrap gap-2">
+                  {MIN_STOP_PRESETS.map((v) => (
+                    <button key={v} type="button" onClick={() => setLimits({ ...limits, minStopPct: v })} className={cx("rounded-md border px-2.5 py-1.5 text-[11.5px] font-bold", limits.minStopPct === v ? "border-gold/60 bg-gold/15 text-gold" : "border-line text-snow hover:border-line2 hover:bg-white/5")}>
+                      {v === 0 ? t("Sin mínimo") : `${String(v).replace(".", ",")} %`}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2 rounded-md border border-line/70 p-2.5">
                 <p className={label}>{t("Rango de apalancamiento")}</p>

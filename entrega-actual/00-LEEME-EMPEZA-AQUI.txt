@@ -9,6 +9,7 @@ Cada archivo se abre en GitHub y se copia con el icono «Copy raw file» (dos cu
 Hacelas en este orden (las primeras son las que más importan):
 [ ] 02-FUNCION-coach.txt                -> coach       (asistente con IA + resumen del bot)
 [ ] 05-FUNCION-unlocks.txt              -> unlocks     (aprender de Tokenomist: URGENTE, la prueba vence ~28/10)
+[ ] 04-FUNCION-trade.txt (nuevo: distancia mínima del stop) -> trade
 [ ] 03-FUNCION-bot.txt                  -> bot
 [ ] 04-FUNCION-trade.txt                -> trade
 [ ] 06-FUNCION-exchanges.txt            -> exchanges
