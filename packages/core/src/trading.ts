@@ -795,6 +795,76 @@ export function tagStats(trades: Trade[]): TagRow[] {
     .sort((a, b) => a.netR - b.netR);
 }
 
+// ─── Rendimiento por perfil del bot ─────────────────────────────────────────
+
+export interface BotProfileRow {
+  key: string;
+  label: string;
+  /** true = operaciones del bot con dinero real; false = simulado o pruebas paralelas. */
+  real: boolean;
+  ops: number;
+  open: number;
+  winRate: number;
+  netR: number;
+  avgR: number;
+  longs: { ops: number; netR: number };
+  shorts: { ops: number; netR: number };
+}
+
+/** A qué perfil (o prueba paralela) pertenece una operación del bot, según lo que dice su nota. Devuelve null si no es del bot. */
+export function botProfileKey(t: Pick<Trade, "notes" | "tags">): { key: string; label: string; real: boolean } | null {
+  const tags = (t.tags ?? []).map((x) => x.toLowerCase());
+  const n = (t.notes ?? "").toLowerCase();
+  if (tags.includes("bot real")) return { key: "real", label: tr("Bot real"), real: true };
+  if (!tags.includes("bot simulado") && !n.includes("bot simulado")) return null;
+  if (n.includes("prueba paralela")) {
+    if (n.includes("entradas estiradas")) return { key: "p-filtro", label: tr("Prueba · filtro de entradas estiradas"), real: false };
+    if (n.includes("corredor")) return { key: "p-corredor", label: tr("Prueba · corredor"), real: false };
+    return { key: "p-otra", label: tr("Otra prueba paralela"), real: false };
+  }
+  if (n.includes("tendencia rápida")) return { key: "slowquick", label: tr("Lento · tendencia rápida"), real: false };
+  if (n.includes("objetivo amplio")) return { key: "slowwide", label: tr("Lento · objetivo amplio"), real: false };
+  if (n.includes("perfil lento")) return { key: "slow", label: tr("Lento (4 horas)"), real: false };
+  if (n.includes("máxima actividad")) return { key: "max", label: tr("Máxima actividad"), real: false };
+  if (n.includes("perfil intensivo")) return { key: "intense", label: tr("Intensivo"), real: false };
+  if (n.includes("perfil dinámico")) return { key: "dynamic", label: tr("Dinámico"), real: false };
+  if (n.includes("perfil conservador")) return { key: "conservative", label: tr("Conservador"), real: false };
+  return { key: "balanced", label: tr("Equilibrado"), real: false };
+}
+
+/** Rendimiento de las operaciones del bot agrupadas por perfil (más operaciones primero): aciertos, R neto y R medio, separando compras y ventas. */
+export function botProfileStats(trades: Trade[]): BotProfileRow[] {
+  const map = new Map<string, { info: { key: string; label: string; real: boolean }; rs: number[]; open: number; l: number[]; s: number[] }>();
+  for (const t of trades) {
+    const info = botProfileKey(t);
+    if (!info) continue;
+    const row = map.get(info.key) ?? { info, rs: [], open: 0, l: [], s: [] };
+    map.set(info.key, row);
+    if (t.outcome === "ABIERTA") {
+      row.open += 1;
+      continue;
+    }
+    const r = resultR(t) ?? 0;
+    row.rs.push(r);
+    (t.direction === "LONG" ? row.l : row.s).push(r);
+  }
+  const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+  return [...map.values()]
+    .map(({ info, rs, open, l, s }) => ({
+      key: info.key,
+      label: info.label,
+      real: info.real,
+      ops: rs.length,
+      open,
+      winRate: rs.length ? (rs.filter((r) => r > 0).length / rs.length) * 100 : 0,
+      netR: sum(rs),
+      avgR: rs.length ? sum(rs) / rs.length : 0,
+      longs: { ops: l.length, netR: sum(l) },
+      shorts: { ops: s.length, netR: sum(s) },
+    }))
+    .sort((a, b) => b.ops - a.ops || b.open - a.open);
+}
+
 // ─── Calculadora de riesgo ──────────────────────────────────────────────────
 
 export interface PositionInput {

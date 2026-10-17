@@ -3,7 +3,7 @@ import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, exchangeTradeUrl, signalGuide, leverageCheck, leverageWarning} from "@dmcripto/core";
+import { BOT_ASSETS, BOT_OWN_MIN, MAX_TAGS, PRESET_TAGS, actionId, analyze, balanceInfo, confidenceLabel, filterBySource, ruleEvidence, strategyPlan, strategySources, exchangeName, fmtCurrency, cleanTags, computeStats, equitySeries, tagStats, botProfileStats, fmtPct, fmtPrice, fmtR, monthlySummary, resultR, rrOf, exchangeTradeUrl, signalGuide, leverageCheck, leverageWarning} from "@dmcripto/core";
 import type { Confidence, DailyStatus, GroupRow, StrategyRule, Trade } from "@dmcripto/core";
 import { closeTradeManually, deleteTradeById, fetchConnections, markTradeOutcome, reopenTradeById, updateTradeNotes } from "./tradesApi";
 import { AreaChart, RangeBar, timeAgo } from "./ui";
@@ -218,6 +218,33 @@ export function TagList({ trades }: { trades: Trade[] }) {
           <Text style={[s.monthR, { color: rColor(r.netR) }]}>{fmtR(r.netR)}R</Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+export function BotProfileList({ trades }: { trades: Trade[] }) {
+  const rows = useMemo(() => botProfileStats(trades), [trades]);
+  if (!rows.length) return null;
+  return (
+    <View style={s.section}>
+      <Text style={s.sectionTitle}>{t("RENDIMIENTO POR PERFIL DEL BOT")}</Text>
+      {rows.map((r) => (
+        <View key={r.key} style={{ marginBottom: 8 }}>
+          <View style={s.monthRow}>
+            <Text style={[s.monthLabel, { flex: 1.6 }]} numberOfLines={1}>
+              {r.label}
+              {r.real ? ` · ${t("real")}` : ""}
+            </Text>
+            <Text style={s.monthCell}>{r.ops} {t("ops")}</Text>
+            <Text style={s.monthCell}>{Math.round(r.winRate)}%</Text>
+            <Text style={[s.monthR, { color: rColor(r.netR) }]}>{fmtR(r.netR)}R</Text>
+          </View>
+          <Text style={{ color: colors.dim, fontSize: 10.5 }}>
+            {t("R medio")} {fmtR(r.avgR)} · {r.longs.ops} {t("compras")} {fmtR(r.longs.netR)}R · {r.shorts.ops} {t("ventas")} {fmtR(r.shorts.netR)}R{r.open > 0 ? ` · ${r.open} ${t("abiertas")}` : ""}
+          </Text>
+        </View>
+      ))}
+      <Text style={{ color: colors.dim, fontSize: 10.5 }}>{t("Con menos de 30 operaciones cerradas por perfil, los resultados todavía no dicen mucho: se pueden deber a un solo día de mercado.")}</Text>
     </View>
   );
 }
