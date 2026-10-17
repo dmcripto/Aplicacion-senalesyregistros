@@ -33,5 +33,6 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
-  "private": true
+  "private": true,
+  "license": "UNLICENSED"
 }

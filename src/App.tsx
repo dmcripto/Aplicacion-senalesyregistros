@@ -1002,6 +1002,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
         <div className="mx-auto max-w-[1440px] border-t border-line/60 px-4 py-4 lg:px-8">
           <p className="text-[10.5px] leading-relaxed text-dim">
             {t("VELTRIX no constituye asesoramiento financiero ni recomendación de inversión. Operar en mercados financieros implica riesgo de pérdida. Los resultados pasados no garantizan resultados futuros. No está afiliado a TradingView.")}{" "}
+            <span className="block pt-1">{t("© 2026 VELTRIX. Todos los derechos reservados: queda prohibido copiar, revender o reproducir la aplicación, las señales o sus contenidos sin autorización.")}</span>
             <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="text-cyan underline hover:text-snow">
               {t("Comunidad")}
             </a>{" · "}
