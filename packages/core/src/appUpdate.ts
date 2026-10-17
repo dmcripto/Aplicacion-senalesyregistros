@@ -28,7 +28,8 @@ export function parseUpdateInfo(raw: unknown): UpdateInfo | null {
   const version = typeof r.version === "string" ? r.version.trim() : "";
   const url = typeof r.url === "string" ? r.url.trim() : "";
   if (!/^\d+(\.\d+){1,3}$/.test(version)) return null;
-  if (!/^https:\/\/github\.com\/dmcripto\/Aplicacion-senalesyregistros\/releases\/download\//.test(url)) return null;
+  // Solo se aceptan descargas de nuestros propios repositorios (el principal y el de descargas aparte).
+  if (!/^https:\/\/github\.com\/dmcripto\/(Aplicacion-senalesyregistros|veltrix-descargas)\/releases\/download\//.test(url)) return null;
   const notes = typeof r.notes === "string" && r.notes.trim() ? r.notes.trim().slice(0, 200) : undefined;
   return { version, url, notes };
 }

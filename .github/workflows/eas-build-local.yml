@@ -58,11 +58,17 @@ jobs:
           path: VELTRIX.apk
           retention-days: 30
 
+      # El APK se publica en un repositorio público aparte (solo descargas, sin código) si existe el secreto RELEASES_TOKEN:
+      # así el repositorio del código puede ser privado. Sin ese secreto, se publica acá (solo sirve si este repositorio es público).
       - name: Publish release
         if: ${{ inputs.publicar }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          DEFAULT_TOKEN: ${{ github.token }}
+          DEFAULT_REPO: ${{ github.repository }}
+          DOWNLOADS_REPO: dmcripto/veltrix-descargas
         run: |
           TAG="android-v${{ steps.ver.outputs.v }}-${{ github.run_number }}"
-          gh release create "$TAG" VELTRIX.apk --title "VELTRIX Android ${{ steps.ver.outputs.v }}" --notes "APK de VELTRIX ${{ steps.ver.outputs.v }}." --prerelease
-          echo "Descarga: https://github.com/${{ github.repository }}/releases/download/$TAG/VELTRIX.apk"
+          if [ -n "$RELEASES_TOKEN" ]; then TARGET="$DOWNLOADS_REPO"; export GH_TOKEN="$RELEASES_TOKEN"; else TARGET="$DEFAULT_REPO"; export GH_TOKEN="$DEFAULT_TOKEN"; fi
+          gh release create "$TAG" VELTRIX.apk --repo "$TARGET" --title "VELTRIX Android ${{ steps.ver.outputs.v }}" --notes "APK de VELTRIX ${{ steps.ver.outputs.v }}." --prerelease
+          echo "Descarga: https://github.com/$TARGET/releases/download/$TAG/VELTRIX.apk"

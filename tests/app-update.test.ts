@@ -23,6 +23,10 @@ describe("aviso de versión nueva de la app", () => {
     expect(parseUpdateInfo({ ...ok, url: "https://malo.example.com/VELTRIX.apk" })).toBeNull();
     expect(parseUpdateInfo({ ...ok, url: "http://github.com/dmcripto/Aplicacion-senalesyregistros/releases/download/x/y.apk" })).toBeNull();
     expect(parseUpdateInfo({ version: "1.6.0" })).toBeNull();
+    // el repositorio de descargas aparte también es de confianza; uno ajeno, no
+    const apart = { ...ok, url: "https://github.com/dmcripto/veltrix-descargas/releases/download/android-v1.6.1-31/VELTRIX.apk" };
+    expect(parseUpdateInfo(apart)).toEqual(apart);
+    expect(parseUpdateInfo({ ...ok, url: "https://github.com/otra-persona/veltrix-descargas/releases/download/x/VELTRIX.apk" })).toBeNull();
   });
 
   it("solo avisa si la versión publicada es más nueva que la instalada", () => {
