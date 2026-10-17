@@ -1,6 +1,6 @@
 import { t } from "../lib";
 
-const APK = "https://github.com/dmcripto/Aplicacion-senalesyregistros/releases/download/android-v1.6.0-26/VELTRIX.apk";
+const APK = "https://github.com/dmcripto/veltrix-descargas/releases/download/android-v1.6.1-28/VELTRIX.apk";
 
 /** Pantalla «Descargar la app»: botón de descarga para Android y los pasos para instalarla. */
 export default function DownloadApp() {
