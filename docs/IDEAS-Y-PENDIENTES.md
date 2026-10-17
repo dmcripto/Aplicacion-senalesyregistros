@@ -15,6 +15,13 @@
 - Idea: usar zonas de liquidez/FVG como filtro de entrada (por ejemplo, no comprar justo debajo de una zona de liquidez grande, como pasó con SOXS) y medirlo en el Laboratorio con 2 o 3 variantes.
 - Cuándo: junto con la idea anterior, cuando «Conservador · 4 horas» tenga unas 30 operaciones cerradas.
 
+**RSI en varias temporalidades** (idea de un video de Crypto Boss sobre el mapa de calor de RSI de CoinGlass; el video no trae estadísticas, solo ejemplos).
+- Hoy el bot no usa RSI. El Lab ya mostró que un filtro de sobrecompra en la misma temporalidad (RSI 75 y 70) NO ayuda (equilibrado 4h: de +0,10R a −0,02R).
+- Lo que no se probó (a medir en el Lab, 2 variantes, año entero y mitades, con costos):
+  1. Régimen: comprar solo con el RSI de 4 horas sobre 50 y vender solo bajo 50 (probablemente redundante con las medias 50/200).
+  2. Coherencia con una temporalidad mayor: no comprar si el RSI de 24 horas está sobre 70, ni vender si está bajo 30 (la parte realmente nueva; el RSI diario se arma con las velas que ya se bajan, sin CoinGlass).
+- Cuándo: junto con las ideas de liquidez/Smart Money, cuando «Conservador · 4 horas» tenga unas 30 operaciones cerradas.
+
 **Ondas de Elliott**: se decidió no probarlas por ahora (subjetivas, evidencia pobre, riesgo de sobreajuste). Volver a considerarlas solo si todo lo anterior se confirma.
 
 ## Lo que se probó y no ayudó (no repetir sin motivo nuevo)
