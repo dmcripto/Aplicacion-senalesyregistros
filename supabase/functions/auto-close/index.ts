@@ -16,6 +16,7 @@ import { postMarketAlerts, postMarketMorning, postWeeklyRanking } from "../_shar
 import { alertTexts, runAlerts } from "../_shared/alerts.ts";
 import { botToken, notifyTelegram, sendMessage } from "../_shared/telegram.ts";
 import { pinReplace } from "../_shared/groupTools.ts";
+import { runWatchdog, watchdogText } from "../_shared/watchdog.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -169,6 +170,23 @@ Deno.serve(async () => {
     });
   } catch (e) {
     console.error("alerts:", e instanceof Error ? e.message : e);
+  }
+
+  // Vigilante: cada 5 minutos revisa que el bot y la sincronización de exchanges sigan latiendo; si no, avisa a quienes administran (bot habilitado).
+  if (new Date().getUTCMinutes() % 5 === 2) {
+    try {
+      await runWatchdog(supabase, async (a) => {
+        const { data: admins } = await supabase.from("profiles").select("id").eq("bot_beta", true);
+        for (const p of (admins ?? []) as Array<{ id: string }>) {
+          const es = watchdogText(a, "es");
+          const { data: tokens } = await supabase.from("device_tokens").select("expo_push_token").eq("user_id", p.id);
+          await sendExpoPush((tokens ?? []).map((tk) => ({ to: tk.expo_push_token as string, title: es.title, body: es.body })));
+          await notifyTelegram(supabase, p.id, (l) => `<b>${watchdogText(a, l).title}</b>\n${watchdogText(a, l).body}`);
+        }
+      });
+    } catch (e) {
+      console.error("watchdog:", e instanceof Error ? e.message : e);
+    }
   }
 
   const { data: disabled } = await supabase.from("profiles").select("id").eq("auto_close", false);

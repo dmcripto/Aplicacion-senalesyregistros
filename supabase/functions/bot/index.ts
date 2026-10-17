@@ -25,6 +25,7 @@ import type { Lang } from "../_shared/telegram.ts";
 import { MAX_PAUSE_MIN, activeNewsPause, pauseCfgOf, pauseLabel } from "../_shared/newsPause.ts";
 import type { NewsEvent } from "../_shared/newsPause.ts";
 import type { BotAction } from "../_shared/botStrategy.ts";
+import { beat } from "../_shared/watchdog.ts";
 import type { Bar } from "../_shared/botStrategy.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -850,7 +851,9 @@ Deno.serve(async (req) => {
   if (cron) {
     if (!secret || secret.length < 16 || cron !== secret) return json({ ok: false, error: "No autorizado" }, 401);
     try {
-      return json(await tick());
+      const r = await tick();
+      await beat(admin, "bot");
+      return json(r);
     } catch (e) {
       console.error("bot tick:", e instanceof Error ? e.message : e);
       return json({ ok: false, error: "tick" }, 500);

@@ -14,6 +14,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { EXCHANGES, NEEDS_PASSPHRASE, ExchangeError, checkKey, decryptSecret, encryptSecret, fetchClosed, fetchOpen, toOpenTradeRow, toTradeRow } from "../_shared/exchanges.ts";
 import type { ExchangeId, OpenPosition } from "../_shared/exchanges.ts";
+import { beat } from "../_shared/watchdog.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -293,7 +294,9 @@ Deno.serve(async (req) => {
     if (!cronSecret || cronSecret.length < 16 || !sameSecret(cronGiven, cronSecret)) return json({ ok: false, error: "No autorizado." }, 401);
     const key = Deno.env.get("EXCHANGE_ENC_KEY");
     if (!key || key.length < 16) return json({ ok: false, code: "not_configured", error: "Falta EXCHANGE_ENC_KEY." }, 500);
-    return json(await syncAll(key));
+    const swept = await syncAll(key);
+    await beat(admin, "exchanges");
+    return json(swept);
   }
 
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
