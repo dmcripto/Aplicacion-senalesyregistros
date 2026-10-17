@@ -623,8 +623,8 @@ describe("función bot · laboratorio de variantes", () => {
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
     expect(r.body.days).toBe(360);
-    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h1-balanced", "h4-balanced", "h4-conservative", "h4-wide", "h4-wide-active", "h4-wide-quick", "h4-fast", "h1-runner", "h4-runner", "h4-runner-be", "h4-wide-runner", "h4-ext", "h4-room", "h4-filter", "h4-runner-filter", "m15-balanced", "m15-wide"]);
-    expect(r.body.variants.map((v: any) => v.days)).toEqual([...Array(15).fill(360), 90, 90]);
+    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h1-balanced", "h4-balanced", "h4-conservative", "h4-wide", "h4-wide-active", "h4-wide-quick", "h4-fast", "h1-runner", "h4-runner", "h4-runner-be", "h4-wide-runner", "h4-ext", "h4-room", "h4-filter", "h4-runner-filter", "h4-rsi75", "h4-quick-rsi75", "h4-quick-rsi70", "m15-balanced", "m15-wide"]);
+    expect(r.body.variants.map((v: any) => v.days)).toEqual([...Array(18).fill(360), 90, 90]);
     expect(r.body.variants.map((v: any) => v.tf).slice(-2)).toEqual(["15m", "15m"]);
     for (const v of r.body.variants) expect(v.first.n + v.second.n).toBe(v.whole.n);
   });
@@ -635,7 +635,7 @@ describe("función bot · laboratorio de variantes", () => {
     db.tables.bot_settings.push({ user_id: "u1", enabled: false, symbols: ["BTCUSDT"], max_open: 3, daily_loss_r: 3, scan_top: 20 });
     const r = await call({ action: "lab", symbols: ["BTCUSDT"] });
     expect(r.body.ok).toBe(true);
-    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h4-balanced", "h4-conservative", "h4-wide", "h4-wide-active", "h4-wide-quick", "h4-fast", "h4-runner", "h4-runner-be", "h4-wide-runner", "h4-ext", "h4-room", "h4-filter", "h4-runner-filter"]);
+    expect(r.body.variants.map((v: any) => v.id)).toEqual(["h4-balanced", "h4-conservative", "h4-wide", "h4-wide-active", "h4-wide-quick", "h4-fast", "h4-runner", "h4-runner-be", "h4-wide-runner", "h4-ext", "h4-room", "h4-filter", "h4-runner-filter", "h4-rsi75", "h4-quick-rsi75", "h4-quick-rsi70"]);
     expect(r.body.scanned).toBe(6);
     expect(r.body.symbols).toHaveLength(6);
   });

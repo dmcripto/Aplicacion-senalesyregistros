@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, localParts, parseBitunixBars, parseBitgetBars, parseBingxBars, parseKucoinBars, isBarExchange, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
+import { fetchUniverse, mapPool, scanSizeOf, isTradableSymbol, BAR_MS, LAB_DAYS, LAB_VARIANTS, barMsOf, runLab, BOT_PROFILES, BOT_PROFILE_IDS, DEFAULT_PARAMS, describeParams, isProfileId, paramsOf, allowedByActions, atr, backtest, botStats, capOf, cleanActions, closedBars, ema, fetchBars, indicators, rsi, localParts, parseBitunixBars, parseBitgetBars, parseBingxBars, parseKucoinBars, isBarExchange, resolveFrom, signalAt, simulate, stepRunner } from "../supabase/functions/_shared/botStrategy";
 import type { Bar } from "../supabase/functions/_shared/botStrategy";
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -453,7 +453,7 @@ describe("velas de 4 horas y laboratorio", () => {
     const mid = T0 + (2600 * 4 * BAR_MS) / 2;
     const rows = runLab((tf) => ({ BTCUSDT: tf === "4h" ? four : one }), { symbols: ["BTCUSDT"], maxOpen: 3, dailyLossR: 20, timeZone: "UTC" }, mid);
     expect(rows.map((x) => x.id)).toEqual(LAB_VARIANTS.map((x) => x.id));
-    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "15m", "15m"]);
+    expect(rows.map((x) => x.tf)).toEqual(["1h", "4h", "4h", "4h", "4h", "4h", "4h", "1h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "4h", "15m", "15m"]);
     for (const x of rows) expect(x.first.n + x.second.n).toBe(x.whole.n);
     expect(rows.find((x) => x.id === "h4-balanced")!.whole.n).toBeGreaterThan(0);
     expect(LAB_DAYS).toBe(360);
@@ -654,6 +654,22 @@ describe("filtro de entrada (entradas tardías)", () => {
     expect(at(bars, DEFAULT_PARAMS)?.direction).toBe("SHORT");
     expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxExt: 0.5 } })).toBeNull();
     expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxExt: 50 } })?.direction).toBe("SHORT");
+  });
+  it("maxRsi descarta una venta con el RSI muy bajo (sobreventa) y deja pasar si el límite es laxo", () => {
+    const bars = down(260, 12); // caída sostenida: el RSI queda muy bajo
+    expect(at(bars, DEFAULT_PARAMS)?.direction).toBe("SHORT");
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxRsi: 75 } })).toBeNull(); // RSI < 25: no vende
+    expect(at(bars, { ...DEFAULT_PARAMS, filter: { maxRsi: 100 } })?.direction).toBe("SHORT");
+  });
+  it("rsi: 100 cuando solo sube, 0 cuando solo baja, y no hay RSI si el perfil no usa el filtro", () => {
+    const up = Array.from({ length: 40 }, (_, i) => 100 + i);
+    const dn = Array.from({ length: 40 }, (_, i) => 100 - i);
+    expect(rsi(up, 14)[39]).toBe(100);
+    expect(rsi(dn, 14)[39]).toBe(0);
+    expect(Number.isNaN(rsi(up, 14)[5])).toBe(true);
+    const bars = down(260, 12);
+    expect(indicators(bars, DEFAULT_PARAMS).rsi).toBeUndefined();
+    expect(indicators(bars, { ...DEFAULT_PARAMS, filter: { maxRsi: 75 } }).rsi).toHaveLength(bars.length);
   });
   it("minRoom descarta la venta si hay un mínimo de las últimas 100 velas muy cerca, y deja pasar si ya es un mínimo nuevo", () => {
     const bars = down(260, 6);
