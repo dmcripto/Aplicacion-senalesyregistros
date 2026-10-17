@@ -79,6 +79,14 @@ describe("función exchanges", () => {
     expect(eth.notes).not.toContain("Bot real");
   });
 
+  it("anota en cada orden del bot el id de la posición real y no asigna una orden a dos posiciones", async () => {
+    db.tables.live_orders = [
+      { id: "ord1", user_id: "u1", exchange: "bybit", kind: "bot", status: "sent", symbol: "BTCUSDT", side: "BUY", created_at: new Date(Date.now() - 36e5 - 120e3).toISOString() },
+    ];
+    await connect();
+    expect(db.tables.live_orders[0].position_id).toBe("BTCUSDT:o1");
+  });
+
   it("guarda el apalancamiento y el tamaño, y completa lo que ya estaba importado sin esos datos", async () => {
     vi.stubGlobal("fetch", async (url: any) => {
       const u = new URL(String(url));

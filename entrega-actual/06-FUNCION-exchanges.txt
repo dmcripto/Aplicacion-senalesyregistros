@@ -1443,21 +1443,32 @@ async function unitOf(userId: string): Promise<number | null> {
 
 /** Trae las operaciones cerradas del exchange y las guarda en el diario (sin duplicar). */
 const BOT_REAL_TAG = "Bot real";
-const BOT_REAL_WINDOW = 15 * 60_000;
+const BOT_REAL_WINDOW = 30 * 60_000;
 
 /**
  * Qué posiciones abrió el bot con dinero real (y no vos a mano): coinciden con una orden «enviada» del bot en las «Últimas órdenes»
- * (mismo exchange, par y lado, con la hora a menos de 15 minutos de la apertura). Sin la tabla, o sin órdenes, devuelve vacío.
+ * (mismo exchange, par y lado, con la hora a menos de 30 minutos de la apertura). Cada orden se asigna a una sola posición (la más cercana en el tiempo).
+ * Devuelve, por cada posición del bot, el id de su orden (para dejar el vínculo anotado). Sin la tabla, o sin órdenes, devuelve vacío.
  */
-async function botRealIds(userId: string, exchange: string, list: Array<{ externalId: string; symbol: string; direction: string; openedAtMs: number }>): Promise<Set<string>> {
-  const out = new Set<string>();
+async function botRealIds(userId: string, exchange: string, list: Array<{ externalId: string; symbol: string; direction: string; openedAtMs: number }>): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
   if (!list.length) return out;
   try {
-    const { data } = await admin.from("live_orders").select("symbol, side, created_at").eq("user_id", userId).eq("exchange", exchange).eq("kind", "bot").eq("status", "sent").gte("created_at", new Date(Date.now() - 40 * 86_400_000).toISOString()).limit(500);
-    const orders = ((data ?? []) as Array<{ symbol: string; side: string; created_at: string }>).map((o) => ({ symbol: String(o.symbol).toUpperCase(), long: String(o.side).toUpperCase() === "BUY", at: new Date(o.created_at).getTime() }));
+    const { data } = await admin.from("live_orders").select("id, symbol, side, created_at").eq("user_id", userId).eq("exchange", exchange).eq("kind", "bot").eq("status", "sent").gte("created_at", new Date(Date.now() - 40 * 86_400_000).toISOString()).limit(500);
+    const orders = ((data ?? []) as Array<{ id?: string; symbol: string; side: string; created_at: string }>).map((o) => ({ id: o.id ?? null, symbol: String(o.symbol).toUpperCase(), long: String(o.side).toUpperCase() === "BUY", at: new Date(o.created_at).getTime() }));
+    const pairs: Array<{ ext: string; oi: number; d: number }> = [];
     for (const p of list) {
       const long = p.direction === "LONG";
-      if (orders.some((o) => o.symbol === p.symbol.toUpperCase() && o.long === long && Math.abs(o.at - p.openedAtMs) <= BOT_REAL_WINDOW)) out.add(p.externalId);
+      orders.forEach((o, oi) => {
+        const d = Math.abs(o.at - p.openedAtMs);
+        if (o.symbol === p.symbol.toUpperCase() && o.long === long && d <= BOT_REAL_WINDOW) pairs.push({ ext: p.externalId, oi, d });
+      });
+    }
+    const usedOrders = new Set<number>();
+    for (const c of pairs.sort((x, y) => x.d - y.d)) {
+      if (out.has(c.ext) || usedOrders.has(c.oi)) continue;
+      out.set(c.ext, orders[c.oi].id);
+      usedOrders.add(c.oi);
     }
   } catch {
     /* sin la tabla: no se marca nada */
@@ -1487,6 +1498,15 @@ async function syncOne(conn: Connection, master: string, unit: number): Promise<
 
   // Cuáles abrió el bot con dinero real: se marcan con la etiqueta «Bot real» (y se dice en la nota).
   const botIds = await botRealIds(conn.user_id, conn.exchange, [...closed, ...openList].map((p) => ({ externalId: p.externalId, symbol: p.symbol, direction: p.direction, openedAtMs: Number(p.openedAt) })));
+  // Se anota en cada orden del bot cuál es su posición real (live_orders.position_id): así se ve qué orden produjo cada operación.
+  for (const [posId, orderId] of botIds) {
+    if (!orderId) continue;
+    try {
+      await admin.from("live_orders").update({ position_id: posId }).eq("id", orderId).is("position_id", null);
+    } catch {
+      /* si todavía no se corrió la migración 0064, se sigue sin el vínculo */
+    }
+  }
   const botMark = <T extends { notes: string }>(r: T, id: string): T & { tags?: string[] } => (botIds.has(id) ? { ...r, notes: `🤖 ${BOT_REAL_TAG} · ${r.notes}`, tags: [BOT_REAL_TAG] } : r);
 
   // Las posiciones que se importaron como abiertas y ya cerraron se completan con el resultado real (sin duplicar).
