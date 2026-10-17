@@ -15,7 +15,7 @@ Objetivo: que el código viva en un repositorio **privado** y que el APK se desc
    - Generate token y **copiá el texto** (empieza con `github_pat_`; no se vuelve a mostrar). No lo pegues en el chat.
 3. **Guardarlo como secreto del repositorio principal**
    `Aplicacion-senalesyregistros` → Settings → Secrets and variables → Actions → **New repository secret** → Name: `RELEASES_TOKEN` → pegá el token → Add secret.
-4. **Avisarme.** Entonces lanzo la compilación de la app 1.6.1 con «publicar»: el APK queda en `veltrix-descargas` y actualizo los links de la web y `version.json`.
+4. **Avisarme.** Entonces lanzo la compilación de la app (versión 1.6.1) con «publicar»: el APK queda en `veltrix-descargas` y actualizo los links de la web y `version.json`.
 5. **Probar la descarga** desde la web (en el celular) y, si anda, recién ahí **pasar el repositorio principal a privado** (Settings → General → Danger Zone → Change visibility → Make private; después desmarcá «Allow forking»).
 
 ## Cosas a saber
