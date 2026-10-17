@@ -1948,18 +1948,23 @@ export interface LiveSettings {
   minStopPct: number;
   maxOpen: number;
   dailyLossUsdt: number;
+  /** Pérdida máxima posible de los últimos 7 días (0 = sin tope semanal). */
+  weeklyLossUsdt: number;
   errors: number;
   lastError: string | null;
 }
 
-export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, maxMinStopPct: 10 } as const;
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, weeklyLossUsdt: 10, maxMinStopPct: 10 } as const;
 
 /**
  * Avisos sobre topes que no se llevan bien entre sí. El caso típico: el tope de pérdida del día es casi igual al riesgo por operación,
  * así que con una o dos pérdidas el bot se frena y se pierde las señales buenas que vienen después.
  */
-export function liveConfigWarnings(l: Pick<LiveSettings, "riskUsdt" | "dailyLossUsdt">): string[] {
+export function liveConfigWarnings(l: Pick<LiveSettings, "riskUsdt" | "dailyLossUsdt"> & { weeklyLossUsdt?: number }): string[] {
   const out: string[] = [];
+  if ((l.weeklyLossUsdt ?? 0) > 0 && l.dailyLossUsdt > 0 && (l.weeklyLossUsdt ?? 0) < l.dailyLossUsdt) {
+    out.push(tr("El tope semanal ({weekly}) es menor que el diario ({daily}): el bot se va a frenar por la semana antes que por el día. Poné el semanal igual o mayor que el diario (o 0 para no usar tope semanal).", { weekly: String(l.weeklyLossUsdt).replace(".", ","), daily: String(l.dailyLossUsdt).replace(".", ",") }));
+  }
   if (l.riskUsdt > 0 && l.dailyLossUsdt > 0) {
     const n = Math.floor(l.dailyLossUsdt / l.riskUsdt + 1e-9);
     if (n < 3) {
@@ -2039,8 +2044,8 @@ export function liveKeyGuide(id: string | null | undefined): string {
 }
 
 /** Topes que recomendamos para empezar con poco capital: pérdida diaria de 5 operaciones, stops no pegados y apalancamiento moderado. */
-export const RECOMMENDED_LIVE = { maxMarginUsdt: 10, riskUsdt: 0.4, minLeverage: 2, maxLeverage: 15, minStopPct: 1, dailyLossUsdt: 2, maxOpen: 3 } as const;
-export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
+export const RECOMMENDED_LIVE = { maxMarginUsdt: 10, riskUsdt: 0.4, minLeverage: 2, maxLeverage: 15, minStopPct: 1, dailyLossUsdt: 2, weeklyLossUsdt: 5, maxOpen: 3 } as const;
+export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, weeklyLossUsdt: 0, errors: 0, lastError: null };
 
 export interface LiveOrder {
   id: string;
@@ -2049,13 +2054,13 @@ export interface LiveOrder {
   qty: number | null;
   leverage: number | null;
   kind: "bot" | "test" | "panic";
-  status: "dry_run" | "sent" | "rejected" | "skipped" | "error";
+  status: "dry_run" | "sent" | "unfilled" | "rejected" | "skipped" | "error";
   note: string | null;
   createdAt: string;
 }
 
 export const liveStatusLabel = (st: LiveOrder["status"]) =>
-  st === "sent" ? tr("Enviada") : st === "dry_run" ? tr("En seco") : st === "rejected" ? tr("Rechazada") : st === "skipped" ? tr("Omitida") : tr("Error");
+  st === "sent" ? tr("Enviada") : st === "unfilled" ? tr("Sin ejecutar") : st === "dry_run" ? tr("En seco") : st === "rejected" ? tr("Rechazada") : st === "skipped" ? tr("Omitida") : tr("Error");
 
 /** Ajusta un valor al rango permitido (y a un número válido); si no es número devuelve el de reserva. */
 export const clampLive = (v: number, min: number, max: number, fallback: number) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);

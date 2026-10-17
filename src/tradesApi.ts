@@ -530,6 +530,7 @@ const liveFromRow = (r: Record<string, unknown> | null | undefined): LiveSetting
         minStopPct: Number(r.min_stop_pct ?? DEFAULT_LIVE.minStopPct),
         maxOpen: Number(r.max_open ?? DEFAULT_LIVE.maxOpen),
         dailyLossUsdt: Number(r.daily_loss_usdt ?? DEFAULT_LIVE.dailyLossUsdt),
+        weeklyLossUsdt: Number(r.weekly_loss_usdt ?? DEFAULT_LIVE.weeklyLossUsdt),
         errors: Number(r.errors ?? 0),
         lastError: (r.last_error as string | null) ?? null,
       }
@@ -555,7 +556,7 @@ export async function fetchLive(userId: string): Promise<LiveView> {
 }
 
 /** Guarda los ajustes (la base rechaza lo que pase los topes, y no deja enviar de verdad sin la orden de prueba). */
-export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "enabled" | "dryRun" | "maxMarginUsdt" | "riskUsdt" | "maxLeverage" | "minLeverage" | "minStopPct" | "maxOpen" | "dailyLossUsdt">>) {
+export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "enabled" | "dryRun" | "maxMarginUsdt" | "riskUsdt" | "maxLeverage" | "minLeverage" | "minStopPct" | "maxOpen" | "dailyLossUsdt" | "weeklyLossUsdt">>) {
   const row: Record<string, unknown> = {};
   if (p.enabled !== undefined) row.enabled = p.enabled;
   if (p.dryRun !== undefined) row.dry_run = p.dryRun;
@@ -566,6 +567,7 @@ export async function saveLive(userId: string, p: Partial<Pick<LiveSettings, "en
   if (p.minStopPct !== undefined) row.min_stop_pct = p.minStopPct;
   if (p.maxOpen !== undefined) row.max_open = p.maxOpen;
   if (p.dailyLossUsdt !== undefined) row.daily_loss_usdt = p.dailyLossUsdt;
+  if (p.weeklyLossUsdt !== undefined) row.weekly_loss_usdt = p.weeklyLossUsdt;
   const { error } = await supabase.from("bot_live").update(row).eq("user_id", userId);
   if (error) throw new Error(error.message);
 }
