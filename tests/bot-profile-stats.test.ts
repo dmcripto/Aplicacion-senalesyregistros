@@ -11,6 +11,8 @@ describe("rendimiento por perfil del bot", () => {
     expect(botProfileKey(sim("perfil lento con tendencia rápida, velas de 4 horas"))?.key).toBe("slowquick");
     expect(botProfileKey(sim("perfil lento con objetivo amplio, velas de 4 horas"))?.key).toBe("slowwide");
     expect(botProfileKey(sim("perfil lento, velas de 4 horas"))?.key).toBe("slow");
+    expect(botProfileKey(sim("perfil conservador de 4 horas, velas de 4 horas"))?.key).toBe("slowcons");
+    expect(botProfileKey(sim("perfil conservador"))?.key).toBe("conservative");
     expect(botProfileKey(sim("perfil dinámico"))?.key).toBe("dynamic");
     expect(botProfileKey(sim("perfil equilibrado"))?.key).toBe("balanced");
     expect(botProfileKey(trade({ notes: "🧪 Bot simulado · prueba paralela «filtro de entradas estiradas» (velas de 4 horas)", tags: ["Bot simulado", "Filtro 4h"] }))?.key).toBe("p-filtro");

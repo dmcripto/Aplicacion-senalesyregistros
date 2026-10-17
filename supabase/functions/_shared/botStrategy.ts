@@ -70,8 +70,8 @@ export const ROUND_TRIP_COST_PCT = 0.14;
 export const DEFAULT_PARAMS: BotParams = { lookback: 20, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 1.5, rr: 2, feePct: ROUND_TRIP_COST_PCT };
 
 /** Perfiles de estrategia que cada persona puede elegir (no se dejan los números libres: se sobreajustan con facilidad). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "slowquick" | "max";
-export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "max"];
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "slowquick" | "slowcons" | "max";
+export const BOT_PROFILE_IDS: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "slowcons", "max"];
 export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   // menos señales: canal más largo y stop más holgado
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT },
@@ -88,6 +88,8 @@ export const BOT_PROFILES: Record<BotProfileId, BotParams> = {
   slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2.5, rr: 3, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
   // velas de 4 horas, canal de 10, tendencia 20/100, stop 2 ATR y objetivo 2R: la mejor del laboratorio (ganó en las dos mitades del año, más operaciones)
   slowquick: { lookback: 10, emaFast: 20, emaSlow: 100, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
+  // conservador en velas de 4 horas (canal de 40, stop 2 ATR, objetivo 2R): la más estable del laboratorio (ganó en las dos mitades del año en dos corridas)
+  slowcons: { lookback: 40, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 2, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "4h" },
 };
 /** La estrategia en una frase (para la nota de cada operación simulada). */
 export const describeParams = (p: BotParams) => {
@@ -834,7 +836,7 @@ export const LAB_DAYS_BY_TF: Record<BotTimeframe, number> = { "15m": 90, "1h": L
 export const LAB_VARIANTS: LabVariant[] = [
   { id: "h1-balanced", params: { ...DEFAULT_PARAMS } }, // referencia: lo que se probó hasta ahora
   { id: "h4-balanced", params: { ...DEFAULT_PARAMS, tf: "4h" } },
-  { id: "h4-conservative", params: { ...BOT_PROFILES.conservative, tf: "4h" } },
+  { id: "h4-conservative", params: { ...BOT_PROFILES.slowcons } },
   { id: "h4-wide", params: { ...BOT_PROFILES.slowwide } },
   // Candidatas para «más operaciones sin el stop pegado»: velas de 4 horas, stop de 2 ATR y objetivo de 2R, con canal más corto (más rupturas).
   { id: "h4-wide-active", params: { ...BOT_PROFILES.slowwide, lookback: 14, atrMult: 2, rr: 2 } },
