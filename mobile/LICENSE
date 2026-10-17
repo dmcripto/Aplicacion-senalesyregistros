@@ -1,21 +1,19 @@
-The MIT License (MIT)
+VELTRIX — Licencia propietaria / Proprietary license
 
-Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
+Copyright (c) 2026 DMCRIPTO. Todos los derechos reservados. / All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+ES — Este software (código fuente, diseño, textos, estrategias, datos y marca VELTRIX) es propiedad exclusiva de su titular.
+Queda prohibido, sin autorización escrita previa: copiar, modificar, fusionar, publicar, distribuir, sublicenciar, vender o
+usar total o parcialmente este software o sus derivados; descompilarlo o intentar obtener su código fuente; y usar el nombre,
+el logo o el diseño de VELTRIX para crear un servicio parecido o que pueda confundirse con este.
+Ver el código fuente no concede ninguna licencia. Los componentes de código abierto que usa el proyecto (por ejemplo React,
+Expo y Supabase) se rigen por sus propias licencias, que se mantienen.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+EN — This software (source code, design, texts, strategies, data and the VELTRIX brand) is the exclusive property of its owner.
+Without prior written permission it is forbidden to copy, modify, merge, publish, distribute, sublicense, sell or use this
+software or its derivatives, in whole or in part; to decompile it or try to obtain its source code; and to use the VELTRIX
+name, logo or design to build a similar service or one that could be confused with this one.
+Being able to read the source code does not grant any license. Open-source components used by the project (for example React,
+Expo and Supabase) are governed by their own licenses, which remain in force.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

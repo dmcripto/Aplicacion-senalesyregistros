@@ -4,5 +4,6 @@
   "private": true,
   "type": "module",
   "main": "src/trading.ts",
-  "types": "src/trading.ts"
+  "types": "src/trading.ts",
+  "license": "UNLICENSED"
 }

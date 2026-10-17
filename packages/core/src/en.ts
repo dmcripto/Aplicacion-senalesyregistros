@@ -1585,6 +1585,7 @@ export const EN: Record<string, string> = {
   "Valores recomendados cargados: tocá «Guardar topes» para aplicarlos.": "Recommended values loaded: tap “Save limits” to apply them.",
   "Lento · tendencia rápida": "Slow · fast trend",
   "Sin ejecutar": "Not filled",
+  "© 2026 VELTRIX. Todos los derechos reservados: queda prohibido copiar, revender o reproducir la aplicación, las señales o sus contenidos sin autorización.": "© 2026 VELTRIX. All rights reserved: copying, reselling or reproducing the app, the signals or their content without permission is prohibited.",
   "Conservador · 4 horas": "Conservative · 4 hours",
   "Velas de 4 horas, canal de 40 velas y stop de 2 ATR: espera rupturas grandes y deja espacio al stop. En el laboratorio fue la más estable: ganó en las dos mitades del año en dos corridas distintas (unas 270 operaciones al año).": "4-hour candles, 40-candle channel and 2 ATR stop: waits for big breakouts and leaves room for the stop. In the lab it was the most stable: it won in both halves of the year in two different runs (about 270 trades a year).",
   "Si querés pocas señales pero más confiables: la que mejor se repitió en el laboratorio. Todavía sin confirmar en vivo.": "If you want few but more reliable signals: the one that repeated best in the lab. Not yet confirmed live.",
