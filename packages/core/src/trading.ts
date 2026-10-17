@@ -806,10 +806,15 @@ export interface BotProfileRow {
   open: number;
   winRate: number;
   netR: number;
+  /** R neto descontando comisión y deslizamiento (el simulado del diario no los descuenta; en el bot real ya vienen incluidos). */
+  netAfterCostsR: number;
   avgR: number;
   longs: { ops: number; netR: number };
   shorts: { ops: number; netR: number };
 }
+
+/** Costo supuesto de una operación simulada, ida y vuelta, en % del precio (el mismo que usan el laboratorio y las pruebas con historial). */
+export const SIM_ROUND_TRIP_COST_PCT = 0.14;
 
 /** A qué perfil (o prueba paralela) pertenece una operación del bot, según lo que dice su nota. Devuelve null si no es del bot. */
 export function botProfileKey(t: Pick<Trade, "notes" | "tags">): { key: string; label: string; real: boolean } | null {
@@ -834,11 +839,11 @@ export function botProfileKey(t: Pick<Trade, "notes" | "tags">): { key: string; 
 
 /** Rendimiento de las operaciones del bot agrupadas por perfil (más operaciones primero): aciertos, R neto y R medio, separando compras y ventas. */
 export function botProfileStats(trades: Trade[]): BotProfileRow[] {
-  const map = new Map<string, { info: { key: string; label: string; real: boolean }; rs: number[]; open: number; l: number[]; s: number[] }>();
+  const map = new Map<string, { info: { key: string; label: string; real: boolean }; rs: number[]; open: number; l: number[]; s: number[]; cost: number }>();
   for (const t of trades) {
     const info = botProfileKey(t);
     if (!info) continue;
-    const row = map.get(info.key) ?? { info, rs: [], open: 0, l: [], s: [] };
+    const row = map.get(info.key) ?? { info, rs: [], open: 0, l: [], s: [], cost: 0 };
     map.set(info.key, row);
     if (t.outcome === "ABIERTA") {
       row.open += 1;
@@ -847,10 +852,12 @@ export function botProfileStats(trades: Trade[]): BotProfileRow[] {
     const r = resultR(t) ?? 0;
     row.rs.push(r);
     (t.direction === "LONG" ? row.l : row.s).push(r);
+    const risk = Math.abs(t.entry - t.sl);
+    if (!info.real && risk > 0) row.cost += ((SIM_ROUND_TRIP_COST_PCT / 100) * t.entry) / risk;
   }
   const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
   return [...map.values()]
-    .map(({ info, rs, open, l, s }) => ({
+    .map(({ info, rs, open, l, s, cost }) => ({
       key: info.key,
       label: info.label,
       real: info.real,
@@ -858,6 +865,7 @@ export function botProfileStats(trades: Trade[]): BotProfileRow[] {
       open,
       winRate: rs.length ? (rs.filter((r) => r > 0).length / rs.length) * 100 : 0,
       netR: sum(rs),
+      netAfterCostsR: sum(rs) - cost,
       avgR: rs.length ? sum(rs) / rs.length : 0,
       longs: { ops: l.length, netR: sum(l) },
       shorts: { ops: s.length, netR: sum(s) },

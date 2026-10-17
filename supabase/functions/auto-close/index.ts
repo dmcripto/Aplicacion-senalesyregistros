@@ -189,6 +189,20 @@ Deno.serve(async () => {
     }
   }
 
+  // Copia de seguridad: una vez por semana (la primera vez, apenas se despliega) se le pide a la función backup que guarde las tablas importantes.
+  if (new Date().getUTCMinutes() % 10 === 7) {
+    try {
+      const secret = Deno.env.get("EXCHANGE_CRON_SECRET");
+      const { data: lastBackup } = await supabase.from("system_heartbeat").select("at").eq("name", "backup").maybeSingle();
+      const due = !lastBackup || Date.now() - new Date((lastBackup as { at: string }).at).getTime() > 7 * 86_400_000;
+      if (due && secret && secret.length >= 16) {
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/backup`, { method: "POST", headers: { "x-cron-secret": secret, "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` }, body: "{}", signal: AbortSignal.timeout(20_000) }).catch(() => undefined);
+      }
+    } catch (e) {
+      console.error("backup-trigger:", e instanceof Error ? e.message : e);
+    }
+  }
+
   const { data: disabled } = await supabase.from("profiles").select("id").eq("auto_close", false);
   const off = new Set((disabled ?? []).map((p) => p.id as string));
 

@@ -240,11 +240,11 @@ export function BotProfileList({ trades }: { trades: Trade[] }) {
             <Text style={[s.monthR, { color: rColor(r.netR) }]}>{fmtR(r.netR)}R</Text>
           </View>
           <Text style={{ color: colors.dim, fontSize: 10.5 }}>
-            {t("R medio")} {fmtR(r.avgR)} · {r.longs.ops} {t("compras")} {fmtR(r.longs.netR)}R · {r.shorts.ops} {t("ventas")} {fmtR(r.shorts.netR)}R{r.open > 0 ? ` · ${r.open} ${t("abiertas")}` : ""}
+            {t("R medio")} {fmtR(r.avgR)}{!r.real ? ` · ${t("tras costos")} ${fmtR(r.netAfterCostsR)}R` : ""} · {r.longs.ops} {t("compras")} {fmtR(r.longs.netR)}R · {r.shorts.ops} {t("ventas")} {fmtR(r.shorts.netR)}R{r.open > 0 ? ` · ${r.open} ${t("abiertas")}` : ""}
           </Text>
         </View>
       ))}
-      <Text style={{ color: colors.dim, fontSize: 10.5 }}>{t("Con menos de 30 operaciones cerradas por perfil, los resultados todavía no dicen mucho: se pueden deber a un solo día de mercado.")}</Text>
+      <Text style={{ color: colors.dim, fontSize: 10.5 }}>{t("Con menos de 30 operaciones cerradas por perfil, los resultados todavía no dicen mucho: se pueden deber a un solo día de mercado. El simulado no descuenta comisiones: «tras costos» resta 0,14 % por operación (comisión y deslizamiento).")}</Text>
     </View>
   );
 }

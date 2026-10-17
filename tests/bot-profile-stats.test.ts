@@ -37,5 +37,7 @@ describe("rendimiento por perfil del bot", () => {
     expect(max.shorts.ops).toBe(2);
     expect(max.longs).toMatchObject({ ops: 1 });
     expect(max.avgR).toBeCloseTo(max.netR / 3, 5);
+    // costo simulado: 0,14 % del precio sobre un stop de 0,8 % = 0,175R por operación cerrada (3)
+    expect(max.netAfterCostsR).toBeCloseTo(max.netR - 3 * 0.175, 3);
   });
 });

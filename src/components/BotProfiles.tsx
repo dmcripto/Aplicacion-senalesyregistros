@@ -30,13 +30,13 @@ export default function BotProfiles({ trades }: { trades: Trade[] }) {
               <span className={cx("num text-right text-[12.5px] font-bold", rCls(r.netR))}>{fmtR(r.netR)}R</span>
             </div>
             <p className="num mt-0.5 text-[10.5px] text-dim">
-              {t("R medio")} <span className={rCls(r.avgR)}>{fmtR(r.avgR)}</span> · {r.longs.ops} {t("compras")} <span className={rCls(r.longs.netR)}>{fmtR(r.longs.netR)}R</span> · {r.shorts.ops} {t("ventas")} <span className={rCls(r.shorts.netR)}>{fmtR(r.shorts.netR)}R</span>
+              {t("R medio")} <span className={rCls(r.avgR)}>{fmtR(r.avgR)}</span>{!r.real && <> · {t("tras costos")} <span className={rCls(r.netAfterCostsR)}>{fmtR(r.netAfterCostsR)}R</span></>} · {r.longs.ops} {t("compras")} <span className={rCls(r.longs.netR)}>{fmtR(r.longs.netR)}R</span> · {r.shorts.ops} {t("ventas")} <span className={rCls(r.shorts.netR)}>{fmtR(r.shorts.netR)}R</span>
               {r.open > 0 && <> · {r.open} {t("abiertas")}</>}
             </p>
           </li>
         ))}
       </ul>
-      <p className="px-5 pb-4 text-[11px] leading-relaxed text-dim">{t("Con menos de 30 operaciones cerradas por perfil, los resultados todavía no dicen mucho: se pueden deber a un solo día de mercado.")}</p>
+      <p className="px-5 pb-4 text-[11px] leading-relaxed text-dim">{t("Con menos de 30 operaciones cerradas por perfil, los resultados todavía no dicen mucho: se pueden deber a un solo día de mercado. El simulado no descuenta comisiones: «tras costos» resta 0,14 % por operación (comisión y deslizamiento).")}</p>
     </Panel>
   );
 }
