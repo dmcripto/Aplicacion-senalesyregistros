@@ -1,30 +1,32 @@
-VELTRIX · PAQUETE COMPLETO (todo junto, en orden)
-Abrí cada archivo con el Bloc de notas (o cualquier editor), Ctrl+A, Ctrl+C, y pegalo donde dice abajo.
+VELTRIX · MEJORAS FINALES (todo junto, en orden)
+Abrí cada archivo con el Bloc de notas, Ctrl+A, Ctrl+C, y pegalo donde dice. Lo que ya hiciste antes (01 al 14) no hay que repetirlo.
 
-═══ PASO 1 · BASE DE DATOS ═══
-[ ] 01-SQL-TODO-JUNTO.txt -> Supabase > SQL Editor > pegar todo > Run.
-    Reúne todos los SQL pendientes (asistente con IA, resumen del bot, Tokenomist, distancia mínima del stop...). Se puede repetir sin problema.
+═══ PASO 1 · BASE DE DATOS (una sola vez) ═══
+[ ] 16-SQL-mejoras-finales.txt -> Supabase > SQL Editor > pegar todo > Run.   Se puede repetir sin problema.
+    Agrega: estado «sin ejecutar» de las órdenes, tope semanal del bot real, latidos del vigilante y el depósito de copias.
 
 ═══ PASO 2 · FUNCIONES (Edge Functions > nombre > Code > Ctrl+A > pegar > Deploy) ═══
 Antes de tocar Deploy, buscá con Ctrl+F la palabra de la columna «comprobar»: tiene que aparecer.
   Archivo                              -> función              comprobar
-[ ] 02-FUNCION-coach.txt               -> coach                aiErrorDetail
-[ ] 03-FUNCION-bot.txt                 -> bot                  h4-wide-active
-[ ] 04-FUNCION-trade.txt               -> trade                min_stop_pct
-[ ] 05-FUNCION-unlocks.txt             -> unlocks              parseAllowedRange
-[ ] 06-FUNCION-exchanges.txt           -> exchanges            (sin cambios nuevos)
-[ ] 07-FUNCION-telegram-bot.txt        -> telegram-bot         Apalancamiento máx. sugerido
-[ ] 08-FUNCION-auto-close.txt          -> auto-close           Apalancamiento máx. sugerido
-[ ] 09-FUNCION-tradingview-webhook.txt -> tradingview-webhook  Apalancamiento máx. sugerido
+[ ] 04-FUNCION-trade.txt               -> trade                unfilled
+[ ] 03-FUNCION-bot.txt                 -> bot                  beat(admin, "bot")
+[ ] 06-FUNCION-exchanges.txt           -> exchanges            beat(admin, "exchanges")
+[ ] 08-FUNCION-auto-close.txt          -> auto-close           runWatchdog
+[ ] 15-FUNCION-backup-NUEVA.txt        -> backup  (FUNCIÓN NUEVA)   runBackup
 
-═══ PASO 3 · CLAVES (Edge Functions > Secrets) ═══
-[ ] ANTHROPIC_API_KEY: de console.anthropic.com (con crédito). Empieza con «sk-ant-api03-». Nunca en el chat.
-[ ] TOKENOMIST_API_KEY: ya está.
+  La función «backup» es nueva: Edge Functions > Deploy a new function > Via Editor > nombre «backup» > pegar el archivo > Deploy.
+  Ya usa el secreto EXCHANGE_CRON_SECRET que tenés puesto. No hay que crear tareas programadas: auto-close la llama sola una vez por semana
+  (y la primera vez, a los pocos minutos de desplegar).
+  Las funciones coach, unlocks, telegram-bot y tradingview-webhook NO cambiaron.
 
-═══ PASO 4 · COMPROBAR ═══
-[ ] 10-CHEQUEO-despues-de-todo.txt -> SQL Editor > Run (4, 2, 2, 1 y los datos de Tokenomist creciendo).
-[ ] Web (Ctrl+F5): botón «Ayuda» > una pregunta. Bot > «Generar resumen del bot».
-[ ] Bot > «Probar variantes de 4 horas (1 año)» y mandar la captura.
+═══ PASO 3 · COMPROBAR ═══
+[ ] 10-CHEQUEO-despues-de-todo.txt -> SQL Editor > Run (mirá que cada fila diga «ok»).
+[ ] A los 10-15 minutos: Supabase > Storage > backups: tiene que haber una carpeta con la fecha de hoy (un archivo por tabla).
+[ ] Web (Ctrl+F5): Bot real > Topes: aparece «Pérdida máxima por semana». Diario > «Rendimiento por perfil del bot» (se abre tocándolo).
 
-═══ OPCIONAL ═══
-12-OPCIONAL-SQL-desbloqueos-manual.txt -> cargar a mano un desbloqueo grande cuando termine la prueba de Tokenomist.
+═══ QUÉ HACE CADA COSA ═══
+- Orden «sin ejecutar»: si Bitunix acepta una orden pero no abre la posición, queda marcada y NO cuenta para el tope diario.
+- Tope semanal: 0 = sin tope. El botón «Poner los valores recomendados» carga 5.
+- Vigilante: si el bot o la sincronización de exchanges dejan de funcionar, te avisa por Telegram y por la app (y avisa cuando vuelven).
+- Copia semanal: guarda las últimas 8 copias de tus tablas (sin claves de exchanges). Se bajan desde Storage > backups.
+- Rendimiento por perfil: aciertos y R por perfil, separando compras y ventas. Ojo: el simulado no descuenta comisiones; «tras costos» sí.

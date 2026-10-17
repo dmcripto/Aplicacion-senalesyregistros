@@ -32,7 +32,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
   const [apiSecret, setApiSecret] = useState("");
   const [apiPass, setApiPass] = useState("");
   const [openList, setOpenList] = useState(false);
-  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", minStop: "0", daily: "0.5", open: "1" });
+  const [lim, setLim] = useState({ margin: "4", risk: "0.1", lev: "10", minLev: "1", minStop: "0", daily: "0.5", weekly: "0", open: "1" });
   const [report, setReport] = useState<{ title: string; steps: string[]; ok: boolean } | null>(null);
   const [pick, setPick] = useState<string | null>(null);
 
@@ -45,7 +45,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
     try {
       const v = await fetchLive(userId);
       setView(v);
-      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), minStop: String(v.live.minStopPct), daily: String(v.live.dailyLossUsdt), open: String(v.live.maxOpen) });
+      setLim({ margin: String(v.live.maxMarginUsdt), risk: String(v.live.riskUsdt), lev: String(v.live.maxLeverage), minLev: String(v.live.minLeverage), minStop: String(v.live.minStopPct), daily: String(v.live.dailyLossUsdt), weekly: String(v.live.weeklyLossUsdt), open: String(v.live.maxOpen) });
       setUnavailable(false);
     } catch {
       setUnavailable(true);
@@ -155,6 +155,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
         minLeverage: normalizeLeverage(Number(lim.minLev.replace(",", ".")), Number(lim.lev.replace(",", "."))).min,
         minStopPct: clampLive(Number(lim.minStop.replace(",", ".")), 0, LIVE_LIMITS.maxMinStopPct, 0),
         dailyLossUsdt: clampLive(Number(lim.daily.replace(",", ".")), 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
+        weeklyLossUsdt: clampLive(Number(lim.weekly.replace(",", ".")), 0, LIVE_LIMITS.weeklyLossUsdt, 0),
         maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(Number(lim.open) || 1))),
       },
       t("Topes guardados."),
@@ -253,11 +254,12 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
               <Num name={t("Apalancamiento máximo")} value={lim.lev} onChange={(v) => setLim({ ...lim, lev: v })} />
               <Num name={t("Pérdida máxima por día (USDT)")} value={lim.daily} onChange={(v) => setLim({ ...lim, daily: v })} />
               <Num name={t("Distancia mínima del stop (%)")} value={lim.minStop} onChange={(v) => setLim({ ...lim, minStop: v })} />
+              <Num name={t("Pérdida máxima por semana (USDT, 0 = sin tope)")} value={lim.weekly} onChange={(v) => setLim({ ...lim, weekly: v })} />
             </View>
-            <TouchableOpacity style={s.outline} onPress={() => { setLim({ margin: String(RECOMMENDED_LIVE.maxMarginUsdt), risk: String(RECOMMENDED_LIVE.riskUsdt), lev: String(RECOMMENDED_LIVE.maxLeverage), minLev: String(RECOMMENDED_LIVE.minLeverage), minStop: String(RECOMMENDED_LIVE.minStopPct), daily: String(RECOMMENDED_LIVE.dailyLossUsdt), open: String(RECOMMENDED_LIVE.maxOpen) }); Alert.alert(t("Listo"), t("Valores recomendados cargados: tocá «Guardar topes» para aplicarlos.")); }}>
+            <TouchableOpacity style={s.outline} onPress={() => { setLim({ margin: String(RECOMMENDED_LIVE.maxMarginUsdt), risk: String(RECOMMENDED_LIVE.riskUsdt), lev: String(RECOMMENDED_LIVE.maxLeverage), minLev: String(RECOMMENDED_LIVE.minLeverage), minStop: String(RECOMMENDED_LIVE.minStopPct), daily: String(RECOMMENDED_LIVE.dailyLossUsdt), weekly: String(RECOMMENDED_LIVE.weeklyLossUsdt), open: String(RECOMMENDED_LIVE.maxOpen) }); Alert.alert(t("Listo"), t("Valores recomendados cargados: tocá «Guardar topes» para aplicarlos.")); }}>
               <Text style={s.outlineText}>{t("Poner los valores recomendados")}</Text>
             </TouchableOpacity>
-            {liveConfigWarnings({ riskUsdt: Number(lim.risk.replace(",", ".")), dailyLossUsdt: Number(lim.daily.replace(",", ".")) }).map((w) => (
+            {liveConfigWarnings({ riskUsdt: Number(lim.risk.replace(",", ".")), dailyLossUsdt: Number(lim.daily.replace(",", ".")), weeklyLossUsdt: Number(lim.weekly.replace(",", ".")) }).map((w) => (
               <Text key={w} style={[s.hint, { color: "#fbbf24" }]}>⚠️ {w}</Text>
             ))}
             <Text style={s.hint}>{t("Si una señal trae el stop más cerca de la entrada que este porcentaje del precio, el bot real la omite (y lo anota). Así evitás operaciones con el stop y el objetivo muy pegados. 0 = sin mínimo.")}</Text>
@@ -335,7 +337,7 @@ export default function LiveSection({ titleStyle }: { titleStyle?: StyleProp<Tex
 /** Resumen corto de las órdenes: cuántas salieron, cuántas dieron problemas y cuántas quedaron sin enviar. */
 function ordersSummary(orders: LiveOrder[]): string {
   const sent = orders.filter((o) => o.status === "sent").length;
-  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error").length;
+  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error" || o.status === "unfilled").length;
   const rest = orders.length - sent - bad;
   return [sent ? t("{n} enviadas", { n: sent }) : "", bad ? t("{n} con problemas", { n: bad }) : "", rest ? t("{n} sin enviar", { n: rest }) : ""].filter(Boolean).join(" · ");
 }
@@ -361,7 +363,7 @@ function OrdersList({ orders }: { orders: LiveOrder[] }) {
         orders.map((o) => (
           <TouchableOpacity key={o.id} style={s.order} onPress={() => toggle(o.id)}>
             <Text style={{ color: colors.snow, fontWeight: "800", fontSize: 12 }}>
-              {o.symbol} · <Text style={{ color: o.status === "sent" ? colors.bull : o.status === "rejected" || o.status === "error" ? colors.bear : colors.dim }}>{liveStatusLabel(o.status)}</Text>
+              {o.symbol} · <Text style={{ color: o.status === "sent" ? colors.bull : o.status === "unfilled" ? "#fbbf24" : o.status === "rejected" || o.status === "error" ? colors.bear : colors.dim }}>{liveStatusLabel(o.status)}</Text>
               {o.kind !== "bot" ? ` · ${o.kind === "test" ? t("prueba") : t("apagado")}` : ""} · {ago(o.createdAt, Date.now())}
             </Text>
             {o.note && <Text style={s.hint} numberOfLines={wide.includes(o.id) ? undefined : 2}>{o.note}</Text>}

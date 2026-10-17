@@ -24,7 +24,7 @@ function NumField({ name, value, onChange, min, max, step }: { name: string; val
 /** Resumen corto de las órdenes: cuántas salieron, cuántas dieron problemas y cuántas quedaron sin enviar. */
 function ordersSummary(orders: LiveOrder[]): string {
   const sent = orders.filter((o) => o.status === "sent").length;
-  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error").length;
+  const bad = orders.filter((o) => o.status === "rejected" || o.status === "error" || o.status === "unfilled").length;
   const rest = orders.length - sent - bad;
   return [sent ? t("{n} enviadas", { n: sent }) : "", bad ? t("{n} con problemas", { n: bad }) : "", rest ? t("{n} sin enviar", { n: rest }) : ""].filter(Boolean).join(" · ");
 }
@@ -58,7 +58,7 @@ function LiveOrdersList({ orders }: { orders: LiveOrder[] }) {
               <button type="button" onClick={() => toggle(o.id)} className="w-full rounded-md border border-line bg-ink/40 px-3 py-2 text-left text-[11.5px] text-fog hover:border-line2">
                 <span className="flex flex-wrap items-center gap-2">
                   <b className="num text-snow">{o.symbol}</b>
-                  <span className={cx("rounded-full border px-2 py-px text-[10px] font-bold", o.status === "sent" ? "border-bull/50 text-bull" : o.status === "rejected" || o.status === "error" ? "border-bear/50 text-bear" : "border-line text-dim")}>{liveStatusLabel(o.status)}</span>
+                  <span className={cx("rounded-full border px-2 py-px text-[10px] font-bold", o.status === "sent" ? "border-bull/50 text-bull" : o.status === "unfilled" ? "border-amber-400/50 text-amber-300" : o.status === "rejected" || o.status === "error" ? "border-bear/50 text-bear" : "border-line text-dim")}>{liveStatusLabel(o.status)}</span>
                   {o.kind !== "bot" && <span className="text-[10px] uppercase text-dim">{o.kind === "test" ? t("prueba") : t("apagado")}</span>}
                   <span className="ml-auto text-dim">{ago(o.createdAt, Date.now())}</span>
                 </span>
@@ -210,6 +210,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
         minLeverage: normalizeLeverage(limits.minLeverage, limits.maxLeverage).min,
         minStopPct: clampLive(limits.minStopPct, 0, LIVE_LIMITS.maxMinStopPct, 0),
         dailyLossUsdt: clampLive(limits.dailyLossUsdt, 0.05, LIVE_LIMITS.dailyLossUsdt, DEFAULT_LIVE.dailyLossUsdt),
+        weeklyLossUsdt: clampLive(limits.weeklyLossUsdt, 0, LIVE_LIMITS.weeklyLossUsdt, 0),
         maxOpen: Math.min(LIVE_LIMITS.maxOpen, Math.max(1, Math.round(limits.maxOpen || 1))),
       },
       t("Topes guardados."),
@@ -316,6 +317,7 @@ export default function LiveBotCard({ userId, notify }: { userId: string; notify
                 <NumField name={t("Apalancamiento máximo")} value={limits.maxLeverage} min={1} max={LIVE_LIMITS.maxLeverage} step={1} onChange={(v) => setLimits({ ...limits, maxLeverage: v })} />
                 <NumField name={t("Pérdida máxima por día (USDT)")} value={limits.dailyLossUsdt} min={0.05} max={LIVE_LIMITS.dailyLossUsdt} step={0.05} onChange={(v) => setLimits({ ...limits, dailyLossUsdt: v })} />
                 <NumField name={t("Distancia mínima del stop (%)")} value={limits.minStopPct} min={0} max={LIVE_LIMITS.maxMinStopPct} step={0.1} onChange={(v) => setLimits({ ...limits, minStopPct: v })} />
+                <NumField name={t("Pérdida máxima por semana (USDT, 0 = sin tope)")} value={limits.weeklyLossUsdt} min={0} max={LIVE_LIMITS.weeklyLossUsdt} step={0.5} onChange={(v) => setLimits({ ...limits, weeklyLossUsdt: v })} />
               </div>
               <button type="button" onClick={() => { setLimits({ ...limits, ...RECOMMENDED_LIVE }); notify(t("Valores recomendados cargados: tocá «Guardar topes» para aplicarlos.")); }} className="w-full rounded-md border border-gold/50 px-3 py-2 text-[11.5px] font-bold uppercase tracking-wider text-gold hover:bg-gold/10">
                 {t("Poner los valores recomendados")}

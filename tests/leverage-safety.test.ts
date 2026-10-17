@@ -47,5 +47,9 @@ describe("topes que no se llevan bien", () => {
     expect(liveConfigWarnings({ riskUsdt: 0.5, dailyLossUsdt: 1 })).toHaveLength(1); // solo 2 pérdidas
     expect(liveConfigWarnings({ riskUsdt: 0.3, dailyLossUsdt: 1 })).toEqual([]); // 3 pérdidas: ok
     expect(liveConfigWarnings({ riskUsdt: 0.1, dailyLossUsdt: 0.5 })).toEqual([]);
+    // tope semanal: menor que el diario avisa; igual o mayor, o sin tope (0), no
+    expect(liveConfigWarnings({ riskUsdt: 0.3, dailyLossUsdt: 1, weeklyLossUsdt: 0.5 })).toHaveLength(1);
+    expect(liveConfigWarnings({ riskUsdt: 0.3, dailyLossUsdt: 1, weeklyLossUsdt: 5 })).toEqual([]);
+    expect(liveConfigWarnings({ riskUsdt: 0.3, dailyLossUsdt: 1, weeklyLossUsdt: 0 })).toEqual([]);
   });
 });

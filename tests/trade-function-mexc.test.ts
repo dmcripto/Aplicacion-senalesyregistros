@@ -9,7 +9,7 @@ let reject = false;
 const CRON = "secreto-de-segundo-plano-123";
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba", EXCHANGE_CRON_SECRET: CRON } as Record<string, string>)[k] },
+    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba", EXCHANGE_CRON_SECRET: CRON, TRADE_CONFIRM_DELAYS: "0,0" } as Record<string, string>)[k] },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/trade/index");

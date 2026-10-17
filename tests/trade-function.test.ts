@@ -7,12 +7,13 @@ let sent: Array<{ method: string; path: string; body: any }> = [];
 let bitunixDown = false;
 let reject = false;
 let positionsOpen = 0;
+let noFill = false;
 let closeWorks = true;
 
 const CRON = "secreto-de-segundo-plano-123";
 beforeAll(async () => {
   (globalThis as any).Deno = {
-    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba", EXCHANGE_CRON_SECRET: CRON } as Record<string, string>)[k] },
+    env: { get: (k: string) => ({ SUPABASE_URL: "x", SUPABASE_SERVICE_ROLE_KEY: "y", EXCHANGE_ENC_KEY: "una-clave-maestra-larga-de-prueba", EXCHANGE_CRON_SECRET: CRON, TRADE_CONFIRM_DELAYS: "0,0" } as Record<string, string>)[k] },
     serve: (h: typeof handler) => { handler = h; },
   };
   await import("../supabase/functions/trade/index");
@@ -43,6 +44,7 @@ beforeEach(() => {
   bitunixDown = false;
   reject = false;
   positionsOpen = 0;
+  noFill = false;
   closeWorks = true;
   resetDb({
     profiles: [{ id: "u1", bot_beta: true }, { id: "u2", bot_beta: false }],
@@ -66,7 +68,7 @@ beforeEach(() => {
       case "/api/v1/futures/account/change_leverage": return ok({});
       case "/api/v1/futures/trade/place_order":
         if (reject) return new Response(JSON.stringify({ code: 20003, msg: "Insufficient balance" }));
-        positionsOpen = 1;
+        if (!noFill) positionsOpen = 1;
         return ok({ orderId: "o1" });
       case "/api/v1/futures/trade/flash_close_position":
         if (closeWorks) positionsOpen = 0;
@@ -253,6 +255,35 @@ describe("función trade: órdenes del bot", () => {
     expect(r.body.status).toBe("skipped");
     expect(r.body.note).toContain("Ya hay una posición abierta en BTCUSDT");
     expect(placed()).toHaveLength(0);
+  });
+
+  it("si el exchange acepta la orden pero no abre la posición, queda «sin ejecutar» y no cuenta para el tope diario", async () => {
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true, daily_loss_usdt: 0.25, risk_usdt: 0.1 });
+    noFill = true;
+    const r = await exec();
+    expect(r.body.status).toBe("unfilled");
+    expect(orders("bot").map((o) => o.status)).toEqual(["unfilled"]);
+    expect(orders("bot")[0].note).toContain("no se ve la posición abierta");
+    // no cuenta para el tope: con tope 0,25 y riesgo 0,1 entran 2 órdenes reales más
+    noFill = false;
+    db.tables.trades.push(trade({ id: "t2" }));
+    const r2 = await call({ action: "execute", tradeId: "t2", userId: "u1" }, { cron: CRON });
+    expect(r2.body.status).toBe("sent");
+  });
+
+  it("tope semanal: con 0 no limita; con un valor frena cuando las órdenes de 7 días llegan al límite", async () => {
+    const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+    // 3 órdenes enviadas en los últimos 7 días, riesgo 0,1 cada una; tope diario amplio
+    db.tables.live_orders = [3, 4, 5].map((d) => ({ id: `w${d}`, user_id: "u1", kind: "bot", status: "sent", created_at: days(d) }));
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true, daily_loss_usdt: 2, risk_usdt: 0.1, weekly_loss_usdt: 0.35 });
+    const r = await exec();
+    expect(r.body.status).toBe("skipped");
+    expect(r.body.note).toContain("Tope semanal alcanzado");
+    // sin tope semanal (0) la misma orden pasa
+    db.tables.bot_live[0] = live({ enabled: true, dry_run: false, verified: true, daily_loss_usdt: 2, risk_usdt: 0.1, weekly_loss_usdt: 0 });
+    db.tables.live_orders = db.tables.live_orders.filter((o: any) => o.kind !== "bot" || o.status === "sent");
+    db.tables.trades = [trade({ id: "t9" })];
+    expect((await exec("t9")).body.status).toBe("sent");
   });
 
   it("tope diario: la pérdida máxima posible del día no pasa el límite", async () => {

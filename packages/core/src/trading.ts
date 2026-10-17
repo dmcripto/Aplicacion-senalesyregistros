@@ -795,6 +795,84 @@ export function tagStats(trades: Trade[]): TagRow[] {
     .sort((a, b) => a.netR - b.netR);
 }
 
+// ─── Rendimiento por perfil del bot ─────────────────────────────────────────
+
+export interface BotProfileRow {
+  key: string;
+  label: string;
+  /** true = operaciones del bot con dinero real; false = simulado o pruebas paralelas. */
+  real: boolean;
+  ops: number;
+  open: number;
+  winRate: number;
+  netR: number;
+  /** R neto descontando comisión y deslizamiento (el simulado del diario no los descuenta; en el bot real ya vienen incluidos). */
+  netAfterCostsR: number;
+  avgR: number;
+  longs: { ops: number; netR: number };
+  shorts: { ops: number; netR: number };
+}
+
+/** Costo supuesto de una operación simulada, ida y vuelta, en % del precio (el mismo que usan el laboratorio y las pruebas con historial). */
+export const SIM_ROUND_TRIP_COST_PCT = 0.14;
+
+/** A qué perfil (o prueba paralela) pertenece una operación del bot, según lo que dice su nota. Devuelve null si no es del bot. */
+export function botProfileKey(t: Pick<Trade, "notes" | "tags">): { key: string; label: string; real: boolean } | null {
+  const tags = (t.tags ?? []).map((x) => x.toLowerCase());
+  const n = (t.notes ?? "").toLowerCase();
+  if (tags.includes("bot real")) return { key: "real", label: tr("Bot real"), real: true };
+  if (!tags.includes("bot simulado") && !n.includes("bot simulado")) return null;
+  if (n.includes("prueba paralela")) {
+    if (n.includes("entradas estiradas")) return { key: "p-filtro", label: tr("Prueba · filtro de entradas estiradas"), real: false };
+    if (n.includes("corredor")) return { key: "p-corredor", label: tr("Prueba · corredor"), real: false };
+    return { key: "p-otra", label: tr("Otra prueba paralela"), real: false };
+  }
+  if (n.includes("tendencia rápida")) return { key: "slowquick", label: tr("Lento · tendencia rápida"), real: false };
+  if (n.includes("objetivo amplio")) return { key: "slowwide", label: tr("Lento · objetivo amplio"), real: false };
+  if (n.includes("perfil lento")) return { key: "slow", label: tr("Lento (4 horas)"), real: false };
+  if (n.includes("máxima actividad")) return { key: "max", label: tr("Máxima actividad"), real: false };
+  if (n.includes("perfil intensivo")) return { key: "intense", label: tr("Intensivo"), real: false };
+  if (n.includes("perfil dinámico")) return { key: "dynamic", label: tr("Dinámico"), real: false };
+  if (n.includes("perfil conservador")) return { key: "conservative", label: tr("Conservador"), real: false };
+  return { key: "balanced", label: tr("Equilibrado"), real: false };
+}
+
+/** Rendimiento de las operaciones del bot agrupadas por perfil (más operaciones primero): aciertos, R neto y R medio, separando compras y ventas. */
+export function botProfileStats(trades: Trade[]): BotProfileRow[] {
+  const map = new Map<string, { info: { key: string; label: string; real: boolean }; rs: number[]; open: number; l: number[]; s: number[]; cost: number }>();
+  for (const t of trades) {
+    const info = botProfileKey(t);
+    if (!info) continue;
+    const row = map.get(info.key) ?? { info, rs: [], open: 0, l: [], s: [], cost: 0 };
+    map.set(info.key, row);
+    if (t.outcome === "ABIERTA") {
+      row.open += 1;
+      continue;
+    }
+    const r = resultR(t) ?? 0;
+    row.rs.push(r);
+    (t.direction === "LONG" ? row.l : row.s).push(r);
+    const risk = Math.abs(t.entry - t.sl);
+    if (!info.real && risk > 0) row.cost += ((SIM_ROUND_TRIP_COST_PCT / 100) * t.entry) / risk;
+  }
+  const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+  return [...map.values()]
+    .map(({ info, rs, open, l, s, cost }) => ({
+      key: info.key,
+      label: info.label,
+      real: info.real,
+      ops: rs.length,
+      open,
+      winRate: rs.length ? (rs.filter((r) => r > 0).length / rs.length) * 100 : 0,
+      netR: sum(rs),
+      netAfterCostsR: sum(rs) - cost,
+      avgR: rs.length ? sum(rs) / rs.length : 0,
+      longs: { ops: l.length, netR: sum(l) },
+      shorts: { ops: s.length, netR: sum(s) },
+    }))
+    .sort((a, b) => b.ops - a.ops || b.open - a.open);
+}
+
 // ─── Calculadora de riesgo ──────────────────────────────────────────────────
 
 export interface PositionInput {
@@ -1948,18 +2026,23 @@ export interface LiveSettings {
   minStopPct: number;
   maxOpen: number;
   dailyLossUsdt: number;
+  /** Pérdida máxima posible de los últimos 7 días (0 = sin tope semanal). */
+  weeklyLossUsdt: number;
   errors: number;
   lastError: string | null;
 }
 
-export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, maxMinStopPct: 10 } as const;
+export const LIVE_LIMITS = { maxMarginUsdt: 10, riskUsdt: 1, maxLeverage: 100, maxOpen: 3, dailyLossUsdt: 2, weeklyLossUsdt: 10, maxMinStopPct: 10 } as const;
 
 /**
  * Avisos sobre topes que no se llevan bien entre sí. El caso típico: el tope de pérdida del día es casi igual al riesgo por operación,
  * así que con una o dos pérdidas el bot se frena y se pierde las señales buenas que vienen después.
  */
-export function liveConfigWarnings(l: Pick<LiveSettings, "riskUsdt" | "dailyLossUsdt">): string[] {
+export function liveConfigWarnings(l: Pick<LiveSettings, "riskUsdt" | "dailyLossUsdt"> & { weeklyLossUsdt?: number }): string[] {
   const out: string[] = [];
+  if ((l.weeklyLossUsdt ?? 0) > 0 && l.dailyLossUsdt > 0 && (l.weeklyLossUsdt ?? 0) < l.dailyLossUsdt) {
+    out.push(tr("El tope semanal ({weekly}) es menor que el diario ({daily}): el bot se va a frenar por la semana antes que por el día. Poné el semanal igual o mayor que el diario (o 0 para no usar tope semanal).", { weekly: String(l.weeklyLossUsdt).replace(".", ","), daily: String(l.dailyLossUsdt).replace(".", ",") }));
+  }
   if (l.riskUsdt > 0 && l.dailyLossUsdt > 0) {
     const n = Math.floor(l.dailyLossUsdt / l.riskUsdt + 1e-9);
     if (n < 3) {
@@ -2039,8 +2122,8 @@ export function liveKeyGuide(id: string | null | undefined): string {
 }
 
 /** Topes que recomendamos para empezar con poco capital: pérdida diaria de 5 operaciones, stops no pegados y apalancamiento moderado. */
-export const RECOMMENDED_LIVE = { maxMarginUsdt: 10, riskUsdt: 0.4, minLeverage: 2, maxLeverage: 15, minStopPct: 1, dailyLossUsdt: 2, maxOpen: 3 } as const;
-export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, errors: 0, lastError: null };
+export const RECOMMENDED_LIVE = { maxMarginUsdt: 10, riskUsdt: 0.4, minLeverage: 2, maxLeverage: 15, minStopPct: 1, dailyLossUsdt: 2, weeklyLossUsdt: 5, maxOpen: 3 } as const;
+export const DEFAULT_LIVE: LiveSettings = { enabled: false, dryRun: true, verified: false, maxMarginUsdt: 4, riskUsdt: 0.1, maxLeverage: 10, minLeverage: 1, minStopPct: 0, maxOpen: 1, dailyLossUsdt: 0.5, weeklyLossUsdt: 0, errors: 0, lastError: null };
 
 export interface LiveOrder {
   id: string;
@@ -2049,13 +2132,13 @@ export interface LiveOrder {
   qty: number | null;
   leverage: number | null;
   kind: "bot" | "test" | "panic";
-  status: "dry_run" | "sent" | "rejected" | "skipped" | "error";
+  status: "dry_run" | "sent" | "unfilled" | "rejected" | "skipped" | "error";
   note: string | null;
   createdAt: string;
 }
 
 export const liveStatusLabel = (st: LiveOrder["status"]) =>
-  st === "sent" ? tr("Enviada") : st === "dry_run" ? tr("En seco") : st === "rejected" ? tr("Rechazada") : st === "skipped" ? tr("Omitida") : tr("Error");
+  st === "sent" ? tr("Enviada") : st === "unfilled" ? tr("Sin ejecutar") : st === "dry_run" ? tr("En seco") : st === "rejected" ? tr("Rechazada") : st === "skipped" ? tr("Omitida") : tr("Error");
 
 /** Ajusta un valor al rango permitido (y a un número válido); si no es número devuelve el de reserva. */
 export const clampLive = (v: number, min: number, max: number, fallback: number) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback);

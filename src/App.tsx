@@ -63,6 +63,7 @@ const MonthlySummary = lazy(() => import("./components/MonthlySummary"));
 const AlertBuilder = lazy(() => import("./components/AlertBuilder"));
 const RiskCalculator = lazy(() => import("./components/RiskCalculator"));
 const TagStats = lazy(() => import("./components/TagStats"));
+const BotProfiles = lazy(() => import("./components/BotProfiles"));
 const Analysis = lazy(() => import("./components/Analysis"));
 const StrategyCard = lazy(() => import("./components/StrategyCard"));
 const MoneyCard = lazy(() => import("./components/MoneyCard"));
@@ -827,6 +828,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
               )
             )}
             {!empty && trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
+            {!empty && trades.some((x) => x.tags?.some((g) => g === "Bot simulado" || g === "Bot real")) && <BotProfiles trades={trades} />}
           </>
         )}
 
@@ -842,6 +844,7 @@ function Dashboard({ userId, email }: { userId: string; email?: string }) {
                     <Analysis trades={trades} />
                     <MonthlySummary trades={trades} />
                     {trades.some((x) => x.tags?.length) && <TagStats trades={trades} />}
+                    {trades.some((x) => x.tags?.some((g) => g === "Bot simulado" || g === "Bot real")) && <BotProfiles trades={trades} />}
                     {FEATURES.coach && <CoachCard closedCount={trades.filter((x) => x.outcome !== "ABIERTA").length} />}
                   </div>
                   <StrategyCard trades={trades} notify={notify} />

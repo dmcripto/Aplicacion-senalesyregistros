@@ -51,3 +51,6 @@ verify_jwt = false
 
 [functions.unlocks]
 verify_jwt = false
+
+[functions.backup]
+verify_jwt = false
