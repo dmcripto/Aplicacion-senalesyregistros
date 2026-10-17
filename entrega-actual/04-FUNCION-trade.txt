@@ -2622,9 +2622,10 @@ const CORS = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const MAX_ERRORS = 3; // errores seguidos: el bot real se apaga solo
-const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, min_stop_pct, max_open, daily_loss_usdt, errors, last_error";
+const LIVE_COLUMNS = "user_id, exchange, enabled, dry_run, verified, max_margin_usdt, risk_usdt, max_leverage, min_leverage, min_stop_pct, max_open, daily_loss_usdt, weekly_loss_usdt, errors, last_error";
 // Si todavía no se corrieron los SQL del piso de apalancamiento o de la distancia mínima del stop, se lee sin esas columnas.
-const LIVE_COLUMNS_NO_STOP = LIVE_COLUMNS.replace(" min_stop_pct,", "");
+const LIVE_COLUMNS_NO_WEEK = LIVE_COLUMNS.replace(" weekly_loss_usdt,", "");
+const LIVE_COLUMNS_NO_STOP = LIVE_COLUMNS_NO_WEEK.replace(" min_stop_pct,", "");
 const LIVE_COLUMNS_OLD = LIVE_COLUMNS_NO_STOP.replace(" min_leverage,", "");
 
 interface Live {
@@ -2640,6 +2641,7 @@ interface Live {
   min_stop_pct?: number | null;
   max_open: number;
   daily_loss_usdt: number;
+  weekly_loss_usdt?: number | null;
   errors: number;
   last_error: string | null;
 }
@@ -2699,6 +2701,7 @@ async function isBeta(userId: string): Promise<boolean> {
 
 async function loadLive(userId: string): Promise<Live | null> {
   let { data, error } = await admin.from("bot_live").select(LIVE_COLUMNS).eq("user_id", userId).maybeSingle();
+  if (error) ({ data, error } = await admin.from("bot_live").select(LIVE_COLUMNS_NO_WEEK).eq("user_id", userId).maybeSingle());
   if (error) ({ data, error } = await admin.from("bot_live").select(LIVE_COLUMNS_NO_STOP).eq("user_id", userId).maybeSingle());
   if (error) ({ data } = await admin.from("bot_live").select(LIVE_COLUMNS_OLD).eq("user_id", userId).maybeSingle());
   return (data as Live | null) ?? null;
@@ -2726,15 +2729,37 @@ interface OrderLog {
   leverage?: number | null;
   kind: "bot" | "test" | "panic";
   dry_run: boolean;
-  status: "dry_run" | "sent" | "rejected" | "skipped" | "error";
+  status: "dry_run" | "sent" | "unfilled" | "rejected" | "skipped" | "error";
   note?: string;
   request?: unknown;
   response?: unknown;
 }
-const logOrder = async (o: OrderLog) => {
+const logOrder = async (o: OrderLog): Promise<boolean> => {
   const { error } = await admin.from("live_orders").insert({ ...o, trade_id: o.trade_id ?? null, exchange: o.exchange ?? "bitunix" });
   if (error) console.error("live_orders:", error.message);
+  return !error;
 };
+
+/** Los exchanges nombran distinto el mismo par (BTCUSDT, BTC_USDT, XBTUSDTM…): se comparan sin símbolos y con XBT = BTC. */
+const normPair = (s: unknown) => String(s ?? "").toUpperCase().replace(/XBT/g, "BTC").replace(/[^A-Z0-9]/g, "");
+const samePair = (a: unknown, b: unknown) => {
+  const x = normPair(a), y = normPair(b);
+  return !!x && !!y && (x === y || x.startsWith(y) || y.startsWith(x));
+};
+
+// Tras enviar una orden de mercado se espera unos segundos y se mira si la posición realmente abrió (si no, no cuenta para el tope diario).
+const CONFIRM_DELAYS = (Deno.env.get("TRADE_CONFIRM_DELAYS") ?? "1200,2500,4000").split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0);
+async function confirmOpened(ex: ReturnType<typeof liveEx>, creds: { key: string; secret: string }, symbol: string): Promise<boolean | null> {
+  let read = false;
+  for (const ms of CONFIRM_DELAYS) {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+    const pos = await ex.positions(fetch, creds.key, creds.secret);
+    if (pos == null) continue;
+    read = true;
+    if (pos.some((p) => samePair(p.symbol, symbol))) return true;
+  }
+  return read ? false : null; // null = no se pudo comprobar: se deja como enviada
+}
 
 async function pushTo(userId: string, title: string, body: string) {
   try {
@@ -2780,7 +2805,7 @@ async function execute(userId: string, tradeId: string) {
   const ex = liveEx(live.exchange);
   const { data: trade } = await admin.from("trades").select("id, symbol, direction, entry, sl, tp").eq("id", tradeId).eq("user_id", userId).eq("source", "bot").eq("outcome", "ABIERTA").maybeSingle();
   if (!trade) return { status: "skipped", note: "La operación ya no está abierta." };
-  const { data: done } = await admin.from("live_orders").select("id").eq("trade_id", tradeId).eq("kind", "bot").in("status", ["sent", "dry_run"]).limit(1);
+  const { data: done } = await admin.from("live_orders").select("id").eq("trade_id", tradeId).eq("kind", "bot").in("status", ["sent", "unfilled", "dry_run"]).limit(1);
   if (done?.length) return { status: "skipped", note: "Ya se procesó." };
 
   const sig: BxSignal = { symbol: trade.symbol, direction: trade.direction, entry: Number(trade.entry), sl: Number(trade.sl), tp: Number(trade.tp) };
@@ -2794,6 +2819,12 @@ async function execute(userId: string, tradeId: string) {
   const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString();
   const { count: sentToday } = await admin.from("live_orders").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("kind", "bot").eq("status", "sent").gte("created_at", dayAgo);
   if (((sentToday ?? 0) + 1) * Number(live.risk_usdt) > Number(live.daily_loss_usdt) + 1e-9) return skip("Tope diario alcanzado: por hoy no se envían más órdenes reales.");
+  // Tope semanal (0 = sin tope): lo mismo que el diario, sobre los últimos 7 días.
+  if (Number(live.weekly_loss_usdt ?? 0) > 0) {
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const { count: sentWeek } = await admin.from("live_orders").select("id", { count: "exact", head: true }).eq("user_id", userId).eq("kind", "bot").eq("status", "sent").gte("created_at", weekAgo);
+    if (((sentWeek ?? 0) + 1) * Number(live.risk_usdt) > Number(live.weekly_loss_usdt) + 1e-9) return skip("Tope semanal alcanzado: hasta que pasen unos días no se envían más órdenes reales.");
+  }
 
   const creds = await loadKey(userId, ex.id);
   if (!creds) return skip("Falta la clave con permiso de operar.");
@@ -2830,7 +2861,7 @@ async function execute(userId: string, tradeId: string) {
     return skip("No se pudieron leer las posiciones abiertas: por seguridad no se opera.");
   }
   // Si ya hay una posición en ese par (tuya a mano o del bot), una orden opuesta la reduciría o la cerraría: no se opera.
-  const same = open.find((o) => String(o.symbol).toUpperCase() === sig.symbol.toUpperCase());
+  const same = open.find((o) => samePair(o.symbol, sig.symbol));
   if (same) return skip(`Ya hay una posición abierta en ${sig.symbol} en ${ex.name} (tuya o del bot): no se opera para no mezclarlas.`);
   if (open.length >= Number(live.max_open)) return skip(`Ya hay ${open.length} posición(es) abierta(s) (máximo ${live.max_open}).`);
 
@@ -2840,6 +2871,15 @@ async function execute(userId: string, tradeId: string) {
     await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "rejected", note: `${ex.name} rechazó la orden: ${r.msg || r.code}`, request: body, response: { code: r.code, msg: r.msg } });
     await recordFailure(userId, live, `${ex.name} rechazó la orden de ${sig.symbol}: ${r.msg || r.code}`);
     return { status: "rejected", msg: r.msg };
+  }
+  const opened = await confirmOpened(ex, creds, sig.symbol);
+  if (opened === false) {
+    const note = [summary, ...warnings, `${ex.name} aceptó la orden pero no se ve la posición abierta: no cuenta para el tope diario`].join(" · ");
+    // Si la base todavía no tiene el estado «unfilled» (migración 0065), se anota como enviada para no perder el registro.
+    const saved = await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "unfilled", note, request: body, response: r.data });
+    if (!saved) await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "sent", note, request: body, response: r.data });
+    await pushTo(userId, `⚠️ Orden sin ejecutar · ${sig.symbol}`, `${ex.name} la aceptó pero no abrió posición: ${summary}`);
+    return { status: "unfilled", plan };
   }
   await logOrder({ ...base, qty: plan.qty, leverage: plan.leverage, status: "sent", note: [summary, ...warnings].join(" · "), request: body, response: r.data });
   await admin.from("bot_live").update({ errors: 0, last_error: null }).eq("user_id", userId);

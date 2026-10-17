@@ -1,0 +1,41 @@
+-- VELTRIX · SQL de las mejoras finales (correr UNA vez en Supabase > SQL Editor > Run). Seguro de repetir.
+
+-- ═══ 0065_live_orders_unfilled ═══
+-- VELTRIX · nuevo estado de orden «unfilled» (sin ejecutar): el exchange aceptó la orden pero no se ve la posición abierta.
+-- Esas órdenes no cuentan para el tope diario del bot real.
+
+alter table public.live_orders drop constraint if exists live_orders_status_check;
+alter table public.live_orders
+  add constraint live_orders_status_check check (status in ('dry_run', 'sent', 'unfilled', 'rejected', 'skipped', 'error'));
+
+-- ═══ 0066_live_weekly_loss ═══
+-- VELTRIX · Tope de pérdida semanal para el bot con dinero real.
+--
+--   weekly_loss_usdt = la pérdida máxima posible de los últimos 7 días (órdenes enviadas × riesgo de cada una).
+--                      Al llegar, el bot real omite las señales hasta que pasen los días. 0 = sin tope semanal (como hasta ahora). Máximo 10.
+alter table public.bot_live add column if not exists weekly_loss_usdt numeric not null default 0;
+alter table public.bot_live drop constraint if exists bot_live_weekly_loss_check;
+alter table public.bot_live add constraint bot_live_weekly_loss_check check (weekly_loss_usdt >= 0 and weekly_loss_usdt <= 10);
+
+-- ═══ 0067_system_heartbeat ═══
+-- VELTRIX · Latidos de las tareas automáticas (para el vigilante que avisa si una se detiene).
+--   name       = tarea ('bot', 'exchanges')
+--   at         = último latido (terminó bien)
+--   alerted_at = cuándo se mandó el último aviso de «caída» (null = sin aviso pendiente)
+-- Sin políticas: solo la leen y escriben las funciones del servidor.
+
+create table if not exists public.system_heartbeat (
+  name text primary key,
+  at timestamptz not null default now(),
+  alerted_at timestamptz
+);
+alter table public.system_heartbeat enable row level security;
+
+-- ═══ 0068_backups_bucket ═══
+-- VELTRIX · Depósito privado «backups» para las copias de seguridad semanales (función backup).
+-- Privado: solo se ve desde el panel de Supabase (Storage > backups) o con la clave de servicio.
+
+insert into storage.buckets (id, name, public)
+values ('backups', 'backups', false)
+on conflict (id) do nothing;
+

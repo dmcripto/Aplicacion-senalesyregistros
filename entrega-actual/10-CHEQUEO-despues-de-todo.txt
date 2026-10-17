@@ -1,11 +1,17 @@
--- VELTRIX · comprobación (Supabase > SQL Editor > pegar > Run). Muestra si todo quedó en su lugar.
-select
-  (select count(*) from information_schema.tables where table_schema='public' and table_name in ('assistant_log','bot_coach_reports','unlock_raw','unlock_history')) as tablas_nuevas_de_4,
-  (select count(*) from information_schema.columns where table_schema='public' and table_name='trades' and column_name in ('last_price','last_price_at')) as columnas_precio_de_2,
-  (select count(*) from information_schema.columns where table_schema='public' and table_name='bot_settings' and column_name in ('runner_test','share_community')) as columnas_bot_de_2,
-  (select count(*) from cron.job where jobname='veltrix-unlocks-learn') as tarea_aprender_de_1,
-  (select count(*) from unlock_raw) as tokenomist_respuestas_guardadas,
-  (select count(*) from unlock_history) as tokenomist_eventos_en_historial,
-  (select max(fetched_at) from unlock_raw) as tokenomist_ultima_consulta;
--- Lo correcto: 4, 2, 2, 1. Los tres últimos empiezan en 0 y crecen cuando la función «unlocks» está desplegada
--- (la «última consulta» tiene que ser de hace menos de una hora). Vence la prueba de Tokenomist hacia el 28/10.
+-- VELTRIX · comprobación (Supabase > SQL Editor > pegar > Run). Cada fila tiene que decir «ok».
+select 'estado sin ejecutar' as que,
+  case when exists (select 1 from pg_constraint where conname='live_orders_status_check' and pg_get_constraintdef(oid) like '%unfilled%') then 'ok' else 'FALTA el SQL 16' end as estado
+union all
+select 'tope semanal', case when exists (select 1 from information_schema.columns where table_schema='public' and table_name='bot_live' and column_name='weekly_loss_usdt') then 'ok' else 'FALTA el SQL 16' end
+union all
+select 'vínculo orden-posición', case when exists (select 1 from information_schema.columns where table_schema='public' and table_name='live_orders' and column_name='position_id') then 'ok' else 'FALTA el SQL 14' end
+union all
+select 'latidos', case when exists (select 1 from information_schema.tables where table_schema='public' and table_name='system_heartbeat') then 'ok' else 'FALTA el SQL 16' end
+union all
+select 'depósito backups', case when exists (select 1 from storage.buckets where id='backups') then 'ok' else 'FALTA el SQL 16' end
+union all
+select 'latido del bot (debe ser de hace pocos minutos)', coalesce((select to_char(at at time zone 'America/Argentina/Buenos_Aires','DD/MM HH24:MI') from system_heartbeat where name='bot'), 'todavía sin latido: desplegá bot')
+union all
+select 'latido de exchanges', coalesce((select to_char(at at time zone 'America/Argentina/Buenos_Aires','DD/MM HH24:MI') from system_heartbeat where name='exchanges'), 'todavía sin latido: desplegá exchanges')
+union all
+select 'última copia de seguridad', coalesce((select to_char(at at time zone 'America/Argentina/Buenos_Aires','DD/MM HH24:MI') from system_heartbeat where name='backup'), 'todavía no: esperá unos minutos tras desplegar backup y auto-close');
