@@ -1,5 +1,7 @@
 VELTRIX · MEJORAS FINALES (todo junto, en orden)
 
+ACTUALIZACIÓN 2 (perfil «Conservador · 4 horas»): 1) correr 17-SQL-perfil-conservador-4h.txt en el SQL Editor; 2) volver a pegar 03-FUNCION-bot.txt
+(comprobar: slowcons) y Deploy; 3) en la web (Ctrl+F5) elegir el perfil en Bot > «Perfil de estrategia».
 ACTUALIZACIÓN (Lab con sobrecompra/sobreventa): si ya pegaste 03-FUNCION-bot, volvé a pegarlo (comprobar: h4-quick-rsi70).
 Después, en la web: Bot > «Probar variantes de 4 horas» (ahora tarda un poco más: son más variantes) y mandame la captura.
 
@@ -13,7 +15,7 @@ Abrí cada archivo con el Bloc de notas, Ctrl+A, Ctrl+C, y pegalo donde dice. Lo
 Antes de tocar Deploy, buscá con Ctrl+F la palabra de la columna «comprobar»: tiene que aparecer.
   Archivo                              -> función              comprobar
 [ ] 04-FUNCION-trade.txt               -> trade                unfilled
-[ ] 03-FUNCION-bot.txt                 -> bot                  h4-quick-rsi70
+[ ] 03-FUNCION-bot.txt                 -> bot                  slowcons
 [ ] 06-FUNCION-exchanges.txt           -> exchanges            beat(admin, "exchanges")
 [ ] 08-FUNCION-auto-close.txt          -> auto-close           runWatchdog
 [ ] 15-FUNCION-backup-NUEVA.txt        -> backup  (FUNCIÓN NUEVA)   runBackup

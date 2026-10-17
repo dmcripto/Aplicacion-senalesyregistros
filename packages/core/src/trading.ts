@@ -827,6 +827,7 @@ export function botProfileKey(t: Pick<Trade, "notes" | "tags">): { key: string; 
     if (n.includes("corredor")) return { key: "p-corredor", label: tr("Prueba · corredor"), real: false };
     return { key: "p-otra", label: tr("Otra prueba paralela"), real: false };
   }
+  if (n.includes("conservador de 4 horas")) return { key: "slowcons", label: tr("Conservador · 4 horas"), real: false };
   if (n.includes("tendencia rápida")) return { key: "slowquick", label: tr("Lento · tendencia rápida"), real: false };
   if (n.includes("objetivo amplio")) return { key: "slowwide", label: tr("Lento · objetivo amplio"), real: false };
   if (n.includes("perfil lento")) return { key: "slow", label: tr("Lento (4 horas)"), real: false };
@@ -1791,10 +1792,10 @@ import type { BotAction } from "./strategy";
 // ─── Bot automático (etapa simulada) ────────────────────────────────────────
 
 /** Perfiles de estrategia del bot. Los números son los mismos que usa la función del servidor (hay una prueba que lo comprueba). */
-export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "slowquick" | "max";
+export type BotProfileId = "conservative" | "balanced" | "dynamic" | "intense" | "slow" | "slowwide" | "slowquick" | "slowcons" | "max";
 /** El perfil que se recomienda a quien recién empieza. */
 export const STARTER_PROFILE: BotProfileId = "balanced";
-export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "max"];
+export const BOT_PROFILE_LIST: BotProfileId[] = ["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "slowcons", "max"];
 export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: number; emaSlow: number; atrMult: number; rr: number; tf: "1h" | "4h" }> = {
   conservative: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "1h" },
   balanced: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "1h" },
@@ -1804,6 +1805,7 @@ export const BOT_PROFILES: Record<BotProfileId, { lookback: number; emaFast: num
   slow: { lookback: 20, emaFast: 50, emaSlow: 200, atrMult: 1.5, rr: 2, tf: "4h" },
   slowwide: { lookback: 30, emaFast: 50, emaSlow: 200, atrMult: 2.5, rr: 3, tf: "4h" },
   slowquick: { lookback: 10, emaFast: 20, emaSlow: 100, atrMult: 2, rr: 2, tf: "4h" },
+  slowcons: { lookback: 40, emaFast: 50, emaSlow: 200, atrMult: 2, rr: 2, tf: "4h" },
 };
 
 export function botProfileInfo(id: BotProfileId): { name: string; blurb: string } {
@@ -1820,6 +1822,8 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
       return { name: tr("Lento (4 horas)"), blurb: tr("Velas de 4 horas: pocas operaciones y menos comisiones. Con el costo real de Bitunix ya no salió positiva en el laboratorio.") };
     case "slowwide":
       return { name: tr("Lento · objetivo amplio"), blurb: tr("Velas de 4 horas, stop ancho y objetivo del triple de lo arriesgado. Acierta menos veces. Fue la única que pasó la vara del laboratorio con costos reales (pocas operaciones: todavía sin confirmar en vivo).") };
+    case "slowcons":
+      return { name: tr("Conservador · 4 horas"), blurb: tr("Velas de 4 horas, canal de 40 velas y stop de 2 ATR: espera rupturas grandes y deja espacio al stop. En el laboratorio fue la más estable: ganó en las dos mitades del año en dos corridas distintas (unas 270 operaciones al año).") };
     case "slowquick":
       return { name: tr("Lento · tendencia rápida"), blurb: tr("Velas de 4 horas, canal de 10 velas, tendencia 20/100, stop de 2 ATR y objetivo de 2R. En el laboratorio fue la mejor: ganó en las dos mitades del año y con más operaciones que las otras lentas.") };
     default:
@@ -1840,7 +1844,7 @@ export interface BotProfileCard {
 export function botProfileCard(id: BotProfileId): BotProfileCard {
   const p = BOT_PROFILES[id];
   const n = (x: number) => String(x).replace(".", getLang() === "es" ? "," : ".");
-  const activity = ({ conservative: 1, slow: 1, slowwide: 1, slowquick: 2, balanced: 2, dynamic: 3, intense: 5, max: 5 } as const)[id];
+  const activity = ({ conservative: 1, slow: 1, slowwide: 1, slowquick: 2, slowcons: 1, balanced: 2, dynamic: 3, intense: 5, max: 5 } as const)[id];
   const activityLabel = [tr("Pocas operaciones"), tr("Algunas operaciones"), tr("Bastantes operaciones"), tr("Muchas operaciones"), tr("Muchísimas operaciones")][activity - 1];
   const forWho =
     id === "conservative"
@@ -1855,7 +1859,9 @@ export function botProfileCard(id: BotProfileId): BotProfileCard {
             ? tr("Si querés pocas operaciones y menos comisiones. Con el costo real ya no salió positivo en el laboratorio.")
             : id === "slowwide"
               ? tr("Si aceptás acertar menos veces a cambio de ganar el triple de lo que arriesgás. Pocas operaciones: todavía sin confirmar en vivo.")
-              : id === "slowquick"
+              : id === "slowcons"
+                ? tr("Si querés pocas señales pero más confiables: la que mejor se repitió en el laboratorio. Todavía sin confirmar en vivo.")
+                : id === "slowquick"
                 ? tr("Si querés más operaciones sin stops pegados: velas de 4 horas y stop amplio. La mejor del laboratorio; falta confirmarla en vivo.")
                 : tr("Para empezar: el punto medio y el perfil de referencia.");
   return {

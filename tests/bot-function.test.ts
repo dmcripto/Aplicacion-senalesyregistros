@@ -462,7 +462,7 @@ describe("función bot · perfiles de estrategia", () => {
       return { body: (await res.json()) as any };
     })();
     expect(r.body.profile).toBe("dynamic");
-    expect(r.body.byProfile.map((x: any) => x.id)).toEqual(["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "max"]);
+    expect(r.body.byProfile.map((x: any) => x.id)).toEqual(["conservative", "balanced", "dynamic", "intense", "slow", "slowwide", "slowquick", "slowcons", "max"]);
     expect(r.body.byProfile.filter((x: any) => x.current).map((x: any) => x.id)).toEqual(["dynamic"]);
   });
 });
