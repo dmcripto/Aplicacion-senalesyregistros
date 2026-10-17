@@ -362,7 +362,7 @@ export async function saveBotSettings(userId: string, s: BotSettings, caps: { ru
 export const runBotBacktest = (symbols: string[], days = 120) => callFunction<BotBacktest & { ok: boolean; error?: string }>("bot", { action: "backtest", symbols, days });
 
 /** Laboratorio: varias versiones de la estrategia (velas de 1 y 4 horas) sobre un año de precios, por mitades. */
-const LAB_PARTS = 4;
+const LAB_PARTS = 6;
 /** El laboratorio se pide en tandas (cada una calcula unas pocas variantes) y se junta acá, así ninguna llamada pasa el límite de CPU del servidor. */
 export async function runBotLab(symbols: string[]): Promise<BotLab & { ok: boolean; error?: string }> {
   const rows: Extract<BotLab, { ok: true }>["variants"] = [];

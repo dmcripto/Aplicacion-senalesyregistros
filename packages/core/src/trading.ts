@@ -2216,6 +2216,12 @@ export function labVariantInfo(id: string): { name: string; blurb: string } {
       return { name: tr("Velas de 4 horas · ambos filtros"), blurb: tr("Aplica a la vez el filtro de entrada estirada y el de espacio hasta el soporte.") };
     case "h4-runner-filter":
       return { name: tr("Velas de 4 horas · corredor con ambos filtros"), blurb: tr("El corredor (cobra la mitad en 2R, stop a la entrada, resto hasta 4R) con los dos filtros de entrada.") };
+    case "h4-rsi75":
+      return { name: tr("Velas de 4 horas · sin sobrecompra ni sobreventa"), blurb: tr("Como el equilibrado, pero no compra si el RSI de 14 velas pasa de 75 ni vende si baja de 25: evita entrar cuando el movimiento ya está agotado.") };
+    case "h4-quick-rsi75":
+      return { name: tr("Lento · tendencia rápida · sin sobrecompra (75)"), blurb: tr("El perfil «Lento · tendencia rápida» con el filtro de RSI: no compra con el RSI sobre 75 ni vende bajo 25.") };
+    case "h4-quick-rsi70":
+      return { name: tr("Lento · tendencia rápida · sin sobrecompra (70)"), blurb: tr("El mismo perfil con un filtro de RSI más estricto: no compra con el RSI sobre 70 ni vende bajo 30. Menos operaciones, más selectivas.") };
     case "m15-balanced":
       return { name: tr("Velas de 15 minutos · equilibrado"), blurb: tr("Más operaciones y más comisiones. Solo se miden los últimos 90 días: evidencia más débil.") };
     case "m15-wide":

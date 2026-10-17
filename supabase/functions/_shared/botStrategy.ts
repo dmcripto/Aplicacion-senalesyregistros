@@ -37,11 +37,15 @@ export interface BotParams {
  *   · `minRoom`: descarta la señal si hay un extremo de las últimas 100 velas del lado del objetivo a menos de tantos ATR
  *     (soporte para una venta, resistencia para una compra): el precio puede frenar ahí antes de llegar al objetivo.
  *     Si el cierre ya está más allá de ese extremo (mínimo o máximo nuevo), no hay nada que lo frene y la señal pasa.
+ *   · `maxRsi`: filtro de sobrecompra y sobreventa con el RSI de 14 velas: descarta una compra si el RSI está por encima de `maxRsi`
+ *     (por ejemplo 75) y una venta si está por debajo de `100 − maxRsi` (25).
  */
 export interface EntryFilter {
   maxExt?: number;
   minRoom?: number;
+  maxRsi?: number;
 }
+export const RSI_LEN = 14;
 export const ROOM_LOOKBACK = 100;
 
 /**
@@ -136,15 +140,40 @@ export function atr(bars: Bar[], len: number): number[] {
   return out;
 }
 
+/** RSI de Wilder (serie completa, de 0 a 100). */
+export function rsi(values: number[], len: number): number[] {
+  const out: number[] = new Array(values.length).fill(NaN);
+  if (values.length <= len) return out;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= len; i++) {
+    const d = values[i] - values[i - 1];
+    if (d >= 0) gain += d;
+    else loss -= d;
+  }
+  gain /= len;
+  loss /= len;
+  const at = (g: number, l: number) => (l === 0 ? (g === 0 ? 50 : 100) : 100 - 100 / (1 + g / l));
+  out[len] = at(gain, loss);
+  for (let i = len + 1; i < values.length; i++) {
+    const d = values[i] - values[i - 1];
+    gain = (gain * (len - 1) + (d > 0 ? d : 0)) / len;
+    loss = (loss * (len - 1) + (d < 0 ? -d : 0)) / len;
+    out[i] = at(gain, loss);
+  }
+  return out;
+}
+
 export interface Indicators {
   fast: number[];
   slow: number[];
   atr: number[];
+  /** Solo si el perfil usa el filtro de sobrecompra/sobreventa (`filter.maxRsi`). */
+  rsi?: number[];
 }
 
 export function indicators(bars: Bar[], p: BotParams = DEFAULT_PARAMS): Indicators {
   const closes = bars.map((b) => b.c);
-  return { fast: ema(closes, p.emaFast), slow: ema(closes, p.emaSlow), atr: atr(bars, p.atrLen) };
+  return { fast: ema(closes, p.emaFast), slow: ema(closes, p.emaSlow), atr: atr(bars, p.atrLen), ...(p.filter?.maxRsi != null ? { rsi: rsi(closes, RSI_LEN) } : {}) };
 }
 
 /** Señal de la vela cerrada número `i` (solo usa datos hasta `i`). null = sin señal. */
@@ -162,12 +191,13 @@ export function signalAt(bars: Bar[], ind: Indicators, i: number, p: BotParams =
   if (c > hi && f > s && c > s) sig = { direction: "LONG", entry: c, sl: c - dist, tp: c + dist * p.rr, t: bars[i].t, strength: (c - hi) / a };
   // relaxShort (filtro de desbloqueos, modo agresivo): la venta solo exige estar bajo la media lenta, no que la rápida ya la haya cruzado.
   else if (c < lo && (opts?.relaxShort ? true : f < s) && c < s) sig = { direction: "SHORT", entry: c, sl: c + dist, tp: c - dist * p.rr, t: bars[i].t, strength: (lo - c) / a };
-  if (sig && p.filter && !passesEntryFilter(bars, i, sig.direction, f, a, p.filter)) return null;
+  if (sig && p.filter && !passesEntryFilter(bars, i, sig.direction, f, a, p.filter, ind.rsi?.[i])) return null;
   return sig;
 }
 
-function passesEntryFilter(bars: Bar[], i: number, dir: "LONG" | "SHORT", fast: number, a: number, f: EntryFilter): boolean {
+function passesEntryFilter(bars: Bar[], i: number, dir: "LONG" | "SHORT", fast: number, a: number, f: EntryFilter, rsiNow?: number): boolean {
   const c = bars[i].c;
+  if (f.maxRsi != null && rsiNow != null && Number.isFinite(rsiNow) && (dir === "LONG" ? rsiNow > f.maxRsi : rsiNow < 100 - f.maxRsi)) return false;
   if (f.maxExt != null && Math.abs(c - fast) / a > f.maxExt) return false;
   if (f.minRoom != null) {
     let ext = dir === "LONG" ? -Infinity : Infinity;
@@ -820,6 +850,10 @@ export const LAB_VARIANTS: LabVariant[] = [
   { id: "h4-room", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { minRoom: 1.5 } } },
   { id: "h4-filter", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxExt: 3, minRoom: 1.5 } } },
   { id: "h4-runner-filter", params: { ...RUNNER_PARAMS, filter: { maxExt: 3, minRoom: 1.5 } } },
+  // Sobrecompra y sobreventa (RSI de 14 velas): ¿no comprar con el RSI muy alto ni vender con el RSI muy bajo mejora el resultado?
+  { id: "h4-rsi75", params: { ...DEFAULT_PARAMS, tf: "4h", filter: { maxRsi: 75 } } },
+  { id: "h4-quick-rsi75", params: { ...BOT_PROFILES.slowquick, filter: { maxRsi: 75 } } },
+  { id: "h4-quick-rsi70", params: { ...BOT_PROFILES.slowquick, filter: { maxRsi: 70 } } },
   // Velas de 15 minutos (el escalpeo puro no se prueba: con 0,14 % de costo por operación no tiene chance). Solo para medir, en simulado.
   { id: "m15-balanced", params: { ...DEFAULT_PARAMS, tf: "15m" } },
   { id: "m15-wide", params: { lookback: 30, emaFast: 50, emaSlow: 200, atrLen: 14, atrMult: 3, rr: 2, feePct: ROUND_TRIP_COST_PCT, tf: "15m" } },
