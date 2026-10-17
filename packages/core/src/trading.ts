@@ -1825,7 +1825,7 @@ export function botProfileInfo(id: BotProfileId): { name: string; blurb: string 
     case "slowcons":
       return { name: tr("Conservador · 4 horas"), blurb: tr("Velas de 4 horas, canal de 40 velas y stop de 2 ATR: espera rupturas grandes y deja espacio al stop. En el laboratorio fue la más estable: ganó en las dos mitades del año en dos corridas distintas (unas 270 operaciones al año).") };
     case "slowquick":
-      return { name: tr("Lento · tendencia rápida"), blurb: tr("Velas de 4 horas, canal de 10 velas, tendencia 20/100, stop de 2 ATR y objetivo de 2R. En el laboratorio fue la mejor: ganó en las dos mitades del año y con más operaciones que las otras lentas.") };
+      return { name: tr("Lento · tendencia rápida"), blurb: tr("Velas de 4 horas, canal de 10 velas, tendencia 20/100, stop de 2 ATR y objetivo de 2R. En el laboratorio una vez dio bien (+0,14R) y la siguiente prácticamente cero (+0,01R): no se repitió, así que es solo una prueba en simulado.") };
     default:
       return { name: tr("Equilibrado"), blurb: tr("El punto medio: ni muchas ni pocas señales.") };
   }
@@ -1862,7 +1862,7 @@ export function botProfileCard(id: BotProfileId): BotProfileCard {
               : id === "slowcons"
                 ? tr("Si querés pocas señales pero más confiables: la que mejor se repitió en el laboratorio. Todavía sin confirmar en vivo.")
                 : id === "slowquick"
-                ? tr("Si querés más operaciones sin stops pegados: velas de 4 horas y stop amplio. La mejor del laboratorio; falta confirmarla en vivo.")
+                ? tr("Si querés más operaciones sin stops pegados: velas de 4 horas y stop amplio. El laboratorio no la confirmó (un día dio bien y otro casi cero): usala solo para probar.")
                 : tr("Para empezar: el punto medio y el perfil de referencia.");
   return {
     activity,
